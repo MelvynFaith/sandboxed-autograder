@@ -20,8 +20,10 @@ Workflow:
 4. At least **one other team member** approves. CI must pass.
 5. Merge with **Squash and merge**. The squashed commit uses the PR title, so the title must follow
    the commit convention below.
-6. To release, open a PR from `develop` into `main`. After merging, tag the release (`vX.Y.Z`,
-   [Semantic Versioning](https://semver.org/)) and move the `Unreleased` entries in
+6. To release, open a PR from `develop` into `main` and merge it with **Create a merge commit**,
+   never squash. Squashing a release would put a commit on `main` that `develop` does not have, and
+   every later release PR would then show old changes and conflicts. After merging, tag the release
+   (`vX.Y.Z`, [Semantic Versioning](https://semver.org/)) and move the `Unreleased` entries in
    [CHANGELOG.md](CHANGELOG.md) under the new version.
 
 ## Commit messages
@@ -98,4 +100,5 @@ Apply these once the repository is on GitHub:
   status checks, and up-to-date branches. Block force pushes.
 - **Security**: enable private vulnerability reporting, secret scanning with push protection, and
   Dependabot alerts.
-- **Merge options**: allow squash merging only.
+- **Merge options**: allow squash merging and merge commits, disable rebase merging. Rulesets
+  restrict `develop` to squash and `main` to merge commits.
