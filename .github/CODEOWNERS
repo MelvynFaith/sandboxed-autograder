@@ -1,0 +1,16 @@
+# Reviewers are requested automatically for the paths they own.
+# The last matching pattern wins, so every rule lists @MelvynFaith explicitly.
+#
+# @MelvynFaith   Efraim Melvyn Rafelino Lahai (repository owner, sandbox)
+# @evan-william  Evan William (scheduler, sandbox backup)
+# @whosblub      Robertus Geraldyn Alexandro Gabeler (grader, QA)
+# @Erlangga31    Benedictus Erlangga (project manager, frontend, docs)
+
+*               @MelvynFaith @Erlangga31
+
+/sandbox/       @MelvynFaith @evan-william
+/scheduler/     @MelvynFaith @evan-william
+/grader/        @MelvynFaith @whosblub
+/frontend/      @MelvynFaith @Erlangga31
+/infra/         @MelvynFaith @evan-william
+/.github/       @MelvynFaith @evan-william
