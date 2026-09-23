@@ -1,0 +1,51 @@
+name: User story
+description: A requirement stated from a user's point of view, with checkable acceptance criteria.
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: role
+    attributes:
+      label: As a...
+      options:
+        - Student
+        - Lecturer / teaching assistant
+        - Administrator
+    validations:
+      required: true
+  - type: textarea
+    id: want
+    attributes:
+      label: I want to...
+    validations:
+      required: true
+  - type: textarea
+    id: benefit
+    attributes:
+      label: So that...
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Each criterion must be verifiable by a test or a demo.
+      placeholder: |
+        - [ ] Given ..., when ..., then ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: input
+    id: requirements
+    attributes:
+      label: Related requirements
+      placeholder: FR-04, FR-14, NFR-10
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority (MoSCoW)
+      options:
+        - Must have
+        - Should have
+        - Could have
+    validations:
+      required: true

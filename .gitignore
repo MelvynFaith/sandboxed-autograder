@@ -1,0 +1,106 @@
+# =============================================================================
+# Secrets and environment
+# The repository is public. Credentials never enter version control.
+# =============================================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ecdsa*
+id_ed25519*
+
+# =============================================================================
+# Private course data
+# Real assignment test cases (especially hidden ones) and seed data live in
+# /private/ and are never committed (SRS §2.4).
+# =============================================================================
+/private/
+
+# =============================================================================
+# Local-only specification documents
+# The SRS and the course rubric are kept out of the public repository.
+# Team documentation (Markdown under docs/progress/ and docs/sprint/) is tracked.
+# =============================================================================
+/docs/*.pdf
+/docs/*.tex
+
+# LaTeX build artifacts. Scoped to docs/ so grader fixtures such as
+# tc_01.out are not swallowed.
+/docs/*.aux
+/docs/*.bbl
+/docs/*.blg
+/docs/*.fdb_latexmk
+/docs/*.fls
+/docs/*.lof
+/docs/*.lot
+/docs/*.out
+/docs/*.synctex.gz
+/docs/*.toc
+
+# =============================================================================
+# C — Sandbox Executor
+# =============================================================================
+*.o
+*.a
+*.so
+*.d
+/sandbox/sandbox-exec
+compile_commands.json
+core.[0-9]*
+vgcore.*
+
+# =============================================================================
+# Go — API Gateway & Scheduler
+# =============================================================================
+/scheduler/bin/
+*.test
+coverage.out
+go.work
+go.work.sum
+
+# =============================================================================
+# Python — Grading Harness
+# =============================================================================
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# =============================================================================
+# Node — Dashboard
+# =============================================================================
+node_modules/
+.eslintcache
+npm-debug.log*
+
+# =============================================================================
+# Shared build output and logs
+# =============================================================================
+build/
+dist/
+coverage/
+*.log
+
+# =============================================================================
+# Editors, operating systems, local tooling
+# =============================================================================
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+.claude/settings.local.json
+CLAUDE.local.md

@@ -1,0 +1,19 @@
+# Normalize all text files to LF, including on Windows checkouts.
+# Shell scripts, systemd units, and C sources run on Linux; CRLF breaks them.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary files: no normalization, no textual diff.
+*.pdf   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.woff  binary
+*.woff2 binary

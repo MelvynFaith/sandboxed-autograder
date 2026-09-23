@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Each component job runs only once that component's manifest exists, so CI
+  # stays green while the monorepo is filled in module by module.
+  detect:
+    name: Detect components
+    runs-on: ubuntu-24.04
+    outputs:
+      sandbox: ${{ steps.detect.outputs.sandbox }}
+      scheduler: ${{ steps.detect.outputs.scheduler }}
+      grader: ${{ steps.detect.outputs.grader }}
+      frontend: ${{ steps.detect.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: detect
+        run: |
+          has() { if [ -e "$1" ]; then echo true; else echo false; fi; }
+          {
+            echo "sandbox=$(has sandbox/Makefile)"
+            echo "scheduler=$(has scheduler/go.mod)"
+            echo "grader=$(has grader/pyproject.toml)"
+            echo "frontend=$(has frontend/package-lock.json)"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  sandbox:
+    name: sandbox (C)
+    needs: detect
+    if: needs.detect.outputs.sandbox == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: sandbox
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libseccomp-dev
+      # The Makefile owns the compiler flags; it must build with -Wall -Wextra -Werror (NFR-07).
+      - name: Build
+        run: make
+      # Tests that create namespaces need unprivileged user namespaces. GitHub-hosted
+      # Ubuntu 24.04 runners restrict them through AppArmor (SRS risk R9). Relax it with
+      # `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` before running
+      # them here, or run them on a self-hosted runner.
+
+  scheduler:
+    name: scheduler (Go)
+    needs: detect
+    if: needs.detect.outputs.scheduler == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: scheduler
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: scheduler/go.mod
+          cache-dependency-path: scheduler/go.sum
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::Files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -race -coverprofile=coverage.out ./...
+      - name: Build
+        run: go build ./...
+
+  grader:
+    name: grader (Python)
+    needs: detect
+    if: needs.detect.outputs.grader == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: grader
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: grader/pyproject.toml
+      - name: Install
+        run: python -m pip install -e . ruff pytest
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: pytest
+
+  frontend:
+    name: frontend (React)
+    needs: detect
+    if: needs.detect.outputs.frontend == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Lint
+        run: npm run lint --if-present
+      - name: Test
+        run: npm test --if-present
+      - name: Build
+        run: npm run build

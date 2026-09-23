@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # Keeps workflow action versions current. Add gomod, pip, and npm entries
+  # as scheduler/, grader/, and frontend/ gain their manifests.
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
