@@ -19,6 +19,13 @@ works with the keyboard and has screen-reader labels. Timestamps are stored in U
 
 ## Build and test
 
-To be added with the first implementation. CI activates the `frontend` job once
-`package-lock.json` exists here. The job runs `npm ci`, then the `lint` and `test` scripts if they
-exist, then `npm run build`.
+Install dependencies with `npm ci`. Start the Vite development server with `npm run dev`; `/api`
+requests are proxied to the local backend at `http://localhost:8080`.
+
+Before opening a pull request, run:
+
+```sh
+npm run lint
+npm test
+npm run build
+```
