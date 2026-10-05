@@ -10,7 +10,7 @@
 
 ## In progress / carried over
 
-- Frontend submission status (FR-08; `WS /ws/v1/submissions/{id}`) on `feature/frontend-status`.
+- Frontend submission status (FR-08; `WS /ws/v1/submissions/{id}`) implemented in [PR #12](https://github.com/MelvynFaith/sandboxed-autograder/pull/12); awaiting review.
 
 ## Blockers and risks
 
