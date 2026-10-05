@@ -28,8 +28,8 @@ Set `VITE_USE_MOCK=true` when starting Vite to use the mock login. The demo acco
 `password123`. The API response mapping assumption is kept in `src/api/auth.js`.
 
 The login page stores the JWT and user in the authentication context and browser storage. Routes for
-assignments and history require an authenticated user; the navigation links depend on the user's
-role.
+assignments and history require an authenticated user; submission history is available to students
+only.
 
 The JWT is stored in `localStorage`, which is susceptible to theft through cross-site scripting
 (XSS). This is an accepted limitation for this project; production deployments should consider
@@ -45,9 +45,14 @@ safer cookie-based session storage and protect against XSS.
 | Respons submission | `{ "id", "assignment_id", "status": "queued", "submitted_at" }`. |
 | Status melalui WebSocket | `WS /ws/v1/submissions/{id}?token=<JWT>`; pesan `{ "status", "current_test", "total_tests" }`, dengan status `queued`, `running`, `completed`, `error`, atau `timeout`. |
 | Fallback status | Polling `GET /api/v1/submissions/{id}` setiap 3 detik; respons `{ "id", "status", "current_test", "total_tests" }`. Server menutup WebSocket setelah status terminal. |
+| Riwayat submission | `GET /api/v1/submissions` -> `[{ "id", "assignment_id", "assignment_judul", "status", "skor_total", "submitted_at" }]`; asumsi ini ditambahkan karena SRS tidak menetapkan endpoint daftar riwayat. Hanya submission milik user login yang dikembalikan (backend membatasi berdasarkan JWT). |
+| Laporan test case | `GET /api/v1/submissions/{id}/report` -> `{ "submission_id", "skor_total", "results": [{ "testcase_id", "status", "skor", "waktu_eksekusi_ms", "memori_kb", "pesan_error", "is_hidden", "actual_output" }] }`. `skor_total` dan `pesan_error` tidak ada di entitas SRS dan merupakan asumsi tambahan. |
 
 Asumsi assignment diisolasi di `src/api/assignments.js`; asumsi unggah dan respons submission ada di
 `src/api/submissions.js`; asumsi status WebSocket dan polling ada di `src/api/submissionStatus.js`.
+Asumsi daftar riwayat dan laporan masing-masing diisolasi di `src/api/submissionHistory.js` dan
+`src/api/submissionReport.js`. Laporan tidak mengembalikan output atau pesan error untuk test case
+tersembunyi ke komponen UI.
 Diskusi konfirmasi backend: [issue #9](https://github.com/MelvynFaith/sandboxed-autograder/issues/9).
 Validasi frontend membatasi berkas Python hingga 1 MiB; backend tetap perlu memvalidasi ulang.
 
