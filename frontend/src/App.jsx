@@ -18,7 +18,7 @@ const roleMenus = {
     { label: 'Riwayat', to: '/history' },
   ],
   dosen: [{ label: 'Daftar Assignment', to: '/assignments' }],
-  admin: [{ label: 'Riwayat', to: '/history' }],
+  admin: [],
 }
 
 function ProtectedLayout() {
@@ -53,6 +53,16 @@ function ProtectedLayout() {
   )
 }
 
+function StudentHistoryRoute() {
+  const { user } = useAuth()
+
+  if (user.role !== 'mahasiswa') {
+    return <Navigate replace to="/assignments" />
+  }
+
+  return <HistoryPage />
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -62,7 +72,7 @@ function App() {
           <Route element={<ProtectedLayout />}>
             <Route path="/" element={<Navigate replace to="/assignments" />} />
             <Route path="/assignments" element={<AssignmentsPage />} />
-            <Route path="/history" element={<HistoryPage />} />
+            <Route path="/history" element={<StudentHistoryRoute />} />
           </Route>
           <Route path="*" element={<Navigate replace to="/assignments" />} />
         </Routes>

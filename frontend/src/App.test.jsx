@@ -75,9 +75,9 @@ describe('authentication routes', () => {
     render(<App />)
     submitLogin('admin@example.test', 'password123')
 
-    expect(await screen.findByRole('heading', { name: 'Riwayat' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Daftar Assignment' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Daftar Assignment' })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Riwayat' })).toHaveAttribute('href', '/history')
+    expect(screen.queryByRole('link', { name: 'Riwayat' })).not.toBeInTheDocument()
   })
 
   it('logs out and protects the current route again', async () => {
