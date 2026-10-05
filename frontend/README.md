@@ -47,14 +47,21 @@ safer cookie-based session storage and protect against XSS.
 | Fallback status | Polling `GET /api/v1/submissions/{id}` setiap 3 detik; respons `{ "id", "status", "current_test", "total_tests" }`. Server menutup WebSocket setelah status terminal. |
 | Riwayat submission | `GET /api/v1/submissions` -> `[{ "id", "assignment_id", "assignment_judul", "status", "skor_total", "submitted_at" }]`; asumsi ini ditambahkan karena SRS tidak menetapkan endpoint daftar riwayat. Hanya submission milik user login yang dikembalikan (backend membatasi berdasarkan JWT). |
 | Laporan test case | `GET /api/v1/submissions/{id}/report` -> `{ "submission_id", "skor_total", "results": [{ "testcase_id", "status", "skor", "waktu_eksekusi_ms", "memori_kb", "pesan_error", "is_hidden", "actual_output" }] }`. `skor_total` dan `pesan_error` tidak ada di entitas SRS dan merupakan asumsi tambahan. |
+| Buat assignment dosen/admin | `POST /api/v1/assignments` menerima `{ judul, deskripsi, deadline, resource_limit: { cpu_time_ms, memory_mb, max_proses, timeout_s } }` dan diasumsikan mengembalikan `{ id, judul, deskripsi, deadline }`. Resource limit bersarang adalah asumsi frontend. |
+| Tambah test case | `POST /api/v1/assignments/{id}/testcases` menerima `{ input, expected_output, bobot, is_hidden }` dan diasumsikan mengembalikan `{ id, assignment_id, ... }`. Nama field mengikuti entitas TestCase BAB 7.1. |
 
 Asumsi assignment diisolasi di `src/api/assignments.js`; asumsi unggah dan respons submission ada di
 `src/api/submissions.js`; asumsi status WebSocket dan polling ada di `src/api/submissionStatus.js`.
 Asumsi daftar riwayat dan laporan masing-masing diisolasi di `src/api/submissionHistory.js` dan
-`src/api/submissionReport.js`. Laporan tidak mengembalikan output atau pesan error untuk test case
-tersembunyi ke komponen UI.
+`src/api/submissionReport.js`. Kontrak pembuatan assignment dosen/admin ada di
+`src/api/lecturerAssignments.js`, sedangkan kontrak test case ada di `src/api/testcases.js`.
+Laporan tidak mengembalikan output atau pesan error untuk test case tersembunyi ke komponen UI.
 Diskusi konfirmasi backend: [issue #9](https://github.com/MelvynFaith/sandboxed-autograder/issues/9).
 Validasi frontend membatasi berkas Python hingga 1 MiB; backend tetap perlu memvalidasi ulang.
+
+FR-02 hanya mencakup pembuatan assignment pada frontend karena SRS belum menetapkan endpoint untuk
+mengubah atau menghapus assignment. Opsi pembanding keluaran exact/whitespace-insensitive tidak
+ditambahkan karena belum didefinisikan pada entitas TestCase.
 
 Browser WebSocket tidak dapat mengirim header `Authorization`, jadi token sementara dikirim sebagai
 parameter query `token`. Token pada query dapat muncul di log server dan riwayat URL; ini merupakan
