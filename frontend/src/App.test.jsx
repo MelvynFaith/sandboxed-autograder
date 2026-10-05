@@ -68,6 +68,10 @@ describe('authentication routes', () => {
 
     expect(await screen.findByRole('heading', { name: 'Daftar Assignment' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Riwayat' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Kelola Assignment' })).toHaveAttribute(
+      'href',
+      '/lecturer/assignments',
+    )
 
     unmount()
     localStorage.clear()
@@ -78,6 +82,10 @@ describe('authentication routes', () => {
     expect(await screen.findByRole('heading', { name: 'Daftar Assignment' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Daftar Assignment' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Riwayat' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Kelola Assignment' })).toHaveAttribute(
+      'href',
+      '/lecturer/assignments',
+    )
   })
 
   it('logs out and protects the current route again', async () => {

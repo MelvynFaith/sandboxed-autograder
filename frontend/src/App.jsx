@@ -10,6 +10,7 @@ import AuthProvider from './context/AuthContext.jsx'
 import { useAuth } from './context/useAuth.js'
 import AssignmentsPage from './pages/AssignmentsPage.jsx'
 import HistoryPage from './pages/HistoryPage.jsx'
+import LecturerAssignmentsPage from './pages/LecturerAssignmentsPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 
 const roleMenus = {
@@ -17,8 +18,11 @@ const roleMenus = {
     { label: 'Daftar Assignment', to: '/assignments' },
     { label: 'Riwayat', to: '/history' },
   ],
-  dosen: [{ label: 'Daftar Assignment', to: '/assignments' }],
-  admin: [],
+  dosen: [
+    { label: 'Daftar Assignment', to: '/assignments' },
+    { label: 'Kelola Assignment', to: '/lecturer/assignments' },
+  ],
+  admin: [{ label: 'Kelola Assignment', to: '/lecturer/assignments' }],
 }
 
 function ProtectedLayout() {
@@ -63,6 +67,16 @@ function StudentHistoryRoute() {
   return <HistoryPage />
 }
 
+function LecturerAssignmentsRoute() {
+  const { user } = useAuth()
+
+  if (user.role !== 'dosen' && user.role !== 'admin') {
+    return <Navigate replace to="/assignments" />
+  }
+
+  return <LecturerAssignmentsPage />
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -73,6 +87,7 @@ function App() {
             <Route path="/" element={<Navigate replace to="/assignments" />} />
             <Route path="/assignments" element={<AssignmentsPage />} />
             <Route path="/history" element={<StudentHistoryRoute />} />
+            <Route path="/lecturer/assignments" element={<LecturerAssignmentsRoute />} />
           </Route>
           <Route path="*" element={<Navigate replace to="/assignments" />} />
         </Routes>
