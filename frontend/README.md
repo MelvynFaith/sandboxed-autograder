@@ -34,6 +34,19 @@ The JWT is stored in `localStorage`, which is susceptible to theft through cross
 (XSS). This is an accepted limitation for this project; production deployments should consider
 safer cookie-based session storage and protect against XSS.
 
+## Asumsi kontrak API (belum disepakati dengan backend)
+
+| Endpoint | Asumsi sementara |
+| --- | --- |
+| `POST /api/v1/auth/login` | Request `{ "email", "password" }`; response `{ "token", "user": { "id", "nama", "email", "role" } }`. |
+| `GET /api/v1/assignments` | Response array `[{ "id", "judul", "deskripsi", "deadline" }]`. |
+| `POST /api/v1/submissions` | `multipart/form-data` dengan field `assignment_id` dan `file` (`.py`). |
+| Respons submission | `{ "id", "assignment_id", "status": "queued", "submitted_at" }`. |
+
+Asumsi assignment diisolasi di `src/api/assignments.js`; asumsi unggah dan respons submission ada di
+`src/api/submissions.js`. Diskusi konfirmasi backend: [issue #9](https://github.com/MelvynFaith/sandboxed-autograder/issues/9).
+Validasi frontend membatasi berkas Python hingga 1 MiB; backend tetap perlu memvalidasi ulang.
+
 Before opening a pull request, run:
 
 ```sh
