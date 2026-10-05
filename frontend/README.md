@@ -20,7 +20,8 @@ works with the keyboard and has screen-reader labels. Timestamps are stored in U
 ## Build and test
 
 Install dependencies with `npm ci`. Start the Vite development server with `npm run dev`; `/api`
-requests are proxied to the local backend at `http://localhost:8080`.
+requests and `/ws` WebSocket connections are proxied to the local backend at
+`http://localhost:8080`.
 
 Set `VITE_USE_MOCK=true` when starting Vite to use the mock login. The demo accounts are
 `mahasiswa@example.test`, `dosen@example.test`, and `admin@example.test`; each uses the password
@@ -42,10 +43,18 @@ safer cookie-based session storage and protect against XSS.
 | `GET /api/v1/assignments` | Response array `[{ "id", "judul", "deskripsi", "deadline" }]`. |
 | `POST /api/v1/submissions` | `multipart/form-data` dengan field `assignment_id` dan `file` (`.py`). |
 | Respons submission | `{ "id", "assignment_id", "status": "queued", "submitted_at" }`. |
+| Status melalui WebSocket | `WS /ws/v1/submissions/{id}?token=<JWT>`; pesan `{ "status", "current_test", "total_tests" }`, dengan status `queued`, `running`, `completed`, `error`, atau `timeout`. |
+| Fallback status | Polling `GET /api/v1/submissions/{id}` setiap 3 detik; respons `{ "id", "status", "current_test", "total_tests" }`. Server menutup WebSocket setelah status terminal. |
 
 Asumsi assignment diisolasi di `src/api/assignments.js`; asumsi unggah dan respons submission ada di
-`src/api/submissions.js`. Diskusi konfirmasi backend: [issue #9](https://github.com/MelvynFaith/sandboxed-autograder/issues/9).
+`src/api/submissions.js`; asumsi status WebSocket dan polling ada di `src/api/submissionStatus.js`.
+Diskusi konfirmasi backend: [issue #9](https://github.com/MelvynFaith/sandboxed-autograder/issues/9).
 Validasi frontend membatasi berkas Python hingga 1 MiB; backend tetap perlu memvalidasi ulang.
+
+Browser WebSocket tidak dapat mengirim header `Authorization`, jadi token sementara dikirim sebagai
+parameter query `token`. Token pada query dapat muncul di log server dan riwayat URL; ini merupakan
+keterbatasan keamanan. Tiket WebSocket sekali pakai merupakan opsi yang lebih aman untuk dibahas
+dengan backend sebagai pekerjaan lanjutan.
 
 Before opening a pull request, run:
 
