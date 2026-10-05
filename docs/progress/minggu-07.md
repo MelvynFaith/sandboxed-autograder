@@ -6,10 +6,11 @@
 
 - [PR #4](https://github.com/MelvynFaith/sandboxed-autograder/pull/4) — Frontend scaffold selesai, PR #4 merged. Owner: Erlangga31.
 - [PR #7](https://github.com/MelvynFaith/sandboxed-autograder/pull/7) — Login (PR #7) merged. Owner: Erlangga31.
+- [PR #10](https://github.com/MelvynFaith/sandboxed-autograder/pull/10) — Student submit (PR #10) merged.
 
 ## In progress / carried over
 
-- Frontend student submission (FR-04; `GET /api/v1/assignments`, `POST /api/v1/submissions`) on `feature/frontend-student-submit`.
+- Frontend submission status (FR-08; `WS /ws/v1/submissions/{id}`) on `feature/frontend-status`.
 
 ## Blockers and risks
 

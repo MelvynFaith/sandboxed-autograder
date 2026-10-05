@@ -50,9 +50,8 @@ describe('student assignment submissions', () => {
     })
     fireEvent.click(screen.getAllByRole('button', { name: 'Upload kode Python' })[0])
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Kode berhasil diunggah. Status: queued.',
-    )
+    expect(await screen.findByText('Kode berhasil diunggah.')).toBeInTheDocument()
+    expect(await screen.findByTestId('submission-status-badge')).toHaveTextContent('Antre')
   })
 
   it('rejects files that do not have a Python extension', async () => {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getAssignments } from '../api/assignments.js'
 import { MAX_FILE_SIZE, submitSubmission } from '../api/submissions.js'
+import SubmissionStatus from '../components/SubmissionStatus.jsx'
 import { useAuth } from '../context/useAuth.js'
 
 const deadlineFormatter = new Intl.DateTimeFormat('id-ID', {
@@ -10,12 +11,13 @@ const deadlineFormatter = new Intl.DateTimeFormat('id-ID', {
 })
 
 function AssignmentsPage() {
-  const { user } = useAuth()
+  const { token, user } = useAuth()
   const [assignments, setAssignments] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [files, setFiles] = useState({})
   const [messages, setMessages] = useState({})
+  const [submissions, setSubmissions] = useState({})
   const [submittingId, setSubmittingId] = useState(null)
 
   useEffect(() => {
@@ -93,11 +95,15 @@ function AssignmentsPage() {
       const submission = await submitSubmission(assignment.id, file)
       setFiles((current) => ({ ...current, [assignment.id]: null }))
       form.reset()
+      setSubmissions((current) => ({
+        ...current,
+        [assignment.id]: submission.id,
+      }))
       setMessages((current) => ({
         ...current,
         [assignment.id]: {
           type: 'success',
-          text: `Kode berhasil diunggah. Status: ${submission.status}.`,
+          text: 'Kode berhasil diunggah.',
         },
       }))
     } catch (error) {
@@ -167,6 +173,13 @@ function AssignmentsPage() {
                   >
                     {messages[assignment.id].text}
                   </p>
+                )}
+                {submissions[assignment.id] !== undefined && (
+                  <SubmissionStatus
+                    key={submissions[assignment.id]}
+                    submissionId={submissions[assignment.id]}
+                    token={token}
+                  />
                 )}
                 <button
                   className="rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-60"
