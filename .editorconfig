@@ -14,6 +14,11 @@ indent_style = tab
 [{Makefile,*.mk}]
 indent_style = tab
 
+# Linux kernel coding style for the sandbox (see sandbox/.clang-format).
+[*.{c,h,sh}]
+indent_style = tab
+indent_size = 8
+
 # PEP 8.
 [*.py]
 indent_style = space

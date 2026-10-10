@@ -112,7 +112,7 @@ Test input arrives on stdin. Expected outputs never enter the sandbox. Exit stat
 usage come from the supervisor (`wait4()` and cgroup counters), never from anything the student
 program prints.
 
-Execution is deterministic: `PYTHONHASHSEED=0`, `python -I -B`, `LC_ALL=C.UTF-8`, `TZ=UTC`, and an
+Execution is deterministic: `PYTHONHASHSEED=0`, `python -s -P -B`, `LC_ALL=C.UTF-8`, `TZ=UTC`, and an
 otherwise empty environment. The same code therefore produces the same output on every run.
 
 ## Security scope and limitations
