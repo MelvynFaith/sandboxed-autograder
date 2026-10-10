@@ -1,0 +1,330 @@
+.\" SPDX-License-Identifier: MIT
+.TH SANDBOX-EXEC 1 "October 2026" "sandboxed-autograder" "User Commands"
+.SH NAME
+sandbox-exec \- run one command in an isolated, resource-limited sandbox
+.SH SYNOPSIS
+.B sandbox-exec
+.B \-\-cgroup\-root
+.I DIR
+.B \-\-cpu\-time\-ms
+.I N
+.B \-\-timeout\-s
+.I N
+.B \-\-memory\-mb
+.I N
+.B \-\-max\-processes
+.I N
+.B \-\-max\-output\-bytes
+.I N
+.B \-\-tmpfs\-size\-mb
+.I N
+.RB [ \-\-copy
+.IR SRC [: DEST ]]...
+.RB [ \-\-run\-dir
+.IR DIR ]
+.RB [ \-\-result
+.IR FILE ]
+.B \-\-
+.I CMD
+.RI [ ARG ...]
+.br
+.B sandbox-exec \-\-sweep \-\-cgroup\-root
+.I DIR
+.RB [ \-\-run\-dir
+.IR DIR ]
+.SH DESCRIPTION
+.B sandbox-exec
+runs exactly one command inside new user, PID, mount, network, UTS and IPC
+namespaces, in its own cgroup v2 sub-cgroup, behind a seccomp-BPF allowlist, and
+writes a JSON report describing how it ended.
+It never runs as root and is not setuid.
+It knows nothing about test cases or scores; the grading harness calls it once
+per test case.
+.PP
+The program sees a minimal root file system: read-only
+.IR /usr ,
+.I /bin
+and
+.I /lib
+(or their targets), the loader cache from
+.IR /etc ,
+a small
+.IR /dev ,
+a fresh
+.IR /proc ,
+and a size-capped tmpfs at
+.IR /work ,
+which is its working directory.
+It has no network interfaces and no capabilities.
+.PP
+Standard input of
+.B sandbox-exec
+is read to end of file (at most 4 MiB) and forwarded to the program.
+The report is written to standard output, or to
+.BR \-\-result .
+.B sandbox-exec
+writes its own diagnostics to standard error only.
+.SH OPTIONS
+All six limits are required; there are no defaults.
+.TP
+.BI \-\-cgroup\-root " DIR"
+Delegated cgroup under which the per-run sub-cgroup is created.
+See
+.BR REQUIREMENTS .
+.TP
+.BI \-\-cpu\-time\-ms " N"
+Cumulative CPU time budget of all processes of the run, checked from
+.I cpu.stat
+with millisecond precision.
+.TP
+.BI \-\-timeout\-s " N"
+Wall-clock limit, independent of the CPU budget.
+.TP
+.BI \-\-memory\-mb " N"
+.IR memory.max ;
+.I memory.swap.max
+is set to 0.
+.TP
+.BI \-\-max\-processes " N"
+.IR pids.max .
+.TP
+.BI \-\-max\-output\-bytes " N"
+Combined limit for standard output and standard error.
+.TP
+.BI \-\-tmpfs\-size\-mb " N"
+Size of the tmpfs mounted at
+.IR /work .
+Both output files live there too.
+.TP
+.BI \-\-copy " SRC" [: DEST ]
+Copy host file
+.I SRC
+to
+.I /work/DEST
+before the run.
+.I DEST
+is relative, may not contain
+.I ..
+and defaults to the base name of
+.IR SRC .
+May be repeated.
+.TP
+.BI \-\-run\-dir " DIR"
+Directory for the per-run work directory (default
+.IR /tmp ).
+.TP
+.BI \-\-result " FILE"
+Write the report to
+.I FILE
+(mode 0600, symbolic links are not followed) instead of standard output.
+.TP
+.B \-\-sweep
+Remove empty
+.I sbx-*
+cgroups and leftover run directories of dead runs, then exit.
+Run it once when the worker starts.
+.TP
+.I CMD
+Absolute path of the program inside the sandbox, followed by its arguments.
+.PP
+The limits must satisfy
+.PP
+.RS
+2 * max_output_bytes < tmpfs_size_mb * 2^20
+.br
+tmpfs_size_mb + 16 <= memory_mb
+.RE
+.PP
+so that a disk-write bomb fills the tmpfs before the cgroup runs out of memory
+and is not reported as a memory bomb.
+.SH ENVIRONMENT OF THE PROGRAM
+The environment of the program is exactly
+.IR PATH=/usr/bin:/bin ,
+.IR HOME=/work ,
+.IR PYTHONHASHSEED=0 ,
+.I LC_ALL=C.UTF-8
+and
+.IR TZ=UTC .
+Nothing is inherited from the caller, and no descriptor other than 0, 1 and 2 is
+passed on.
+.PP
+For Python use
+.IR "python3 \-s \-P \-B" .
+Do not use
+.BR \-I :
+it implies
+.BR \-E ,
+which makes the interpreter ignore
+.I PYTHONHASHSEED
+and brings back run-to-run differences in
+.B set
+ordering.
+.SH REPORT
+One JSON document (UTF-8; invalid bytes in program output become U+FFFD) with
+these members:
+.TP
+.B schema_version
+Currently 1.
+.TP
+.B termination_reason
+One of the values below.
+.TP
+.BR exit_code ", " signal
+Exit status, or the number of the killing signal; the other is
+.BR null .
+Both come from
+.BR wait4 (2),
+never from program output.
+.TP
+.BR wall_ms ", " cpu_ms
+Elapsed time and total CPU time of the cgroup.
+.TP
+.BR memory_kb ", " memory_source
+Peak memory.
+.B memory_source
+is
+.B CGROUP_PEAK
+(\fImemory.peak\fR),
+.B CGROUP_SAMPLED
+(highest sampled \fImemory.current\fR) or
+.B RUSAGE
+(last resort).
+.TP
+.BR stdout ", " stderr ", " output_truncated
+Captured output, at most
+.B \-\-max\-output\-bytes
+together.
+.TP
+.B violation
+.B {"syscall_nr": N}
+for
+.BR SECURITY_VIOLATION ,
+otherwise
+.BR null .
+.TP
+.B pids_limit_hit
+True if a fork failed because of
+.IR pids.max .
+.TP
+.B error
+Message for
+.BR INTERNAL_ERROR ,
+otherwise
+.BR null .
+.SS Termination reasons
+.TP
+.B EXITED
+The program exited; see
+.BR exit_code .
+.TP
+.B SIGNALED
+Killed by a signal not caused by a limit, for example
+.BR SIGSEGV .
+.TP
+.B TIMEOUT_WALL
+The wall-clock limit was reached.
+.TP
+.B TIMEOUT_CPU
+The CPU budget was reached.
+.TP
+.B MEMORY_LIMIT
+The cgroup OOM killer ended the run.
+.TP
+.B OUTPUT_LIMIT
+Standard output and standard error together exceeded the limit.
+.TP
+.B SECURITY_VIOLATION
+The program called a syscall outside the allowlist; the call was refused and
+the run ended.
+.TP
+.B INTERNAL_ERROR
+The sandbox could not be set up or supervised; the program's result, if any,
+must not be graded.
+.SH EXIT STATUS
+.TP
+.B 0
+The program ran and the report was written, whatever became of the program.
+.TP
+.B 2
+Usage error, or a limit invariant is violated.
+.TP
+.B 70
+Internal error.
+A report with
+.B INTERNAL_ERROR
+is written when possible.
+.SH REQUIREMENTS
+Linux 5.10 or later with the cgroup v2 unified hierarchy and unprivileged user
+namespaces; libseccomp 2.5 or later.
+.PP
+.I DIR
+for
+.B \-\-cgroup\-root
+must be owned by the service user and have the
+.IR memory ,
+.I pids
+and
+.I cpu
+controllers enabled in its
+.IR cgroup.subtree_control .
+It must hold no processes itself, and
+.B sandbox-exec
+must run below it, because moving the child needs write access to
+.I cgroup.procs
+of the common ancestor.
+With systemd, give the worker unit
+.IR Delegate=yes ,
+move the worker into a leaf cgroup at start-up, then enable the controllers.
+.PP
+On Ubuntu 24.04 and later set
+.I kernel.apparmor_restrict_unprivileged_userns=0
+or install an AppArmor profile for
+.BR sandbox-exec ;
+otherwise
+.BR mount (2)
+fails with EPERM.
+.SH EXAMPLES
+Run a Python program with 5 as input:
+.PP
+.nf
+.RS
+printf '5\\n' | sandbox-exec \\
+    \-\-cgroup\-root "$CG" \-\-cpu\-time\-ms 2000 \-\-timeout\-s 5 \\
+    \-\-memory\-mb 64 \-\-max\-processes 5 \\
+    \-\-max\-output\-bytes 1048576 \-\-tmpfs\-size\-mb 32 \\
+    \-\-copy solution.py:main.py \\
+    \-\- /usr/bin/python3 \-s \-P \-B main.py
+.RE
+.fi
+.SH BUGS
+There is no
+.B SCMP_ACT_TRACE
+fallback: on a kernel without seccomp user notification
+.B sandbox-exec
+refuses to run.
+.PP
+The program is PID 1 of its namespace, so a signal it sends to itself with
+.BR kill (2)
+is ignored by the kernel; such a run ends at the wall-clock limit.
+.PP
+POSIX semaphores need
+.IR /dev/shm ,
+which is not mounted, so Python's
+.B multiprocessing.Lock
+and
+.B Pool
+do not work.
+.PP
+The restriction to the standard library is a policy, not enforced: packages
+installed under
+.I /usr
+stay importable.
+.SH SEE ALSO
+.BR namespaces (7),
+.BR cgroups (7),
+.BR user_namespaces (7),
+.BR seccomp (2),
+.BR seccomp_unotify (2),
+.BR clone3 (2),
+.BR pivot_root (2),
+.BR mount_setattr (2)
