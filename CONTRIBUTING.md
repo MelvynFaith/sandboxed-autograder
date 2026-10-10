@@ -66,7 +66,7 @@ before you push.
 
 | Component | Required |
 |---|---|
-| `sandbox/` (C) | Compiles with `-Wall -Wextra -Werror`. `clang-tidy` reports no findings. The adversarial suite passes under AddressSanitizer and UndefinedBehaviorSanitizer. Critical functions document the syscalls and flags they use. |
+| `sandbox/` (C) | Compiles with `-Wall -Wextra -Werror`. `clang-tidy` reports no findings. The adversarial suite (`make test`) passes, also under AddressSanitizer and UndefinedBehaviorSanitizer (`make asan`). Code follows the Linux kernel coding style (`sandbox/.clang-format`). Critical functions document the syscalls and flags they use. Changing the seccomp allowlist needs a note on what the syscall exposes. |
 | `scheduler/` (Go) | `gofmt` and `go vet` are clean. Tests pass with `-race`. Scheduler and API handlers keep **≥ 70 %** coverage. |
 | `grader/` (Python) | `ruff check` is clean (PEP 8). `pytest` passes. |
 | `frontend/` | Lint, tests (when present), and production build succeed. Layouts work at 360 px, 768 px, and ≥ 1280 px. Forms work with the keyboard and carry accessible labels. |
