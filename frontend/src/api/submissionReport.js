@@ -101,21 +101,22 @@ function readResult(result) {
     !Number.isFinite(result.exec_time_ms) ||
     !Number.isFinite(result.memory_kb) ||
     (result.error_message != null && typeof result.error_message !== 'string') ||
-    typeof result.is_hidden !== 'boolean' ||
-    (result.actual_output !== null && typeof result.actual_output !== 'string')
+    (result.is_hidden !== undefined && typeof result.is_hidden !== 'boolean') ||
+    (result.actual_output != null && typeof result.actual_output !== 'string')
   ) {
     throw new Error('Data hasil test case tidak sesuai format yang diharapkan.')
   }
 
+  const hidden = result.is_hidden !== false
   return {
     testCaseId: String(result.testcase_id),
     verdict: result.status,
     score: result.score,
     executionTimeMs: result.exec_time_ms,
     memoryKb: result.memory_kb,
-    hidden: result.is_hidden,
-    errorMessage: result.is_hidden ? null : result.error_message ?? null,
-    actualOutput: result.is_hidden ? null : result.actual_output,
+    hidden,
+    errorMessage: hidden ? null : result.error_message ?? null,
+    actualOutput: hidden ? null : result.actual_output ?? null,
   }
 }
 

@@ -79,6 +79,37 @@ describe('getSubmissionReport', () => {
     expect(JSON.stringify(hidden)).not.toContain('Pesan tersembunyi')
   })
 
+  it('keeps testcase details hidden when the report omits visibility metadata', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        submission_id: 'submission-1',
+        total_score: 10,
+        results: [
+          {
+            testcase_id: 'testcase-hidden',
+            status: 'PASSED',
+            score: 10,
+            exec_time_ms: 12,
+            memory_kb: 2048,
+            actual_output: 'secret output',
+          },
+        ],
+      }),
+    }))
+
+    await expect(getSubmissionReport('submission-1')).resolves.toMatchObject({
+      results: [
+        {
+          testCaseId: 'testcase-hidden',
+          hidden: true,
+          errorMessage: null,
+          actualOutput: null,
+        },
+      ],
+    })
+  })
+
   it('rejects unknown verdicts and surfaces failed requests', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }))
 
