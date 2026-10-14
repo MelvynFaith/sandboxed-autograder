@@ -16,15 +16,15 @@ describe('getSubmissionReport', () => {
   it('fetches the report endpoint and maps a visible testcase result', async () => {
     const payload = {
       submission_id: 'submission-1',
-      skor_total: 75,
+      total_score: 75,
       results: [
         {
           testcase_id: 'testcase-1',
           status: 'TIMEOUT',
-          skor: 0,
-          waktu_eksekusi_ms: 5000,
-          memori_kb: 4096,
-          pesan_error: 'Batas waktu terlampaui',
+          score: 0,
+          exec_time_ms: 5000,
+          memory_kb: 4096,
+          error_message: 'Batas waktu terlampaui',
           is_hidden: false,
           actual_output: '',
         },
@@ -92,15 +92,15 @@ describe('getSubmissionReport', () => {
         ok: true,
         json: async () => ({
           submission_id: 'submission-1',
-          skor_total: 0,
+          total_score: 0,
           results: [
             {
               testcase_id: 'testcase-1',
               status: 'UNKNOWN',
-              skor: 0,
-              waktu_eksekusi_ms: 1,
-              memori_kb: 1,
-              pesan_error: null,
+              score: 0,
+              exec_time_ms: 1,
+              memory_kb: 1,
+              error_message: null,
               is_hidden: false,
               actual_output: null,
             },

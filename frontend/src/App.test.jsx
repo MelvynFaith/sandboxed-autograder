@@ -30,7 +30,8 @@ describe('authentication routes', () => {
     expect(await screen.findByRole('heading', { name: 'Daftar Assignment' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Riwayat' })).toHaveAttribute('href', '/history')
     expect(screen.getByText('mahasiswa')).toBeInTheDocument()
-    expect(localStorage.getItem('token')).toBe('mock-token-mahasiswa')
+    expect(localStorage.getItem('token')).toBe('mock-access-token-STUDENT')
+    expect(localStorage.getItem('refresh_token')).toBe('mock-refresh-token-STUDENT')
     expect(JSON.parse(localStorage.getItem('user')).role).toBe('mahasiswa')
   })
 
@@ -79,13 +80,13 @@ describe('authentication routes', () => {
     render(<App />)
     submitLogin('admin@example.test', 'password123')
 
-    expect(await screen.findByRole('heading', { name: 'Daftar Assignment' })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Daftar Assignment' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Administrasi' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Riwayat' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Kelola Assignment' })).toHaveAttribute(
       'href',
       '/lecturer/assignments',
     )
+    expect(screen.getByRole('link', { name: 'Administrasi' })).toHaveAttribute('href', '/admin')
   })
 
   it('logs out and protects the current route again', async () => {

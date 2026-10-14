@@ -34,6 +34,7 @@ const verdicts = [
 
 function setUser(role = 'mahasiswa') {
   localStorage.setItem('token', 'history-token')
+  localStorage.setItem('refresh_token', 'history-refresh-token')
   localStorage.setItem(
     'user',
     JSON.stringify({

@@ -5,6 +5,7 @@ import App from '../App.jsx'
 
 function setUser(role) {
   localStorage.setItem('token', 'test-token')
+  localStorage.setItem('refresh_token', 'test-refresh-token')
   localStorage.setItem(
     'user',
     JSON.stringify({
@@ -70,17 +71,17 @@ describe('student assignment submissions', () => {
     expect(screen.getAllByRole('button', { name: 'Upload kode Python' })[0]).toBeDisabled()
   })
 
-  it('rejects Python files larger than 1 MiB', async () => {
+  it('rejects Python files larger than 256 KiB', async () => {
     setUser('mahasiswa')
     render(<App />)
     await screen.findByRole('heading', { name: 'Dasar Algoritma' })
 
-    const file = new File([new Uint8Array(1024 * 1024 + 1)], 'large.py')
+    const file = new File([new Uint8Array(256 * 1024 + 1)], 'large.py')
     fireEvent.change(screen.getByLabelText('Kode Python untuk Dasar Algoritma'), {
       target: { files: [file] },
     })
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Ukuran berkas maksimal 1 MiB.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ukuran berkas maksimal 256 KiB.')
     expect(screen.getAllByRole('button', { name: 'Upload kode Python' })[0]).toBeDisabled()
   })
 

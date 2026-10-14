@@ -1,27 +1,31 @@
 import { apiRequest } from './client.js'
 
-export const MAX_FILE_SIZE = 1024 * 1024
+export const MAX_FILE_SIZE = 256 * 1024
 
 function readSubmissionResponse(payload) {
   if (
     (typeof payload?.id !== 'string' && typeof payload?.id !== 'number') ||
-    (typeof payload?.assignment_id !== 'string' &&
-      typeof payload?.assignment_id !== 'number') ||
-    typeof payload?.status !== 'string' ||
+    (typeof payload?.status !== 'string' && typeof payload?.status !== 'number') ||
+    !['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'].includes(payload.status) ||
     typeof payload?.submitted_at !== 'string'
   ) {
     throw new Error('Respons unggah tidak sesuai format yang diharapkan.')
   }
 
-  return payload
+  return {
+    id: String(payload.id),
+    status: payload.status.toLowerCase(),
+    isLate: payload.is_late === true,
+    submittedAt: payload.submitted_at,
+  }
 }
 
 export async function submitSubmission(assignmentId, file) {
   if (import.meta.env.VITE_USE_MOCK === 'true') {
     return readSubmissionResponse({
       id: `mock-submission-${Date.now()}`,
-      assignment_id: assignmentId,
-      status: 'queued',
+      status: 'QUEUED',
+      is_late: false,
       submitted_at: new Date().toISOString(),
     })
   }

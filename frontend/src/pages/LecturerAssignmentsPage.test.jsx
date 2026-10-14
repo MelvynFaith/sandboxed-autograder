@@ -2,19 +2,30 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App.jsx'
-import { createLecturerAssignment } from '../api/lecturerAssignments.js'
-import { createTestCase } from '../api/testcases.js'
+import {
+  createLecturerAssignment,
+  updateResourceLimit,
+} from '../api/lecturerAssignments.js'
+import { createTestCase, getTestCases } from '../api/testcases.js'
 
 vi.mock('../api/lecturerAssignments.js', () => ({
   createLecturerAssignment: vi.fn(),
+  deleteLecturerAssignment: vi.fn(),
+  getResourceLimit: vi.fn(),
+  updateLecturerAssignment: vi.fn(),
+  updateResourceLimit: vi.fn(),
 }))
 
 vi.mock('../api/testcases.js', () => ({
   createTestCase: vi.fn(),
+  deleteTestCase: vi.fn(),
+  getTestCases: vi.fn(),
+  updateTestCase: vi.fn(),
 }))
 
 function setUser(role = 'dosen') {
   localStorage.setItem('token', 'lecturer-token')
+  localStorage.setItem('refresh_token', 'lecturer-refresh-token')
   localStorage.setItem(
     'user',
     JSON.stringify({
@@ -26,13 +37,17 @@ function setUser(role = 'dosen') {
   )
 }
 
-function fillAssignmentForm() {
+async function fillAssignmentForm() {
+  await screen.findByLabelText('Judul')
   fireEvent.change(screen.getByLabelText('Judul'), { target: { value: 'Latihan Algoritma' } })
   fireEvent.change(screen.getByLabelText('Deskripsi'), {
     target: { value: 'Latihan dasar' },
   })
   fireEvent.change(screen.getByLabelText('Deadline'), {
     target: { value: '2026-10-12T23:59' },
+  })
+  fireEvent.change(screen.getByLabelText('Batas akhir keterlambatan'), {
+    target: { value: '2026-10-13T23:59' },
   })
   fireEvent.change(screen.getByLabelText('Batas waktu CPU (ms)'), {
     target: { value: '1000' },
@@ -46,6 +61,8 @@ function fillAssignmentForm() {
   fireEvent.change(screen.getByLabelText('Waktu maksimum (detik)'), {
     target: { value: '5' },
   })
+  fireEvent.change(screen.getByLabelText('Output maksimum (byte)'), { target: { value: '65536' } })
+  fireEvent.change(screen.getByLabelText('Ukuran tmpfs (MB)'), { target: { value: '64' } })
 }
 
 beforeEach(() => {
@@ -54,11 +71,15 @@ beforeEach(() => {
   vi.stubEnv('VITE_USE_MOCK', 'true')
   createLecturerAssignment.mockResolvedValue({
     id: 'assignment-1',
-    judul: 'Latihan Algoritma',
-    deskripsi: 'Latihan dasar',
-    deadline: '2026-10-12T23:59:00.000Z',
+    courseId: 'course-1',
+    title: 'Latihan Algoritma',
+    description: 'Latihan dasar',
+    deadlineAt: '2026-10-12T16:59:00.000Z',
+    lateUntilAt: '2026-10-13T16:59:00.000Z',
   })
   createTestCase.mockResolvedValue({ id: 'testcase-1', assignmentId: 'assignment-1' })
+  getTestCases.mockResolvedValue([])
+  updateResourceLimit.mockResolvedValue({})
 })
 
 afterEach(() => {
@@ -72,27 +93,30 @@ describe('LecturerAssignmentsPage', () => {
   it('creates an assignment with positive resource limits', async () => {
     setUser()
     render(<App />)
-    fillAssignmentForm()
+    await fillAssignmentForm()
     fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
 
     expect(await screen.findByRole('heading', { name: 'Tambah test case' })).toBeInTheDocument()
-    expect(createLecturerAssignment).toHaveBeenCalledWith({
-      judul: 'Latihan Algoritma',
-      deskripsi: 'Latihan dasar',
-      deadline: new Date('2026-10-12T23:59').toISOString(),
-      resource_limit: {
+    expect(createLecturerAssignment).toHaveBeenCalledWith('course-1', {
+      title: 'Latihan Algoritma',
+      description: 'Latihan dasar',
+      deadline_at: new Date('2026-10-12T23:59').toISOString(),
+      late_until_at: new Date('2026-10-13T23:59').toISOString(),
+    })
+    expect(updateResourceLimit).toHaveBeenCalledWith('assignment-1', {
         cpu_time_ms: 1000,
         memory_mb: 128,
-        max_proses: 4,
+        max_processes: 4,
         timeout_s: 5,
-      },
+        max_output_bytes: 65536,
+        tmpfs_size_mb: 64,
     })
   })
 
   it('rejects non-positive resource limits', async () => {
     setUser()
     render(<App />)
-    fillAssignmentForm()
+    await fillAssignmentForm()
     fireEvent.change(screen.getByLabelText('Batas memori (MB)'), {
       target: { value: '0' },
     })
@@ -107,7 +131,7 @@ describe('LecturerAssignmentsPage', () => {
   it('adds a test case with the entity field names', async () => {
     setUser('admin')
     render(<App />)
-    fillAssignmentForm()
+    await fillAssignmentForm()
     fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
     await screen.findByRole('heading', { name: 'Tambah test case' })
 
@@ -116,6 +140,10 @@ describe('LecturerAssignmentsPage', () => {
       target: { value: '5' },
     })
     fireEvent.change(screen.getByLabelText('Bobot'), { target: { value: '10' } })
+    fireEvent.change(screen.getByLabelText('ID eksternal'), { target: { value: 'tc_01' } })
+    fireEvent.change(screen.getByLabelText('Mode pencocokan output'), {
+      target: { value: 'WHITESPACE_INSENSITIVE' },
+    })
     fireEvent.click(screen.getByLabelText('Test case tersembunyi'))
     fireEvent.click(screen.getByRole('button', { name: 'Tambah test case' }))
 
@@ -124,10 +152,12 @@ describe('LecturerAssignmentsPage', () => {
       'status',
     )
     expect(createTestCase).toHaveBeenCalledWith('assignment-1', {
+      external_id: 'tc_01',
       input: '2 3',
       expected_output: '5',
-      bobot: 10,
+      weight: 10,
       is_hidden: true,
+      match_mode: 'WHITESPACE_INSENSITIVE',
     })
   })
 

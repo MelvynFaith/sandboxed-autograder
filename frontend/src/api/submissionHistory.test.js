@@ -18,9 +18,10 @@ describe('getSubmissionHistory', () => {
       {
         id: 'submission-1',
         assignment_id: 'assignment-1',
-        assignment_judul: 'Dasar Algoritma',
-        status: 'completed',
-        skor_total: 85,
+        assignment_title: 'Dasar Algoritma',
+        status: 'COMPLETED',
+        total_score: 85,
+        is_late: false,
         submitted_at: '2026-10-04T10:30:00+07:00',
       },
     ]
@@ -37,11 +38,12 @@ describe('getSubmissionHistory', () => {
         assignmentTitle: 'Dasar Algoritma',
         status: 'completed',
         totalScore: 85,
+        isLate: false,
         submittedAt: '2026-10-04T10:30:00+07:00',
       },
     ])
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/submissions',
+      '/api/v1/submissions?page=1&page_size=50',
       expect.objectContaining({ headers: expect.any(Headers) }),
     )
     expect(fetchMock.mock.calls[0][1].headers.get('Authorization')).toBe(

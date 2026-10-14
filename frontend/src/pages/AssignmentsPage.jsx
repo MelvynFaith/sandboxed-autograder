@@ -11,7 +11,7 @@ const deadlineFormatter = new Intl.DateTimeFormat('id-ID', {
 })
 
 function AssignmentsPage() {
-  const { token, user } = useAuth()
+  const { user } = useAuth()
   const [assignments, setAssignments] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -67,7 +67,7 @@ function AssignmentsPage() {
       setFiles((current) => ({ ...current, [assignmentId]: null }))
       setMessages((current) => ({
         ...current,
-        [assignmentId]: { type: 'error', text: 'Ukuran berkas maksimal 1 MiB.' },
+        [assignmentId]: { type: 'error', text: 'Ukuran berkas maksimal 256 KiB.' },
       }))
       return
     }
@@ -134,12 +134,12 @@ function AssignmentsPage() {
             className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
             key={assignment.id}
           >
-            <h2 className="text-lg font-semibold">{assignment.judul}</h2>
-            <p className="mt-2 text-slate-700">{assignment.deskripsi}</p>
+            <h2 className="text-lg font-semibold">{assignment.title}</h2>
+            <p className="mt-2 text-slate-700">{assignment.description}</p>
             <p className="mt-3 text-sm text-slate-600">
               Deadline:{' '}
-              <time dateTime={assignment.deadline}>
-                {deadlineFormatter.format(new Date(assignment.deadline))}
+              <time dateTime={assignment.deadlineAt}>
+                {deadlineFormatter.format(new Date(assignment.deadlineAt))}
               </time>
             </p>
             {user.role === 'mahasiswa' && (
@@ -149,7 +149,7 @@ function AssignmentsPage() {
               >
                 <div>
                   <label className="mb-1 block font-medium" htmlFor={`file-${assignment.id}`}>
-                    Kode Python untuk {assignment.judul}
+                    Kode Python untuk {assignment.title}
                   </label>
                   <input
                     accept=".py"
@@ -160,7 +160,7 @@ function AssignmentsPage() {
                     }
                     type="file"
                   />
-                  <p className="mt-1 text-sm text-slate-600">Berkas .py, maksimal 1 MiB.</p>
+                  <p className="mt-1 text-sm text-slate-600">Berkas .py, maksimal 256 KiB.</p>
                 </div>
                 {messages[assignment.id] && (
                   <p
@@ -178,7 +178,6 @@ function AssignmentsPage() {
                   <SubmissionStatus
                     key={submissions[assignment.id]}
                     submissionId={submissions[assignment.id]}
-                    token={token}
                   />
                 )}
                 <button

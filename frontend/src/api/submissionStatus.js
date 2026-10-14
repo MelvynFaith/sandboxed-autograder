@@ -1,10 +1,11 @@
 import { apiRequest } from './client.js'
 
-const TERMINAL_STATUSES = new Set(['completed', 'error', 'timeout'])
-const VALID_STATUSES = new Set(['queued', 'running', ...TERMINAL_STATUSES])
+const TERMINAL_STATUSES = new Set(['completed', 'error', 'cancelled'])
+const VALID_STATUSES = new Set(['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'])
 const POLL_INTERVAL_MS = 3000
 
 function readStatusMessage(payload) {
+  const status = payload?.status === 'FAILED' ? 'error' : payload?.status?.toLowerCase?.()
   if (
     !payload ||
     typeof payload !== 'object' ||
@@ -19,7 +20,7 @@ function readStatusMessage(payload) {
   }
 
   return {
-    status: payload.status,
+    status,
     current_test: payload.current_test,
     total_tests: payload.total_tests,
   }
@@ -39,14 +40,31 @@ async function getSubmissionStatus(submissionId) {
     throw new Error('Respons status submission tidak sesuai format yang diharapkan.')
   }
 
-  return readStatusMessage(payload)
+  return payload
 }
 
-function createWebSocketUrl(submissionId, token) {
+async function getWebSocketTicket(submissionId) {
+  const response = await apiRequest('/ws-tickets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ submission_id: submissionId }),
+  })
+  if (!response.ok) {
+    throw new Error(`Gagal memperoleh tiket WebSocket (${response.status}).`)
+  }
+
+  const payload = await response.json()
+  if (typeof payload?.ticket !== 'string' || !payload.ticket) {
+    throw new Error('Respons tiket WebSocket tidak sesuai format yang diharapkan.')
+  }
+  return payload.ticket
+}
+
+function createWebSocketUrl(submissionId, ticket) {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const url = new URL(`/ws/v1/submissions/${encodeURIComponent(submissionId)}`, window.location.href)
   url.protocol = protocol
-  url.searchParams.set('token', token)
+  url.searchParams.set('ticket', ticket)
   return url.toString()
 }
 
@@ -71,7 +89,7 @@ function startMockStatus(onStatus) {
   return () => window.clearInterval(timer)
 }
 
-export function subscribeToSubmissionStatus(submissionId, token, handlers) {
+export function subscribeToSubmissionStatus(submissionId, handlers) {
   const { onStatus, onFallback, onError } = handlers
 
   if (import.meta.env.VITE_USE_MOCK === 'true') {
@@ -123,40 +141,48 @@ export function subscribeToSubmissionStatus(submissionId, token, handlers) {
     pollingTimer = window.setInterval(poll, POLL_INTERVAL_MS)
   }
 
-  try {
-    if (!token) {
-      throw new Error('Token autentikasi tidak tersedia untuk koneksi status.')
-    }
-    socket = new WebSocket(createWebSocketUrl(submissionId, token))
-  } catch {
-    startPolling()
-  }
-
-  if (socket) {
-    socket.onmessage = (event) => {
+  getWebSocketTicket(submissionId)
+    .then((ticket) => {
       if (disposed || terminal) {
         return
       }
       try {
-        receiveStatus(JSON.parse(event.data))
-      } catch (error) {
+        socket = new WebSocket(createWebSocketUrl(submissionId, ticket))
+      } catch {
+        startPolling()
+        return
+      }
+
+      socket.onmessage = (event) => {
+        if (disposed || terminal) {
+          return
+        }
+        try {
+          receiveStatus(JSON.parse(event.data))
+        } catch (error) {
+          onError(error.message)
+          startPolling()
+          socket.close()
+        }
+      }
+      socket.onerror = () => {
+        startPolling()
+        if (!terminal && socket.readyState < WebSocket.CLOSING) {
+          socket.close()
+        }
+      }
+      socket.onclose = () => {
+        if (!disposed && !terminal) {
+          startPolling()
+        }
+      }
+    })
+    .catch((error) => {
+      if (!disposed) {
         onError(error.message)
         startPolling()
-        socket.close()
       }
-    }
-    socket.onerror = () => {
-      startPolling()
-      if (!terminal && socket.readyState < WebSocket.CLOSING) {
-        socket.close()
-      }
-    }
-    socket.onclose = () => {
-      if (!disposed && !terminal) {
-        startPolling()
-      }
-    }
-  }
+    })
 
   return () => {
     disposed = true

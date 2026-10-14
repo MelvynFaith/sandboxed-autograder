@@ -13,7 +13,7 @@ const submissionStatusLabels = {
   running: 'Sedang berjalan',
   completed: 'Selesai',
   error: 'Error',
-  timeout: 'Waktu habis',
+  cancelled: 'Dibatalkan',
 }
 
 const submissionStatusStyles = {
@@ -21,7 +21,7 @@ const submissionStatusStyles = {
   running: 'bg-blue-100 text-blue-900',
   completed: 'bg-green-100 text-green-900',
   error: 'bg-red-100 text-red-900',
-  timeout: 'bg-red-100 text-red-900',
+  cancelled: 'bg-slate-200 text-slate-900',
 }
 
 const verdictStyles = {
@@ -199,6 +199,9 @@ function HistoryPage() {
                 <p className="mt-2 text-sm text-slate-700">
                   Skor: {submission.totalScore}
                 </p>
+                {submission.isLate && (
+                  <p className="mt-1 text-sm font-medium text-amber-800">Terlambat</p>
+                )}
                 <p className="mt-1 text-sm text-slate-600">
                   Dikumpulkan:{' '}
                   <time dateTime={submission.submittedAt}>

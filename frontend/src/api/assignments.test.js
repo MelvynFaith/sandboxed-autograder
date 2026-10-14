@@ -15,7 +15,14 @@ afterEach(() => {
 describe('getAssignments', () => {
   it('gets and validates the assignment list', async () => {
     const assignments = [
-      { id: 'a1', judul: 'Algoritma', deskripsi: 'Deskripsi', deadline: '2026-10-12' },
+      {
+        id: 'a1',
+        course_id: 'c1',
+        title: 'Algoritma',
+        description: 'Deskripsi',
+        deadline_at: '2026-10-12T16:59:00Z',
+        late_until_at: '2026-10-13T16:59:00Z',
+      },
     ]
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -23,8 +30,20 @@ describe('getAssignments', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(getAssignments()).resolves.toEqual(assignments)
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/assignments', expect.any(Object))
+    await expect(getAssignments({ courseId: 'c1' })).resolves.toEqual([
+      {
+        id: 'a1',
+        courseId: 'c1',
+        title: 'Algoritma',
+        description: 'Deskripsi',
+        deadlineAt: '2026-10-12T16:59:00Z',
+        lateUntilAt: '2026-10-13T16:59:00Z',
+      },
+    ])
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/courses/c1/assignments?page=1&page_size=50',
+      expect.any(Object),
+    )
   })
 
   it('surfaces a failed assignment request', async () => {
@@ -37,7 +56,14 @@ describe('getAssignments', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => [
-        { id: 'a1', judul: 'Algoritma', deskripsi: 'Deskripsi', deadline: 'not-a-date' },
+        {
+          id: 'a1',
+          course_id: 'c1',
+          title: 'Algoritma',
+          description: 'Deskripsi',
+          deadline_at: 'not-a-date',
+          late_until_at: '2026-10-13T16:59:00Z',
+        },
       ],
     }))
 

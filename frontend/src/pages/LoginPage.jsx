@@ -25,7 +25,7 @@ function LoginPage() {
 
     try {
       const authenticatedUser = await login(email, password)
-      const destination = authenticatedUser.role === 'admin' ? '/history' : '/assignments'
+      const destination = authenticatedUser.role === 'admin' ? '/admin' : '/assignments'
       navigate(destination, { replace: true })
     } catch (loginError) {
       isLoggingIn.current = false
