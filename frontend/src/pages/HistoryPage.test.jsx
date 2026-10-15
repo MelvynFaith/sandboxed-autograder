@@ -88,6 +88,32 @@ describe('HistoryPage', () => {
     expect(screen.getByRole('button', { name: 'Lihat laporan' })).toBeInTheDocument()
   })
 
+  it('shows returned error messages and actual output when report visibility metadata is absent', async () => {
+    setUser()
+    getSubmissionReport.mockResolvedValue({
+      submissionId: 'submission-1',
+      totalScore: 25,
+      results: [
+        {
+          testCaseId: 'testcase-1',
+          verdict: 'FAILED',
+          score: 0,
+          executionTimeMs: 10,
+          memoryKb: 1024,
+          hidden: false,
+          errorMessage: 'Assertion failed',
+          actualOutput: 'incorrect result',
+        },
+      ],
+    })
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Lihat laporan' }))
+
+    expect(await screen.findByText('Assertion failed')).toBeInTheDocument()
+    expect(screen.getByText('incorrect result')).toBeInTheDocument()
+  })
+
   it('shows seven distinct verdict labels and keeps hidden result details private', async () => {
     setUser()
     render(<App />)

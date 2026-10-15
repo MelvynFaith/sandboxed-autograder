@@ -18,7 +18,7 @@ function readLoginResponse(payload) {
     !payload.access_token ||
     typeof payload?.refresh_token !== 'string' ||
     !payload.refresh_token ||
-    typeof user?.id !== 'string' ||
+    (typeof user?.id !== 'string' && typeof user?.id !== 'number') ||
     typeof user?.name !== 'string' ||
     typeof user?.email !== 'string' ||
     !Object.hasOwn(roles, user.role)
@@ -29,7 +29,7 @@ function readLoginResponse(payload) {
   return {
     token: payload.access_token,
     refreshToken: payload.refresh_token,
-    user: { id: user.id, nama: user.name, email: user.email, role: roles[user.role] },
+    user: { id: String(user.id), nama: user.name, email: user.email, role: roles[user.role] },
   }
 }
 

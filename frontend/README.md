@@ -25,8 +25,8 @@ npm run build
   and view submission history and test-case reports.
 - Lecturers can manage courses, assignments, test cases, and resource limits.
 - Administrators can manage user roles and review audit logs.
-- Grade summaries/CSV export (FR-11) belong to Evan's work and are not part of
-  Benedictus Erlangga's frontend scope.
+- Grade summaries/CSV export (FR-11) are not included in this PR; ownership is
+  pending a team decision.
 
 The UI is expected to work at 360 px, 768 px, and 1280 px without horizontal
 scrolling. Forms have keyboard support and accessible labels. Timestamps are
@@ -36,7 +36,11 @@ stored in UTC and displayed in WIB (UTC+7).
 
 Login stores the access token, refresh token, and user in browser storage.
 Expired access tokens are refreshed through the API, and logout calls the API
-before clearing the local session. Routes are gated by role. The API uses
+before clearing the local session. Refresh responses may omit a replacement
+refresh token; when they do, the current refresh token is retained. If refresh
+fails, the local session is cleared and the user is redirected to login. Logout
+also clears the local session when the server request fails, with a notice on
+the login page. Routes are gated by role. The API uses
 uppercase roles (`STUDENT`, `LECTURER`, `ADMIN`); the frontend maps those to its
 Indonesian role names for display and routing.
 
@@ -65,7 +69,8 @@ the frontend currently relies on; confirm exact payloads with the backend in
 The lecturer form validates the SRS resource constraints
 `tmpfs_size_mb + 16 <= memory_mb` and
 `2 * max_output_bytes < tmpfs_size_mb * 2^20` before saving limits through
-`PUT /api/v1/assignments/{id}/resource-limit`.
+`PUT /api/v1/assignments/{id}/resource-limit`. Resource values must be positive
+integers, and `late_until_at` must be at or after `deadline_at`.
 
 Assignment listing and admin/history lists currently request `page=1&page_size=50`
 and accept either an array or an `{ "items": [...] }` response. The frontend maps

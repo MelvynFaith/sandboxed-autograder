@@ -41,6 +41,26 @@ describe('login API', () => {
     )
   })
 
+  it('normalizes a numeric user id from the API response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        access_token: 'jwt-token',
+        refresh_token: 'refresh-token',
+        user: {
+          id: 42,
+          name: 'Nama Pengguna',
+          email: 'user@example.test',
+          role: 'STUDENT',
+        },
+      }),
+    }))
+
+    await expect(login('user@example.test', 'secret')).resolves.toMatchObject({
+      user: { id: '42', role: 'mahasiswa' },
+    })
+  })
+
   it('includes the saved JWT in the Authorization header for API requests', async () => {
     localStorage.setItem('token', 'jwt-token')
     const fetchMock = vi.fn().mockResolvedValue({ ok: true })

@@ -79,7 +79,7 @@ describe('getSubmissionReport', () => {
     expect(JSON.stringify(hidden)).not.toContain('Pesan tersembunyi')
   })
 
-  it('keeps testcase details hidden when the report omits visibility metadata', async () => {
+  it('shows returned testcase details when visibility metadata is not in the SRS response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -102,9 +102,9 @@ describe('getSubmissionReport', () => {
       results: [
         {
           testCaseId: 'testcase-hidden',
-          hidden: true,
+          hidden: false,
           errorMessage: null,
-          actualOutput: null,
+          actualOutput: 'secret output',
         },
       ],
     })

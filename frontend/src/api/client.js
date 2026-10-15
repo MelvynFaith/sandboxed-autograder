@@ -1,5 +1,13 @@
 const API_BASE_URL = '/api/v1'
+export const AUTH_SESSION_INVALIDATED = 'auth:session-invalidated'
 let refreshRequest
+
+function invalidateStoredSession() {
+  localStorage.removeItem('token')
+  localStorage.removeItem('refresh_token')
+  localStorage.removeItem('user')
+  window.dispatchEvent(new Event(AUTH_SESSION_INVALIDATED))
+}
 
 export async function throwApiError(response, fallbackMessage) {
   let payload
@@ -52,9 +60,7 @@ async function refreshAccessToken() {
     body: JSON.stringify({ refresh_token: refreshToken }),
   })
   if (!response.ok) {
-    localStorage.removeItem('token')
-    localStorage.removeItem('refresh_token')
-    localStorage.removeItem('user')
+    invalidateStoredSession()
     return null
   }
 
@@ -62,14 +68,17 @@ async function refreshAccessToken() {
   if (
     typeof payload?.access_token !== 'string' ||
     !payload.access_token ||
-    typeof payload?.refresh_token !== 'string' ||
-    !payload.refresh_token
+    (payload.refresh_token !== undefined &&
+      (typeof payload.refresh_token !== 'string' || !payload.refresh_token))
   ) {
+    invalidateStoredSession()
     throw new Error('Respons refresh token tidak sesuai format yang diharapkan.')
   }
 
   localStorage.setItem('token', payload.access_token)
-  localStorage.setItem('refresh_token', payload.refresh_token)
+  if (payload.refresh_token !== undefined) {
+    localStorage.setItem('refresh_token', payload.refresh_token)
+  }
   return payload.access_token
 }
 

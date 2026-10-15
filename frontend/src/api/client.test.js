@@ -40,6 +40,24 @@ describe('apiRequest token refresh', () => {
     expect(localStorage.getItem('refresh_token')).toBe('new-refresh-token')
   })
 
+  it('preserves the existing refresh token when refresh only returns a new access token', async () => {
+    localStorage.setItem('token', 'expired-access-token')
+    localStorage.setItem('refresh_token', 'existing-refresh-token')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ status: 401, ok: false })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: 'new-access-token' }),
+      })
+      .mockResolvedValueOnce({ status: 200, ok: true })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(apiRequest('/assignments')).resolves.toMatchObject({ status: 200 })
+
+    expect(localStorage.getItem('token')).toBe('new-access-token')
+    expect(localStorage.getItem('refresh_token')).toBe('existing-refresh-token')
+  })
+
   it('clears stored credentials when refreshing fails', async () => {
     localStorage.setItem('token', 'expired-access-token')
     localStorage.setItem('refresh_token', 'invalid-refresh-token')

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App.jsx'
 import {
   createLecturerAssignment,
+  updateLecturerAssignment,
   updateResourceLimit,
 } from '../api/lecturerAssignments.js'
 import { createTestCase, getTestCases } from '../api/testcases.js'
@@ -80,6 +81,14 @@ beforeEach(() => {
   createTestCase.mockResolvedValue({ id: 'testcase-1', assignmentId: 'assignment-1' })
   getTestCases.mockResolvedValue([])
   updateResourceLimit.mockResolvedValue({})
+  updateLecturerAssignment.mockResolvedValue({
+    id: 'assignment-1',
+    courseId: 'course-1',
+    title: 'Latihan Algoritma',
+    description: 'Latihan dasar',
+    deadlineAt: '2026-10-12T16:59:00.000Z',
+    lateUntilAt: '2026-10-13T16:59:00.000Z',
+  })
 })
 
 afterEach(() => {
@@ -123,9 +132,58 @@ describe('LecturerAssignmentsPage', () => {
     fireEvent.submit(screen.getByRole('heading', { name: 'Buat assignment' }).closest('form'))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Semua batas sumber daya harus berupa angka positif.',
+      'Semua batas sumber daya harus berupa bilangan bulat positif.',
     )
     expect(createLecturerAssignment).not.toHaveBeenCalled()
+  })
+
+  it('rejects decimal resource limits', async () => {
+    setUser()
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.change(screen.getByLabelText('Batas waktu CPU (ms)'), {
+      target: { value: '1000.5' },
+    })
+    fireEvent.submit(screen.getByRole('heading', { name: 'Buat assignment' }).closest('form'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Semua batas sumber daya harus berupa bilangan bulat positif.',
+    )
+    expect(createLecturerAssignment).not.toHaveBeenCalled()
+  })
+
+  it('requires late submission cutoff to be at or after the deadline', async () => {
+    setUser()
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.change(screen.getByLabelText('Batas akhir keterlambatan'), {
+      target: { value: '2026-10-11T23:59' },
+    })
+    fireEvent.submit(screen.getByRole('heading', { name: 'Buat assignment' }).closest('form'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Batas akhir keterlambatan harus sama dengan atau setelah deadline.',
+    )
+    expect(createLecturerAssignment).not.toHaveBeenCalled()
+  })
+
+  it('retries a failed resource-limit save without creating another assignment', async () => {
+    setUser()
+    updateResourceLimit
+      .mockRejectedValueOnce(new Error('Resource limit gagal disimpan.'))
+      .mockResolvedValueOnce({})
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Resource limit gagal disimpan.')
+    expect(screen.getByRole('heading', { name: 'Ubah assignment' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan perubahan' }))
+
+    expect(await screen.findByText('Assignment berhasil diperbarui.')).toBeInTheDocument()
+    expect(createLecturerAssignment).toHaveBeenCalledTimes(1)
+    expect(updateLecturerAssignment).toHaveBeenCalledTimes(1)
+    expect(updateResourceLimit).toHaveBeenCalledTimes(2)
   })
 
   it('rejects tmpfs limits that exceed the memory constraint', async () => {

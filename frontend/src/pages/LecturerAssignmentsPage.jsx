@@ -42,8 +42,8 @@ function toLocalDateTime(value) {
 }
 
 function validateResourceLimits(limits) {
-  if (Object.values(limits).some((value) => !Number.isFinite(value) || value <= 0)) {
-    return 'Semua batas sumber daya harus berupa angka positif.'
+  if (Object.values(limits).some((value) => !Number.isInteger(value) || value <= 0)) {
+    return 'Semua batas sumber daya harus berupa bilangan bulat positif.'
   }
   if (limits.tmpfs_size_mb + 16 > limits.memory_mb) {
     return 'Ukuran tmpfs ditambah 16 MB tidak boleh melebihi batas memori.'
@@ -168,6 +168,10 @@ function LecturerAssignmentsPage() {
       setError('Judul, deskripsi, deadline, dan batas akhir keterlambatan wajib diisi.')
       return
     }
+    if (Date.parse(assignmentForm.late_until_at) < Date.parse(assignmentForm.deadline_at)) {
+      setError('Batas akhir keterlambatan harus sama dengan atau setelah deadline.')
+      return
+    }
     const assignmentPayload = {
       title: assignmentForm.title.trim(),
       description: assignmentForm.description.trim(),
@@ -182,6 +186,11 @@ function LecturerAssignmentsPage() {
             course_id: courseId,
           })
         : await createLecturerAssignment(courseId, assignmentPayload)
+      if (!isEditingAssignment) {
+        setAssignments((current) => [...current, savedAssignment])
+        setActiveAssignment(savedAssignment)
+        setIsEditingAssignment(true)
+      }
       await updateResourceLimit(savedAssignment.id, limits)
       setAssignments((current) => {
         const remaining = current.filter((entry) => entry.id !== savedAssignment.id)
@@ -385,13 +394,13 @@ function LecturerAssignmentsPage() {
                   <span className="mb-1 block font-medium">{label}</span>
                   <input
                     className="w-full rounded border border-slate-300 p-2"
-                    min="0.01"
+                    min="1"
                     name={name}
                     onChange={(event) =>
                       setResourceLimits((current) => ({ ...current, [name]: event.target.value }))
                     }
                     required
-                    step="any"
+                    step="1"
                     type="number"
                     value={resourceLimits[name]}
                   />

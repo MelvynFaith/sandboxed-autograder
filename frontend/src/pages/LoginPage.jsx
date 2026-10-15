@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/useAuth.js'
 
 function LoginPage() {
-  const { user, login } = useAuth()
+  const { user, login, sessionNotice } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -43,6 +43,11 @@ function LoginPage() {
         <p className="mt-4 rounded bg-blue-50 p-3 text-sm text-blue-900">
           Mode mock: gunakan mahasiswa@example.test, dosen@example.test, atau admin@example.test
           dengan password password123.
+        </p>
+      )}
+      {sessionNotice && (
+        <p className="mt-4 text-sm text-amber-800" role="status">
+          {sessionNotice}
         </p>
       )}
       <form className="mt-6 space-y-4" onSubmit={handleSubmit}>

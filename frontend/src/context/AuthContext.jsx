@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { login as requestLogin, logout as requestLogout } from '../api/auth.js'
+import { AUTH_SESSION_INVALIDATED } from '../api/client.js'
 import { AuthContext } from './AuthContext.js'
 
 const TOKEN_KEY = 'token'
@@ -30,7 +31,7 @@ function readStoredAuth() {
   }
 
   if (
-    typeof user?.id !== 'string' ||
+    (typeof user?.id !== 'string' && typeof user?.id !== 'number') ||
     typeof user?.nama !== 'string' ||
     typeof user?.email !== 'string' ||
     !roles.includes(user.role)
@@ -41,13 +42,25 @@ function readStoredAuth() {
     return null
   }
 
-  return { token, refreshToken, user }
+  return { token, refreshToken, user: { ...user, id: String(user.id) } }
 }
 
 function AuthProvider({ children }) {
   const [auth, setAuth] = useState(readStoredAuth)
+  const [sessionNotice, setSessionNotice] = useState('')
+
+  useEffect(() => {
+    function invalidateAuth() {
+      setAuth(null)
+      setSessionNotice('Sesi berakhir. Silakan masuk kembali.')
+    }
+
+    window.addEventListener(AUTH_SESSION_INVALIDATED, invalidateAuth)
+    return () => window.removeEventListener(AUTH_SESSION_INVALIDATED, invalidateAuth)
+  }, [])
 
   async function login(email, password) {
+    setSessionNotice('')
     const result = await requestLogin(email, password)
     localStorage.setItem(TOKEN_KEY, result.token)
     localStorage.setItem(REFRESH_TOKEN_KEY, result.refreshToken)
@@ -57,16 +70,23 @@ function AuthProvider({ children }) {
   }
 
   async function logout() {
-    await requestLogout(auth?.refreshToken)
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(REFRESH_TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
-    setAuth(null)
+    try {
+      await requestLogout(auth?.refreshToken)
+    } catch (error) {
+      setSessionNotice(`Sesi lokal sudah dihapus. Logout server gagal: ${error.message}`)
+      throw error
+    } finally {
+      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(REFRESH_TOKEN_KEY)
+      localStorage.removeItem(USER_KEY)
+      setAuth(null)
+    }
   }
 
   const value = {
     token: auth?.token ?? null,
     user: auth?.user ?? null,
+    sessionNotice,
     login,
     logout,
   }

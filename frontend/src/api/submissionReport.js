@@ -107,7 +107,7 @@ function readResult(result) {
     throw new Error('Data hasil test case tidak sesuai format yang diharapkan.')
   }
 
-  const hidden = result.is_hidden !== false
+  const hidden = result.is_hidden === true
   return {
     testCaseId: String(result.testcase_id),
     verdict: result.status,
