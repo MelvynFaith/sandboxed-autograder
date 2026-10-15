@@ -25,8 +25,9 @@ npm run build
   and view submission history and test-case reports.
 - Lecturers can manage courses, assignments, test cases, and resource limits.
 - Administrators can manage user roles and review audit logs.
-- Grade summaries/CSV export (FR-11) are not included in this PR; ownership is
-  pending a team decision.
+- Grade-summary and CSV-export screens (FR-11) remain to be implemented as
+  part of the frontend dashboard scope. Confirm the backend endpoint contract
+  and backend delivery owner with the team.
 
 The UI is expected to work at 360 px, 768 px, and 1280 px without horizontal
 scrolling. Forms have keyboard support and accessible labels. Timestamps are

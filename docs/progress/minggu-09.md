@@ -10,7 +10,8 @@
 ## In progress / carried over
 
 - Confirm backend implementation ownership and API payload contracts with the team; frontend API response shapes remain assumptions until backend confirmation.
-- Decide ownership for FR-11 grade summaries/CSV, which is not included in PR #19.
+- Implement the FR-11 grade-summary/CSV frontend UI; confirm its backend endpoint
+  contract and backend owner with the team.
 
 ## Blockers and risks
 
@@ -22,6 +23,7 @@
 ## Next week
 
 - Ask Robertus and Melvyn whether backend code exists outside the repository and confirm a scheduler/API owner.
-- Agree with the team on scope cuts, FR-11 ownership, and the sandbox backup.
+- Agree with the team on Should/Could scope cuts and the sandbox backup; confirm
+  the backend owner and API contract for FR-11.
 - Reconfirm the UAT schedule and update SRS ownership and JSON API contracts.
 - Prioritize the next frontend issue only after scope and backend dependencies are agreed.
