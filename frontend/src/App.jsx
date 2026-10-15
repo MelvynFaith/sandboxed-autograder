@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   BrowserRouter,
   Navigate,
@@ -11,6 +12,7 @@ import { useAuth } from './context/useAuth.js'
 import AssignmentsPage from './pages/AssignmentsPage.jsx'
 import HistoryPage from './pages/HistoryPage.jsx'
 import LecturerAssignmentsPage from './pages/LecturerAssignmentsPage.jsx'
+import AdminPage from './pages/AdminPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 
 const roleMenus = {
@@ -22,11 +24,15 @@ const roleMenus = {
     { label: 'Daftar Assignment', to: '/assignments' },
     { label: 'Kelola Assignment', to: '/lecturer/assignments' },
   ],
-  admin: [{ label: 'Kelola Assignment', to: '/lecturer/assignments' }],
+  admin: [
+    { label: 'Kelola Assignment', to: '/lecturer/assignments' },
+    { label: 'Administrasi', to: '/admin' },
+  ],
 }
 
 function ProtectedLayout() {
   const { user, logout } = useAuth()
+  const [logoutError, setLogoutError] = useState('')
 
   if (!user) {
     return <Navigate replace to="/login" />
@@ -46,12 +52,24 @@ function ProtectedLayout() {
         ))}
         <button
           className="rounded border border-slate-300 px-3 py-1.5 font-medium hover:bg-slate-100"
-          onClick={logout}
+          onClick={async () => {
+            setLogoutError('')
+            try {
+              await logout()
+            } catch (error) {
+              setLogoutError(error.message)
+            }
+          }}
           type="button"
         >
           Logout
         </button>
       </nav>
+      {logoutError && (
+        <p className="bg-red-50 px-6 py-3 text-sm text-red-800" role="alert">
+          {logoutError}
+        </p>
+      )}
       <Outlet />
     </div>
   )
@@ -77,6 +95,14 @@ function LecturerAssignmentsRoute() {
   return <LecturerAssignmentsPage />
 }
 
+function AdminRoute() {
+  const { user } = useAuth()
+  if (user.role !== 'admin') {
+    return <Navigate replace to="/assignments" />
+  }
+  return <AdminPage />
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -88,6 +114,7 @@ function App() {
             <Route path="/assignments" element={<AssignmentsPage />} />
             <Route path="/history" element={<StudentHistoryRoute />} />
             <Route path="/lecturer/assignments" element={<LecturerAssignmentsRoute />} />
+            <Route path="/admin" element={<AdminRoute />} />
           </Route>
           <Route path="*" element={<Navigate replace to="/assignments" />} />
         </Routes>

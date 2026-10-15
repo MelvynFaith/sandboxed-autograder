@@ -12,15 +12,15 @@ const statuses = [
   ['queued', 'Antre'],
   ['running', 'Sedang berjalan'],
   ['completed', 'Selesai'],
-  ['error', 'Error'],
-  ['timeout', 'Waktu habis'],
+  ['failed', 'Gagal'],
+  ['cancelled', 'Dibatalkan'],
 ]
 
 let handlers
 
 beforeEach(() => {
   handlers = null
-  subscribeToSubmissionStatus.mockImplementation((_id, _token, callbacks) => {
+  subscribeToSubmissionStatus.mockImplementation((_id, callbacks) => {
     handlers = callbacks
     callbacks.onStatus({ status: 'queued', current_test: 0, total_tests: 3 })
     return vi.fn()
@@ -34,7 +34,7 @@ afterEach(() => {
 
 describe('SubmissionStatus', () => {
   it.each(statuses)('shows the %s status badge', (status, label) => {
-    render(<SubmissionStatus submissionId="submission-1" token="token-1" />)
+    render(<SubmissionStatus submissionId="submission-1" />)
 
     act(() => handlers.onStatus({ status, current_test: 1, total_tests: 3 }))
 
@@ -42,7 +42,7 @@ describe('SubmissionStatus', () => {
   })
 
   it('shows test progress', () => {
-    render(<SubmissionStatus submissionId="submission-1" token="token-1" />)
+    render(<SubmissionStatus submissionId="submission-1" />)
 
     act(() => handlers.onStatus({ status: 'running', current_test: 2, total_tests: 4 }))
 
@@ -52,7 +52,7 @@ describe('SubmissionStatus', () => {
   })
 
   it('explains when polling is used after the WebSocket disconnects', () => {
-    render(<SubmissionStatus submissionId="submission-1" token="token-1" />)
+    render(<SubmissionStatus submissionId="submission-1" />)
 
     act(() =>
       handlers.onFallback(

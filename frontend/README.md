@@ -1,77 +1,88 @@
 # Dashboard
 
-A React and TailwindCSS web client for students, lecturers, and administrators.
+React and TailwindCSS client for the secure sandboxed auto-grading platform.
 
 **Owner:** Benedictus Erlangga
-**Status:** not started. Sprint 2 target: integration with the API and real-time status.
 
-## Scope
+## Development
 
-- **Students:** upload code, follow grading progress live, browse submission history and
-  per-test-case reports.
-- **Lecturers:** manage courses, enrollment, assignments, test cases, and resource limits; view and
-  export grade reports; read submitted code; trigger regrades.
-- **Administrators:** manage user roles, the audit log, queue status, and rate limits.
+Install dependencies with `npm ci`. Start Vite with `npm run dev`; API calls are
+proxied to `http://localhost:8080`. Set `VITE_USE_MOCK=true` to use the local
+demo data. Demo accounts are `mahasiswa@example.test`, `dosen@example.test`, and
+`admin@example.test`; each uses `password123`.
 
-Requirements: usable at 360 px, 768 px, and ≥ 1280 px widths without horizontal scroll; every form
-works with the keyboard and has screen-reader labels. Timestamps are stored in UTC and shown in WIB
-(UTC+7).
-
-## Build and test
-
-Install dependencies with `npm ci`. Start the Vite development server with `npm run dev`; `/api`
-requests and `/ws` WebSocket connections are proxied to the local backend at
-`http://localhost:8080`.
-
-Set `VITE_USE_MOCK=true` when starting Vite to use the mock login. The demo accounts are
-`mahasiswa@example.test`, `dosen@example.test`, and `admin@example.test`; each uses the password
-`password123`. The API response mapping assumption is kept in `src/api/auth.js`.
-
-The login page stores the JWT and user in the authentication context and browser storage. Routes for
-assignments and history require an authenticated user; submission history is available to students
-only.
-
-The JWT is stored in `localStorage`, which is susceptible to theft through cross-site scripting
-(XSS). This is an accepted limitation for this project; production deployments should consider
-safer cookie-based session storage and protect against XSS.
-
-## Asumsi kontrak API (belum disepakati dengan backend)
-
-| Endpoint | Asumsi sementara |
-| --- | --- |
-| `POST /api/v1/auth/login` | Request `{ "email", "password" }`; response `{ "token", "user": { "id", "nama", "email", "role" } }`. |
-| `GET /api/v1/assignments` | Response array `[{ "id", "judul", "deskripsi", "deadline" }]`. |
-| `POST /api/v1/submissions` | `multipart/form-data` dengan field `assignment_id` dan `file` (`.py`). |
-| Respons submission | `{ "id", "assignment_id", "status": "queued", "submitted_at" }`. |
-| Status melalui WebSocket | `WS /ws/v1/submissions/{id}?token=<JWT>`; pesan `{ "status", "current_test", "total_tests" }`, dengan status `queued`, `running`, `completed`, `error`, atau `timeout`. |
-| Fallback status | Polling `GET /api/v1/submissions/{id}` setiap 3 detik; respons `{ "id", "status", "current_test", "total_tests" }`. Server menutup WebSocket setelah status terminal. |
-| Riwayat submission | `GET /api/v1/submissions` -> `[{ "id", "assignment_id", "assignment_judul", "status", "skor_total", "submitted_at" }]`; asumsi ini ditambahkan karena SRS tidak menetapkan endpoint daftar riwayat. Hanya submission milik user login yang dikembalikan (backend membatasi berdasarkan JWT). |
-| Laporan test case | `GET /api/v1/submissions/{id}/report` -> `{ "submission_id", "skor_total", "results": [{ "testcase_id", "status", "skor", "waktu_eksekusi_ms", "memori_kb", "pesan_error", "is_hidden", "actual_output" }] }`. `skor_total` dan `pesan_error` tidak ada di entitas SRS dan merupakan asumsi tambahan. |
-| Buat assignment dosen/admin | `POST /api/v1/assignments` menerima `{ judul, deskripsi, deadline, resource_limit: { cpu_time_ms, memory_mb, max_proses, timeout_s } }` dan diasumsikan mengembalikan `{ id, judul, deskripsi, deadline }`. Resource limit bersarang adalah asumsi frontend. |
-| Tambah test case | `POST /api/v1/assignments/{id}/testcases` menerima `{ input, expected_output, bobot, is_hidden }` dan diasumsikan mengembalikan `{ id, assignment_id, ... }`. Nama field mengikuti entitas TestCase BAB 7.1. |
-
-Asumsi assignment diisolasi di `src/api/assignments.js`; asumsi unggah dan respons submission ada di
-`src/api/submissions.js`; asumsi status WebSocket dan polling ada di `src/api/submissionStatus.js`.
-Asumsi daftar riwayat dan laporan masing-masing diisolasi di `src/api/submissionHistory.js` dan
-`src/api/submissionReport.js`. Kontrak pembuatan assignment dosen/admin ada di
-`src/api/lecturerAssignments.js`, sedangkan kontrak test case ada di `src/api/testcases.js`.
-Laporan tidak mengembalikan output atau pesan error untuk test case tersembunyi ke komponen UI.
-Diskusi konfirmasi backend: [issue #9](https://github.com/MelvynFaith/sandboxed-autograder/issues/9).
-Validasi frontend membatasi berkas Python hingga 1 MiB; backend tetap perlu memvalidasi ulang.
-
-FR-02 hanya mencakup pembuatan assignment pada frontend karena SRS belum menetapkan endpoint untuk
-mengubah atau menghapus assignment. Opsi pembanding keluaran exact/whitespace-insensitive tidak
-ditambahkan karena belum didefinisikan pada entitas TestCase.
-
-Browser WebSocket tidak dapat mengirim header `Authorization`, jadi token sementara dikirim sebagai
-parameter query `token`. Token pada query dapat muncul di log server dan riwayat URL; ini merupakan
-keterbatasan keamanan. Tiket WebSocket sekali pakai merupakan opsi yang lebih aman untuk dibahas
-dengan backend sebagai pekerjaan lanjutan.
-
-Before opening a pull request, run:
+Run checks before opening a pull request:
 
 ```sh
 npm run lint
 npm test
 npm run build
 ```
+
+## Frontend scope
+
+- Students can browse assignments, submit Python files, follow grading status,
+  and view submission history and test-case reports.
+- Lecturers can manage courses, assignments, test cases, and resource limits.
+- Administrators can manage user roles and review audit logs.
+- Grade summaries/CSV export (FR-11) are not included in this PR; ownership is
+  pending a team decision.
+
+The UI is expected to work at 360 px, 768 px, and 1280 px without horizontal
+scrolling. Forms have keyboard support and accessible labels. Timestamps are
+stored in UTC and displayed in WIB (UTC+7).
+
+## Authentication and session limitations
+
+Login stores the access token, refresh token, and user in browser storage.
+Expired access tokens are refreshed through the API, and logout calls the API
+before clearing the local session. Refresh responses may omit a replacement
+refresh token; when they do, the current refresh token is retained. If refresh
+fails, the local session is cleared and the user is redirected to login. Logout
+also clears the local session when the server request fails, with a notice on
+the login page. Routes are gated by role. The API uses
+uppercase roles (`STUDENT`, `LECTURER`, `ADMIN`); the frontend maps those to its
+Indonesian role names for display and routing.
+
+Tokens in `localStorage` are exposed to scripts running in the page, including
+scripts introduced by cross-site scripting. This is a project limitation;
+production deployments should prefer appropriately protected cookie-based
+sessions and strong XSS defenses.
+
+## Asumsi kontrak API
+
+The SRS is authoritative. These are implementation mappings or details that
+the frontend currently relies on; confirm exact payloads with the backend in
+[issue #9](https://github.com/MelvynFaith/sandboxed-autograder/issues/9).
+
+| Area | Frontend contract |
+| --- | --- |
+| Authentication | `POST /api/v1/auth/login` returns `access_token`, `refresh_token`, and a user with `id`, `name`, `email`, and uppercase `role`. Refresh uses `POST /api/v1/auth/refresh`; logout uses `POST /api/v1/auth/logout`. |
+| Course and assignments | Course-scoped assignment listing/creation uses `/api/v1/courses/{course_id}/assignments`. Assignment fields use the SRS names `title`, `description`, `deadline_at`, and `late_until_at`. Assignment edit/delete use `PUT`/`DELETE /api/v1/assignments/{id}`. |
+| Resource limits | Read/update use `/api/v1/assignments/{id}/resource-limit`; request fields include `cpu_time_ms`, `memory_mb`, `max_processes`, `timeout_s`, `max_output_bytes`, and `tmpfs_size_mb`. |
+| Test cases | List/add are scoped to `/api/v1/assignments/{id}/testcases`; edit/delete use `/api/v1/testcases/{id}`. Fields use `external_id`, `input`, `expected_output`, `weight`, `is_hidden`, and `match_mode` (`EXACT` or `WHITESPACE_INSENSITIVE`). |
+| Upload | Submission uses `POST /api/v1/submissions` with `assignment_id` and a `.py` file. The client rejects files larger than 256 KiB; the backend must enforce the limit as well. |
+| Status and WebSocket | The frontend obtains a one-time ticket from `POST /api/v1/ws-tickets` with `{ "submission_id" }`, then connects to `WS /ws/v1/submissions/{id}?ticket=<ticket>`. Status values are `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, or `CANCELLED`; the UI maps them for display. On disconnect it polls `GET /api/v1/submissions/{id}` every 3 seconds. |
+| History and report | History uses `GET /api/v1/submissions`; report uses `GET /api/v1/submissions/{id}/report`. History/report fields follow the SRS English names, including `assignment_title`, `total_score`, `score`, `exec_time_ms`, and `memory_kb`. Per-test verdicts use the seven SRS enum values. |
+| Admin | `GET /api/v1/admin/users`, `PUT /api/v1/admin/users/{id}/role`, and `GET /api/v1/admin/audit-logs` support the role-management and audit-log view. The API adapters are in `src/api/admin.js`. |
+
+The lecturer form validates the SRS resource constraints
+`tmpfs_size_mb + 16 <= memory_mb` and
+`2 * max_output_bytes < tmpfs_size_mb * 2^20` before saving limits through
+`PUT /api/v1/assignments/{id}/resource-limit`. Resource values must be positive
+integers, and `late_until_at` must be at or after `deadline_at`.
+
+Assignment listing and admin/history lists currently request `page=1&page_size=50`
+and accept either an array or an `{ "items": [...] }` response. The frontend maps
+the SRS API field names to UI models in the API modules; those mappings do not
+change the backend contract.
+
+API failures read the SRS `{ "error": { "code", "message" } }` envelope and
+display its message. HTTP 429 responses show a rate-limit notice and honor a
+numeric `Retry-After` header when present.
+
+The WebSocket ticket is placed in the connection URL because the browser
+WebSocket API does not support custom Authorization headers. A one-time ticket
+limits exposure compared with putting a reusable JWT in the URL, but URLs may
+still appear in infrastructure logs. Avoid logging tickets and expire/consume
+them server-side.
