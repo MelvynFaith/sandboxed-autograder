@@ -1,4 +1,4 @@
-import { apiRequest } from './client.js'
+import { apiRequest, throwApiError } from './client.js'
 
 const roles = {
   STUDENT: 'mahasiswa',
@@ -58,7 +58,7 @@ export async function login(email, password) {
   })
 
   if (!response.ok) {
-    throw new Error(`Login gagal (${response.status}). Periksa email dan password.`)
+    await throwApiError(response, `Login gagal (${response.status}). Periksa email dan password.`)
   }
 
   return readLoginResponse(await response.json())
@@ -75,6 +75,6 @@ export async function logout(refreshToken) {
     body: JSON.stringify({ refresh_token: refreshToken }),
   })
   if (!response.ok) {
-    throw new Error(`Logout gagal (${response.status}).`)
+    await throwApiError(response, `Logout gagal (${response.status}).`)
   }
 }

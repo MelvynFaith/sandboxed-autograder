@@ -1,4 +1,4 @@
-import { apiRequest } from './client.js'
+import { apiRequest, throwApiError } from './client.js'
 
 const resourceLimitFields = [
   'cpu_time_ms',
@@ -58,7 +58,7 @@ export async function createLecturerAssignment(courseId, assignment) {
       },
     )
     if (!response.ok) {
-      throw new Error(`Gagal membuat assignment (${response.status}).`)
+      await throwApiError(response, `Gagal membuat assignment (${response.status}).`)
     }
     payload = await response.json()
   }
@@ -77,7 +77,7 @@ export async function updateLecturerAssignment(assignmentId, assignment) {
       body: JSON.stringify(assignment),
     })
     if (!response.ok) {
-      throw new Error(`Gagal memperbarui assignment (${response.status}).`)
+      await throwApiError(response, `Gagal memperbarui assignment (${response.status}).`)
     }
     payload = await response.json()
   }
@@ -92,7 +92,7 @@ export async function deleteLecturerAssignment(assignmentId) {
     method: 'DELETE',
   })
   if (!response.ok) {
-    throw new Error(`Gagal menghapus assignment (${response.status}).`)
+    await throwApiError(response, `Gagal menghapus assignment (${response.status}).`)
   }
 }
 
@@ -109,7 +109,7 @@ export async function updateResourceLimit(assignmentId, resourceLimit) {
     },
   )
   if (!response.ok) {
-    throw new Error(`Gagal memperbarui batas sumber daya (${response.status}).`)
+    await throwApiError(response, `Gagal memperbarui batas sumber daya (${response.status}).`)
   }
   return response.json()
 }
@@ -129,7 +129,7 @@ export async function getResourceLimit(assignmentId) {
     `/assignments/${encodeURIComponent(assignmentId)}/resource-limit`,
   )
   if (!response.ok) {
-    throw new Error(`Gagal memuat batas sumber daya (${response.status}).`)
+    await throwApiError(response, `Gagal memuat batas sumber daya (${response.status}).`)
   }
   const limits = await response.json()
   if (

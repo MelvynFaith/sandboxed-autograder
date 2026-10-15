@@ -1,4 +1,4 @@
-import { apiRequest } from './client.js'
+import { apiRequest, throwApiError } from './client.js'
 
 const roles = new Set(['STUDENT', 'LECTURER', 'ADMIN'])
 const mockUsers = [
@@ -76,7 +76,7 @@ async function getPage(path, mockData, parser, message) {
   }
   const response = await apiRequest(`${path}?page=1&page_size=50`)
   if (!response.ok) {
-    throw new Error(`Gagal memuat data administrasi (${response.status}).`)
+    await throwApiError(response, `Gagal memuat data administrasi (${response.status}).`)
   }
   return readPage(await response.json(), parser, message)
 }
@@ -112,7 +112,7 @@ export async function updateUserRole(userId, role) {
     body: JSON.stringify({ role }),
   })
   if (!response.ok) {
-    throw new Error(`Gagal mengubah peran pengguna (${response.status}).`)
+    await throwApiError(response, `Gagal mengubah peran pengguna (${response.status}).`)
   }
   return readUser(await response.json())
 }

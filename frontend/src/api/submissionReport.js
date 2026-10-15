@@ -1,4 +1,4 @@
-import { apiRequest } from './client.js'
+import { apiRequest, throwApiError } from './client.js'
 
 const verdicts = new Set([
   'PASSED',
@@ -151,7 +151,7 @@ export async function getSubmissionReport(submissionId) {
     `/submissions/${encodeURIComponent(submissionId)}/report`,
   )
   if (!response.ok) {
-    throw new Error(`Gagal memuat laporan submission (${response.status}).`)
+    await throwApiError(response, `Gagal memuat laporan submission (${response.status}).`)
   }
 
   return readReportResponse(await response.json(), submissionId)

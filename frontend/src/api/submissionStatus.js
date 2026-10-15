@@ -1,11 +1,11 @@
-import { apiRequest } from './client.js'
+import { apiRequest, throwApiError } from './client.js'
 
-const TERMINAL_STATUSES = new Set(['completed', 'error', 'cancelled'])
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 const VALID_STATUSES = new Set(['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'])
 const POLL_INTERVAL_MS = 3000
 
 function readStatusMessage(payload) {
-  const status = payload?.status === 'FAILED' ? 'error' : payload?.status?.toLowerCase?.()
+  const status = payload?.status?.toLowerCase?.()
   if (
     !payload ||
     typeof payload !== 'object' ||
@@ -29,7 +29,7 @@ function readStatusMessage(payload) {
 async function getSubmissionStatus(submissionId) {
   const response = await apiRequest(`/submissions/${encodeURIComponent(submissionId)}`)
   if (!response.ok) {
-    throw new Error(`Gagal memuat status submission (${response.status}).`)
+    await throwApiError(response, `Gagal memuat status submission (${response.status}).`)
   }
 
   const payload = await response.json()
@@ -50,7 +50,7 @@ async function getWebSocketTicket(submissionId) {
     body: JSON.stringify({ submission_id: submissionId }),
   })
   if (!response.ok) {
-    throw new Error(`Gagal memperoleh tiket WebSocket (${response.status}).`)
+    await throwApiError(response, `Gagal memperoleh tiket WebSocket (${response.status}).`)
   }
 
   const payload = await response.json()

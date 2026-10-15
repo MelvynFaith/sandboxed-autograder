@@ -1,4 +1,4 @@
-import { apiRequest } from './client.js'
+import { apiRequest, throwApiError } from './client.js'
 
 const mockCourses = [{ id: 'course-1', code: 'CS101', name: 'Pemrograman Dasar', term: '2026' }]
 
@@ -33,7 +33,7 @@ export async function getCourses() {
 
   const response = await apiRequest('/courses?page=1&page_size=50')
   if (!response.ok) {
-    throw new Error(`Gagal memuat Course (${response.status}).`)
+    await throwApiError(response, `Gagal memuat Course (${response.status}).`)
   }
 
   const payload = await response.json()

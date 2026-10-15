@@ -41,6 +41,19 @@ function toLocalDateTime(value) {
     .slice(0, 16)
 }
 
+function validateResourceLimits(limits) {
+  if (Object.values(limits).some((value) => !Number.isFinite(value) || value <= 0)) {
+    return 'Semua batas sumber daya harus berupa angka positif.'
+  }
+  if (limits.tmpfs_size_mb + 16 > limits.memory_mb) {
+    return 'Ukuran tmpfs ditambah 16 MB tidak boleh melebihi batas memori.'
+  }
+  if (2 * limits.max_output_bytes >= limits.tmpfs_size_mb * 1024 ** 2) {
+    return 'Dua kali batas output harus lebih kecil dari ukuran tmpfs dalam byte.'
+  }
+  return null
+}
+
 function LecturerAssignmentsPage() {
   const [courses, setCourses] = useState([])
   const [courseId, setCourseId] = useState('')
@@ -138,8 +151,9 @@ function LecturerAssignmentsPage() {
     const limits = Object.fromEntries(
       Object.entries(resourceLimits).map(([name, value]) => [name, Number(value)]),
     )
-    if (Object.values(limits).some((value) => !Number.isFinite(value) || value <= 0)) {
-      setError('Semua batas sumber daya harus berupa angka positif.')
+    const resourceLimitError = validateResourceLimits(limits)
+    if (resourceLimitError) {
+      setError(resourceLimitError)
       return
     }
 

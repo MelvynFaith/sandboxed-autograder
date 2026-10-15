@@ -1,6 +1,37 @@
 const API_BASE_URL = '/api/v1'
 let refreshRequest
 
+export async function throwApiError(response, fallbackMessage) {
+  let payload
+  try {
+    payload = await response.json()
+  } catch (error) {
+    if (!(error instanceof SyntaxError) && !(error instanceof TypeError)) {
+      throw error
+    }
+  }
+
+  const apiError = payload?.error
+  if (
+    typeof apiError?.code === 'string' &&
+    apiError.code &&
+    typeof apiError.message === 'string' &&
+    apiError.message.trim()
+  ) {
+    throw new Error(apiError.message)
+  }
+
+  if (response.status === 429) {
+    const retryAfter = response.headers?.get('Retry-After')
+    if (retryAfter && /^\d+$/.test(retryAfter)) {
+      throw new Error(`Terlalu banyak permintaan. Coba lagi dalam ${retryAfter} detik.`)
+    }
+    throw new Error('Terlalu banyak permintaan. Silakan coba lagi nanti.')
+  }
+
+  throw new Error(fallbackMessage)
+}
+
 function requestHeaders(options, token) {
   const headers = new Headers(options.headers)
   if (token) {

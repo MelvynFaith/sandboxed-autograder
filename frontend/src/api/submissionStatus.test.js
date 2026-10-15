@@ -135,6 +135,31 @@ describe('subscribeToSubmissionStatus', () => {
     expect(sockets[0].close).toHaveBeenCalled()
   })
 
+  it('maps the SRS FAILED status to a failed UI state', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ticket: 'ticket' }),
+    }))
+    const onStatus = vi.fn()
+    const cleanup = subscribeToSubmissionStatus('submission-1', {
+      onStatus,
+      onFallback: vi.fn(),
+      onError: vi.fn(),
+    })
+
+    await vi.waitFor(() => expect(sockets).toHaveLength(1))
+    sockets[0].onmessage({
+      data: JSON.stringify({ status: 'FAILED', current_test: 1, total_tests: 2 }),
+    })
+
+    expect(onStatus).toHaveBeenCalledWith({
+      status: 'failed',
+      current_test: 1,
+      total_tests: 2,
+    })
+    cleanup()
+  })
+
   it('simulates queued, running, and completed statuses in mock mode', () => {
     vi.stubEnv('VITE_USE_MOCK', 'true')
     vi.useFakeTimers()

@@ -1,4 +1,4 @@
-import { apiRequest } from './client.js'
+import { apiRequest, throwApiError } from './client.js'
 
 const mockSubmissionHistory = [
   {
@@ -65,7 +65,7 @@ export async function getSubmissionHistory() {
 
   const response = await apiRequest('/submissions?page=1&page_size=50')
   if (!response.ok) {
-    throw new Error(`Gagal memuat riwayat submission (${response.status}).`)
+    await throwApiError(response, `Gagal memuat riwayat submission (${response.status}).`)
   }
 
   return readHistoryResponse(await response.json())

@@ -19,6 +19,7 @@ const submission = {
   assignmentTitle: 'Dasar Algoritma',
   status: 'completed',
   totalScore: 85,
+  isLate: true,
   submittedAt: '2026-10-04T10:30:00+07:00',
 }
 
@@ -82,6 +83,7 @@ describe('HistoryPage', () => {
     expect(await screen.findByRole('heading', { name: 'Riwayat Submission' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Dasar Algoritma' })).toBeInTheDocument()
     expect(screen.getByText('Skor: 85')).toBeInTheDocument()
+    expect(screen.getByText('Terlambat')).toBeInTheDocument()
     expect(screen.getByText('4 Oktober 2026 pukul 10.30')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Lihat laporan' })).toBeInTheDocument()
   })

@@ -12,7 +12,7 @@ const statuses = [
   ['queued', 'Antre'],
   ['running', 'Sedang berjalan'],
   ['completed', 'Selesai'],
-  ['error', 'Error'],
+  ['failed', 'Gagal'],
   ['cancelled', 'Dibatalkan'],
 ]
 

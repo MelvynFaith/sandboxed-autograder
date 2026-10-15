@@ -128,6 +128,42 @@ describe('LecturerAssignmentsPage', () => {
     expect(createLecturerAssignment).not.toHaveBeenCalled()
   })
 
+  it('rejects tmpfs limits that exceed the memory constraint', async () => {
+    setUser()
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.change(screen.getByLabelText('Batas memori (MB)'), {
+      target: { value: '64' },
+    })
+    fireEvent.submit(screen.getByRole('heading', { name: 'Buat assignment' }).closest('form'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Ukuran tmpfs ditambah 16 MB tidak boleh melebihi batas memori.',
+    )
+    expect(createLecturerAssignment).not.toHaveBeenCalled()
+  })
+
+  it('rejects an output limit that does not fit twice in tmpfs', async () => {
+    setUser()
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.change(screen.getByLabelText('Batas memori (MB)'), {
+      target: { value: '32' },
+    })
+    fireEvent.change(screen.getByLabelText('Ukuran tmpfs (MB)'), {
+      target: { value: '1' },
+    })
+    fireEvent.change(screen.getByLabelText('Output maksimum (byte)'), {
+      target: { value: '524288' },
+    })
+    fireEvent.submit(screen.getByRole('heading', { name: 'Buat assignment' }).closest('form'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Dua kali batas output harus lebih kecil dari ukuran tmpfs dalam byte.',
+    )
+    expect(createLecturerAssignment).not.toHaveBeenCalled()
+  })
+
   it('adds a test case with the entity field names', async () => {
     setUser('admin')
     render(<App />)

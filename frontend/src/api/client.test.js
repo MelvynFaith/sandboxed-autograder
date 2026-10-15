@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiRequest } from './client.js'
+import { apiRequest, throwApiError } from './client.js'
 
 beforeEach(() => {
   localStorage.clear()
@@ -55,5 +55,32 @@ describe('apiRequest token refresh', () => {
     expect(localStorage.getItem('refresh_token')).toBeNull()
     expect(localStorage.getItem('user')).toBeNull()
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('API errors', () => {
+  it('surfaces the SRS error envelope message', async () => {
+    const response = {
+      status: 400,
+      json: async () => ({
+        error: { code: 'VALIDATION_ERROR', message: 'Batas memori tidak valid.' },
+      }),
+    }
+
+    await expect(throwApiError(response, 'Permintaan gagal.')).rejects.toThrow(
+      'Batas memori tidak valid.',
+    )
+  })
+
+  it('explains rate limiting and honors Retry-After when supplied', async () => {
+    const response = {
+      status: 429,
+      headers: new Headers({ 'Retry-After': '12' }),
+      json: async () => ({}),
+    }
+
+    await expect(throwApiError(response, 'Permintaan gagal.')).rejects.toThrow(
+      'Terlalu banyak permintaan. Coba lagi dalam 12 detik.',
+    )
   })
 })

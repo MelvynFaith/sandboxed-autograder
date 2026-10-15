@@ -1,4 +1,4 @@
-import { apiRequest } from './client.js'
+import { apiRequest, throwApiError } from './client.js'
 
 export const MAX_FILE_SIZE = 256 * 1024
 
@@ -39,7 +39,7 @@ export async function submitSubmission(assignmentId, file) {
     body,
   })
   if (!response.ok) {
-    throw new Error(`Gagal mengunggah kode (${response.status}). Silakan coba lagi.`)
+    await throwApiError(response, `Gagal mengunggah kode (${response.status}). Silakan coba lagi.`)
   }
 
   return readSubmissionResponse(await response.json())

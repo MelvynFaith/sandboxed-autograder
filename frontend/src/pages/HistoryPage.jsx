@@ -12,7 +12,7 @@ const submissionStatusLabels = {
   queued: 'Antre',
   running: 'Sedang berjalan',
   completed: 'Selesai',
-  error: 'Error',
+  failed: 'Gagal',
   cancelled: 'Dibatalkan',
 }
 
@@ -20,7 +20,7 @@ const submissionStatusStyles = {
   queued: 'bg-amber-100 text-amber-900',
   running: 'bg-blue-100 text-blue-900',
   completed: 'bg-green-100 text-green-900',
-  error: 'bg-red-100 text-red-900',
+  failed: 'bg-red-100 text-red-900',
   cancelled: 'bg-slate-200 text-slate-900',
 }
 

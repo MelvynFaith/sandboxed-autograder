@@ -1,4 +1,4 @@
-import { apiRequest } from './client.js'
+import { apiRequest, throwApiError } from './client.js'
 
 const mockAssignments = [
   {
@@ -65,7 +65,7 @@ export async function getAssignments({ courseId } = {}) {
     : `/assignments${query}`
   const response = await apiRequest(path)
   if (!response.ok) {
-    throw new Error(`Gagal memuat assignment (${response.status}).`)
+    await throwApiError(response, `Gagal memuat assignment (${response.status}).`)
   }
 
   return readAssignmentsResponse(await response.json())

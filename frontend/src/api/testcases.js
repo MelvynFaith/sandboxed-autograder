@@ -1,4 +1,4 @@
-import { apiRequest } from './client.js'
+import { apiRequest, throwApiError } from './client.js'
 
 function isIdentifier(value) {
   return typeof value === 'string' || typeof value === 'number'
@@ -43,7 +43,7 @@ export async function getTestCases(assignmentId) {
     `/assignments/${encodeURIComponent(assignmentId)}/testcases?page=1&page_size=50`,
   )
   if (!response.ok) {
-    throw new Error(`Gagal memuat test case (${response.status}).`)
+    await throwApiError(response, `Gagal memuat test case (${response.status}).`)
   }
 
   const payload = await response.json()
@@ -68,7 +68,7 @@ export async function createTestCase(assignmentId, testCase) {
       },
     )
     if (!response.ok) {
-      throw new Error(`Gagal menambahkan test case (${response.status}).`)
+      await throwApiError(response, `Gagal menambahkan test case (${response.status}).`)
     }
     payload = await response.json()
   }
@@ -87,7 +87,7 @@ export async function updateTestCase(testCaseId, testCase) {
       body: JSON.stringify(testCase),
     })
     if (!response.ok) {
-      throw new Error(`Gagal memperbarui test case (${response.status}).`)
+      await throwApiError(response, `Gagal memperbarui test case (${response.status}).`)
     }
     payload = await response.json()
   }
@@ -102,6 +102,6 @@ export async function deleteTestCase(testCaseId) {
     method: 'DELETE',
   })
   if (!response.ok) {
-    throw new Error(`Gagal menghapus test case (${response.status}).`)
+    await throwApiError(response, `Gagal menghapus test case (${response.status}).`)
   }
 }

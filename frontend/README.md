@@ -62,10 +62,19 @@ the frontend currently relies on; confirm exact payloads with the backend in
 | History and report | History uses `GET /api/v1/submissions`; report uses `GET /api/v1/submissions/{id}/report`. History/report fields follow the SRS English names, including `assignment_title`, `total_score`, `score`, `exec_time_ms`, and `memory_kb`. Per-test verdicts use the seven SRS enum values. |
 | Admin | `GET /api/v1/admin/users`, `PUT /api/v1/admin/users/{id}/role`, and `GET /api/v1/admin/audit-logs` support the role-management and audit-log view. The API adapters are in `src/api/admin.js`. |
 
+The lecturer form validates the SRS resource constraints
+`tmpfs_size_mb + 16 <= memory_mb` and
+`2 * max_output_bytes < tmpfs_size_mb * 2^20` before saving limits through
+`PUT /api/v1/assignments/{id}/resource-limit`.
+
 Assignment listing and admin/history lists currently request `page=1&page_size=50`
 and accept either an array or an `{ "items": [...] }` response. The frontend maps
 the SRS API field names to UI models in the API modules; those mappings do not
 change the backend contract.
+
+API failures read the SRS `{ "error": { "code", "message" } }` envelope and
+display its message. HTTP 429 responses show a rate-limit notice and honor a
+numeric `Retry-After` header when present.
 
 The WebSocket ticket is placed in the connection URL because the browser
 WebSocket API does not support custom Authorization headers. A one-time ticket
