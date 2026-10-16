@@ -17,7 +17,7 @@ const submission = {
   id: 'submission-1',
   assignmentId: 'assignment-1',
   assignmentTitle: 'Dasar Algoritma',
-  status: 'completed',
+  status: 'COMPLETED',
   totalScore: 85,
   isLate: true,
   submittedAt: '2026-10-04T10:30:00+07:00',
@@ -51,7 +51,12 @@ beforeEach(() => {
   localStorage.clear()
   window.history.pushState({}, '', '/history')
   vi.stubEnv('VITE_USE_MOCK', 'true')
-  getSubmissionHistory.mockResolvedValue([submission])
+  getSubmissionHistory.mockResolvedValue({
+    items: [submission],
+    page: 1,
+    pageSize: 50,
+    hasNextPage: false,
+  })
   getSubmissionReport.mockResolvedValue({
     submissionId: 'submission-1',
     totalScore: 85,
@@ -86,6 +91,45 @@ describe('HistoryPage', () => {
     expect(screen.getByText('Terlambat')).toBeInTheDocument()
     expect(screen.getByText('4 Oktober 2026 pukul 10.30')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Lihat laporan' })).toBeInTheDocument()
+  })
+
+  it('does not show the late marker for an on-time submission', async () => {
+    setUser()
+    getSubmissionHistory.mockResolvedValue({
+      items: [{ ...submission, isLate: false }],
+      page: 1,
+      pageSize: 50,
+      hasNextPage: false,
+    })
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Dasar Algoritma' })
+    expect(screen.queryByText('Terlambat')).not.toBeInTheDocument()
+  })
+
+  it('paginates the submission history', async () => {
+    setUser()
+    getSubmissionHistory
+      .mockResolvedValueOnce({
+        items: [submission],
+        page: 1,
+        pageSize: 50,
+        hasNextPage: true,
+      })
+      .mockResolvedValueOnce({
+        items: [{ ...submission, id: 'submission-2', assignmentTitle: 'Struktur Data' }],
+        page: 2,
+        pageSize: 50,
+        hasNextPage: false,
+      })
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Dasar Algoritma' })
+    fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
+
+    expect(await screen.findByRole('heading', { name: 'Struktur Data' })).toBeInTheDocument()
+    expect(getSubmissionHistory).toHaveBeenLastCalledWith({ page: 2, pageSize: 50 })
+    expect(screen.getByRole('button', { name: 'Sebelumnya' })).toBeEnabled()
   })
 
   it('shows returned error messages and actual output when report visibility metadata is absent', async () => {
@@ -136,7 +180,12 @@ describe('HistoryPage', () => {
 
   it('shows the empty-history state', async () => {
     setUser()
-    getSubmissionHistory.mockResolvedValue([])
+    getSubmissionHistory.mockResolvedValue({
+      items: [],
+      page: 1,
+      pageSize: 50,
+      hasNextPage: false,
+    })
     render(<App />)
 
     expect(await screen.findByText('Belum ada submission.')).toBeInTheDocument()

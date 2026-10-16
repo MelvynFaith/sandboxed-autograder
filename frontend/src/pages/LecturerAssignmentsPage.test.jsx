@@ -54,7 +54,7 @@ async function fillAssignmentForm() {
     target: { value: '1000' },
   })
   fireEvent.change(screen.getByLabelText('Batas memori (MB)'), {
-    target: { value: '128' },
+    target: { value: '64' },
   })
   fireEvent.change(screen.getByLabelText('Jumlah proses maksimum'), {
     target: { value: '4' },
@@ -62,8 +62,10 @@ async function fillAssignmentForm() {
   fireEvent.change(screen.getByLabelText('Waktu maksimum (detik)'), {
     target: { value: '5' },
   })
-  fireEvent.change(screen.getByLabelText('Output maksimum (byte)'), { target: { value: '65536' } })
-  fireEvent.change(screen.getByLabelText('Ukuran tmpfs (MB)'), { target: { value: '64' } })
+  fireEvent.change(screen.getByLabelText('Output maksimum (byte)'), {
+    target: { value: '1048576' },
+  })
+  fireEvent.change(screen.getByLabelText('Ukuran tmpfs (MB)'), { target: { value: '32' } })
 }
 
 beforeEach(() => {
@@ -114,11 +116,11 @@ describe('LecturerAssignmentsPage', () => {
     })
     expect(updateResourceLimit).toHaveBeenCalledWith('assignment-1', {
         cpu_time_ms: 1000,
-        memory_mb: 128,
+        memory_mb: 64,
         max_processes: 4,
         timeout_s: 5,
-        max_output_bytes: 65536,
-        tmpfs_size_mb: 64,
+        max_output_bytes: 1048576,
+        tmpfs_size_mb: 32,
     })
   })
 
@@ -191,7 +193,7 @@ describe('LecturerAssignmentsPage', () => {
     render(<App />)
     await fillAssignmentForm()
     fireEvent.change(screen.getByLabelText('Batas memori (MB)'), {
-      target: { value: '64' },
+      target: { value: '47' },
     })
     fireEvent.submit(screen.getByRole('heading', { name: 'Buat assignment' }).closest('form'))
 

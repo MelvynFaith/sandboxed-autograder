@@ -18,15 +18,24 @@ const mockAuditLogs = [
   },
 ]
 
-function readPage(payload, parser, message) {
+function readPage(payload, parser, message, requestedPage, requestedPageSize) {
   const entries = Array.isArray(payload) ? payload : payload?.items
   if (!Array.isArray(entries)) {
     throw new Error(message)
   }
+  const page = Number.isInteger(payload?.page) && payload.page > 0
+    ? payload.page
+    : requestedPage
+  const pageSize = Number.isInteger(payload?.page_size) && payload.page_size > 0
+    ? payload.page_size
+    : requestedPageSize
   return {
     items: entries.map(parser),
-    page: Number.isInteger(payload?.page) ? payload.page : 1,
-    pageSize: Number.isInteger(payload?.page_size) ? payload.page_size : 50,
+    page,
+    pageSize,
+    hasNextPage: typeof payload?.has_next === 'boolean'
+      ? payload.has_next
+      : entries.length >= pageSize,
   }
 }
 
@@ -70,27 +79,39 @@ function readAuditLog(entry) {
   }
 }
 
-async function getPage(path, mockData, parser, message) {
-  if (import.meta.env.VITE_USE_MOCK === 'true') {
-    return readPage(mockData, parser, message)
+async function getPage(path, mockData, parser, message, page, pageSize) {
+  if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
+    throw new Error('Nomor halaman dan ukuran halaman harus bilangan bulat positif.')
   }
-  const response = await apiRequest(`${path}?page=1&page_size=50`)
+  if (import.meta.env.VITE_USE_MOCK === 'true') {
+    return readPage(mockData, parser, message, page, pageSize)
+  }
+  const response = await apiRequest(`${path}?page=${page}&page_size=${pageSize}`)
   if (!response.ok) {
     await throwApiError(response, `Gagal memuat data administrasi (${response.status}).`)
   }
-  return readPage(await response.json(), parser, message)
+  return readPage(await response.json(), parser, message, page, pageSize)
 }
 
-export async function getAdminUsers() {
-  return getPage('/admin/users', mockUsers, readUser, 'Respons daftar pengguna tidak sesuai format.')
+export async function getAdminUsers(page = 1, pageSize = 50) {
+  return getPage(
+    '/admin/users',
+    mockUsers,
+    readUser,
+    'Respons daftar pengguna tidak sesuai format.',
+    page,
+    pageSize,
+  )
 }
 
-export async function getAdminAuditLogs() {
+export async function getAdminAuditLogs(page = 1, pageSize = 50) {
   return getPage(
     '/admin/audit-logs',
     mockAuditLogs,
     readAuditLog,
     'Respons daftar audit log tidak sesuai format.',
+    page,
+    pageSize,
   )
 }
 

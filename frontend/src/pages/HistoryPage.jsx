@@ -9,19 +9,19 @@ const dateFormatter = new Intl.DateTimeFormat('id-ID', {
 })
 
 const submissionStatusLabels = {
-  queued: 'Antre',
-  running: 'Sedang berjalan',
-  completed: 'Selesai',
-  failed: 'Gagal',
-  cancelled: 'Dibatalkan',
+  QUEUED: 'Antre',
+  RUNNING: 'Sedang berjalan',
+  COMPLETED: 'Selesai',
+  FAILED: 'Pipeline gagal',
+  CANCELLED: 'Dibatalkan',
 }
 
 const submissionStatusStyles = {
-  queued: 'bg-amber-100 text-amber-900',
-  running: 'bg-blue-100 text-blue-900',
-  completed: 'bg-green-100 text-green-900',
-  failed: 'bg-red-100 text-red-900',
-  cancelled: 'bg-slate-200 text-slate-900',
+  QUEUED: 'bg-amber-100 text-amber-900',
+  RUNNING: 'bg-blue-100 text-blue-900',
+  COMPLETED: 'bg-green-100 text-green-900',
+  FAILED: 'bg-red-100 text-red-900',
+  CANCELLED: 'bg-slate-200 text-slate-900',
 }
 
 const verdictStyles = {
@@ -108,6 +108,8 @@ function SubmissionReport({ report }) {
 
 function HistoryPage() {
   const [submissions, setSubmissions] = useState([])
+  const [page, setPage] = useState(1)
+  const [hasNextPage, setHasNextPage] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [selectedId, setSelectedId] = useState(null)
@@ -120,10 +122,13 @@ function HistoryPage() {
     let isCurrent = true
 
     async function loadHistory() {
+      setIsLoading(true)
+      setLoadError('')
       try {
-        const results = await getSubmissionHistory()
+        const result = await getSubmissionHistory({ page, pageSize: 50 })
         if (isCurrent) {
-          setSubmissions(results)
+          setSubmissions(result.items)
+          setHasNextPage(result.hasNextPage)
         }
       } catch (error) {
         if (isCurrent) {
@@ -140,7 +145,7 @@ function HistoryPage() {
     return () => {
       isCurrent = false
     }
-  }, [])
+  }, [page])
 
   async function toggleReport(submissionId) {
     if (selectedId === submissionId) {
@@ -186,6 +191,27 @@ function HistoryPage() {
       )}
       {!isLoading && !loadError && submissions.length === 0 && (
         <p className="mt-4 text-slate-600">Belum ada submission.</p>
+      )}
+      {!isLoading && !loadError && (
+        <nav aria-label="Paginasi riwayat submission" className="mt-5 flex items-center gap-3">
+          <button
+            className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50"
+            disabled={page === 1}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            type="button"
+          >
+            Sebelumnya
+          </button>
+          <span aria-current="page">Halaman {page}</span>
+          <button
+            className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50"
+            disabled={!hasNextPage}
+            onClick={() => setPage((current) => current + 1)}
+            type="button"
+          >
+            Berikutnya
+          </button>
+        </nav>
       )}
       <ul className="mt-6 space-y-4">
         {submissions.map((submission) => (

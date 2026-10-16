@@ -29,7 +29,7 @@ describe('submitSubmission', () => {
 
     await expect(submitSubmission('assignment-1', file)).resolves.toEqual({
       id: 'submission-1',
-      status: 'queued',
+      status: 'QUEUED',
       isLate: false,
       submittedAt: '2026-10-05T10:00:00+07:00',
     })
@@ -48,6 +48,44 @@ describe('submitSubmission', () => {
 
     await expect(
       submitSubmission('assignment-1', new File(['print(1)'], 'solution.py')),
-    ).rejects.toThrow('Gagal mengunggah kode (413). Silakan coba lagi.')
+    ).rejects.toThrow('Ukuran berkas melebihi batas maksimum 256 KB.')
+  })
+
+  it.each([
+    [409, 'Submission ditolak karena batas waktu pengumpulan telah lewat.'],
+    [413, 'Ukuran berkas melebihi batas maksimum 256 KB.'],
+    [429, 'Terlalu sering mengunggah. Silakan tunggu sebelum mencoba lagi.'],
+  ])('shows a specific message for upload HTTP %s', async (status, message) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status }))
+
+    await expect(
+      submitSubmission('assignment-1', new File(['print(1)'], 'solution.py')),
+    ).rejects.toThrow(message)
+  })
+
+  it('prefers an SRS error-envelope message over the upload status fallback', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        error: { code: 'SUBMISSION_TOO_LATE', message: 'Pengumpulan sudah ditutup.' },
+      }),
+    }))
+
+    await expect(
+      submitSubmission('assignment-1', new File(['print(1)'], 'solution.py')),
+    ).rejects.toThrow('Pengumpulan sudah ditutup.')
+  })
+
+  it('includes the retry delay for rate-limited uploads', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'Retry-After': '30' }),
+    }))
+
+    await expect(
+      submitSubmission('assignment-1', new File(['print(1)'], 'solution.py')),
+    ).rejects.toThrow('Terlalu sering mengunggah. Coba lagi dalam 30 detik.')
   })
 })

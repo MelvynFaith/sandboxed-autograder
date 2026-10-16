@@ -31,17 +31,20 @@ describe('getSubmissionHistory', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(getSubmissionHistory()).resolves.toEqual([
-      {
+    await expect(getSubmissionHistory()).resolves.toEqual({
+      items: [{
         id: 'submission-1',
         assignmentId: 'assignment-1',
         assignmentTitle: 'Dasar Algoritma',
-        status: 'completed',
+        status: 'COMPLETED',
         totalScore: 85,
         isLate: false,
         submittedAt: '2026-10-04T10:30:00+07:00',
-      },
-    ])
+      }],
+      page: 1,
+      pageSize: 50,
+      hasNextPage: false,
+    })
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/submissions?page=1&page_size=50',
       expect.objectContaining({ headers: expect.any(Headers) }),
@@ -54,7 +57,34 @@ describe('getSubmissionHistory', () => {
   it('accepts an empty history', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => [] }))
 
-    await expect(getSubmissionHistory()).resolves.toEqual([])
+    await expect(getSubmissionHistory()).resolves.toMatchObject({
+      items: [],
+      hasNextPage: false,
+    })
+  })
+
+  it('requests the selected page and reads the server pagination metadata', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [],
+        page: 2,
+        page_size: 10,
+        has_next: true,
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(getSubmissionHistory({ page: 2, pageSize: 10 })).resolves.toEqual({
+      items: [],
+      page: 2,
+      pageSize: 10,
+      hasNextPage: true,
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/submissions?page=2&page_size=10',
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    )
   })
 
   it('surfaces failed requests and invalid response shapes', async () => {

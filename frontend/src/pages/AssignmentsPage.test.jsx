@@ -81,7 +81,7 @@ describe('student assignment submissions', () => {
       target: { files: [file] },
     })
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Ukuran berkas maksimal 256 KiB.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ukuran berkas maksimal 256 KB.')
     expect(screen.getAllByRole('button', { name: 'Upload kode Python' })[0]).toBeDisabled()
   })
 
