@@ -16,15 +16,15 @@ describe('getSubmissionReport', () => {
   it('fetches the report endpoint and maps a visible testcase result', async () => {
     const payload = {
       submission_id: 'submission-1',
-      skor_total: 75,
+      total_score: 75,
       results: [
         {
           testcase_id: 'testcase-1',
           status: 'TIMEOUT',
-          skor: 0,
-          waktu_eksekusi_ms: 5000,
-          memori_kb: 4096,
-          pesan_error: 'Batas waktu terlampaui',
+          score: 0,
+          exec_time_ms: 5000,
+          memory_kb: 4096,
+          error_message: 'Batas waktu terlampaui',
           is_hidden: false,
           actual_output: '',
         },
@@ -79,6 +79,37 @@ describe('getSubmissionReport', () => {
     expect(JSON.stringify(hidden)).not.toContain('Pesan tersembunyi')
   })
 
+  it('shows returned testcase details when visibility metadata is not in the SRS response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        submission_id: 'submission-1',
+        total_score: 10,
+        results: [
+          {
+            testcase_id: 'testcase-hidden',
+            status: 'PASSED',
+            score: 10,
+            exec_time_ms: 12,
+            memory_kb: 2048,
+            actual_output: 'secret output',
+          },
+        ],
+      }),
+    }))
+
+    await expect(getSubmissionReport('submission-1')).resolves.toMatchObject({
+      results: [
+        {
+          testCaseId: 'testcase-hidden',
+          hidden: false,
+          errorMessage: null,
+          actualOutput: 'secret output',
+        },
+      ],
+    })
+  })
+
   it('rejects unknown verdicts and surfaces failed requests', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }))
 
@@ -92,15 +123,15 @@ describe('getSubmissionReport', () => {
         ok: true,
         json: async () => ({
           submission_id: 'submission-1',
-          skor_total: 0,
+          total_score: 0,
           results: [
             {
               testcase_id: 'testcase-1',
               status: 'UNKNOWN',
-              skor: 0,
-              waktu_eksekusi_ms: 1,
-              memori_kb: 1,
-              pesan_error: null,
+              score: 0,
+              exec_time_ms: 1,
+              memory_kb: 1,
+              error_message: null,
               is_hidden: false,
               actual_output: null,
             },

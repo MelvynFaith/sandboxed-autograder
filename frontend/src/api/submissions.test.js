@@ -17,8 +17,8 @@ describe('submitSubmission', () => {
     const file = new File(['print("ok")'], 'solution.py', { type: 'text/x-python' })
     const submission = {
       id: 'submission-1',
-      assignment_id: 'assignment-1',
-      status: 'queued',
+      status: 'QUEUED',
+      is_late: false,
       submitted_at: '2026-10-05T10:00:00+07:00',
     }
     const fetchMock = vi.fn().mockResolvedValue({
@@ -27,7 +27,12 @@ describe('submitSubmission', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(submitSubmission('assignment-1', file)).resolves.toEqual(submission)
+    await expect(submitSubmission('assignment-1', file)).resolves.toEqual({
+      id: 'submission-1',
+      status: 'queued',
+      isLate: false,
+      submittedAt: '2026-10-05T10:00:00+07:00',
+    })
 
     const [url, options] = fetchMock.mock.calls[0]
     expect(url).toBe('/api/v1/submissions')
