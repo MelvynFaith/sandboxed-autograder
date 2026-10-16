@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MIT
+#
+# Linux kernel coding style: tabs of width 8, braces on their own line for
+# functions only, 100 columns.
+BasedOnStyle: LLVM
+IndentWidth: 8
+TabWidth: 8
+UseTab: Always
+ColumnLimit: 100
+BreakBeforeBraces: Linux
+ContinuationIndentWidth: 8
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AlignAfterOpenBracket: Align
+IndentCaseLabels: false
+PointerAlignment: Right
+SpaceBeforeParens: ControlStatementsExceptControlMacros
+SortIncludes: false

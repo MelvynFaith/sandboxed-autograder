@@ -49,6 +49,7 @@ id_ed25519*
 *.so
 *.d
 /sandbox/sandbox-exec
+/sandbox/sandbox-exec-asan
 compile_commands.json
 core.[0-9]*
 vgcore.*
