@@ -22,7 +22,7 @@
 
 ## In progress / carried over
 
-- B1 auth/session API (WBS 3.4; FR-01, FR-15, FR-19) is on [PR #35](https://github.com/MelvynFaith/sandboxed-autograder/pull/35). The conflicts are resolved; CI and Melvyn's review are pending. Coverage with `-coverpkg=./...`: `internal/api` 70.7%, `internal/auth` 76.4%, total 76.7%. B1 is not merged.
+- B1 auth/session API (WBS 3.4; FR-01, FR-15, FR-19) is on [PR #35](https://github.com/MelvynFaith/sandboxed-autograder/pull/35). The conflicts are resolved and CI is green; Melvyn's re-review is pending. Coverage with `-coverpkg=./...`: `internal/api` 70.7%, `internal/auth` 76.4%, total 76.7%. B1 is not merged.
 - Open scheduler work: [PR #37](https://github.com/MelvynFaith/sandboxed-autograder/pull/37) (settings table), [PR #38](https://github.com/MelvynFaith/sandboxed-autograder/pull/38) (sweep dead sandbox runs at start-up), and [PR #39](https://github.com/MelvynFaith/sandboxed-autograder/pull/39) (give up on repeatedly lost submissions). Owners: Melvyn Faith.
 - Implement the FR-11 grade-summary/CSV frontend UI; confirm its backend endpoint contract and backend owner.
 - B2 Course and enrollment (FR-18) depends on the auth middleware/helpers in B1. Start it from updated `develop` after PR #35 merges, not from the B1 branch.
@@ -35,7 +35,7 @@
 
 ## Next week
 
-- Wait for PR #35 CI and Melvyn's re-review before merging B1; then start B2 (FR-18) from updated `develop`.
+- Obtain Melvyn's re-review before merging B1; then start B2 (FR-18) from updated `develop`.
 - Confirm replacement sandbox backup and Module C reviewer coverage (R4, R7).
 - Have the PM decide whether to use the SRS UAT fallback (R6); document a confirmed schedule only after confirmation.
 - Agree Should/Could scope cuts before the 26 Oct feature freeze, and confirm the backend owner/API contract for FR-11.
