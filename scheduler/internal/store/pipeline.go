@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -39,9 +40,17 @@ const (
 	EventResourceLimitExceeded = "RESOURCE_LIMIT_EXCEEDED"
 )
 
+// DefaultMaxAttempts is how many times a submission may be started before Reconcile gives up on it.
+const DefaultMaxAttempts = 3
+
 // Pipeline is the database side of grading. It is safe for concurrent use.
 type Pipeline struct {
 	pool *pgxpool.Pool
+
+	// MaxAttempts is how many times a worker may start grading a submission that is then lost (the
+	// scheduler died, or the worker was shut down) before Reconcile marks it FAILED instead of requeuing
+	// it. Zero means DefaultMaxAttempts; a negative value means no limit. Set it before first use.
+	MaxAttempts int
 }
 
 // NewPipeline returns a Pipeline that uses pool.
@@ -65,11 +74,13 @@ type Claim struct {
 // could not be read the submission is RUNNING, and there is no way back to QUEUED from here.
 //
 // Claiming clears stale_grade: the definition is read after the flag is cleared, so an edit that
-// lands later sets it again, and one that landed earlier is part of what is graded.
+// lands later sets it again, and one that landed earlier is part of what is graded. It also counts an
+// attempt, which Complete and Fail clear, so that only a submission that keeps being lost mid-grading
+// accumulates them (see MaxAttempts).
 func (p *Pipeline) Claim(ctx context.Context, submissionID int64) (*Claim, error) {
 	c := &Claim{SubmissionID: submissionID}
 	err := p.pool.QueryRow(ctx, `
-		UPDATE submissions SET status = 'RUNNING', stale_grade = false
+		UPDATE submissions SET status = 'RUNNING', stale_grade = false, attempts = attempts + 1
 		WHERE id = $1 AND status = 'QUEUED'
 		RETURNING user_id, assignment_id, code_path`, submissionID,
 	).Scan(&c.UserID, &c.AssignmentID, &c.CodePath)
@@ -138,7 +149,7 @@ func (p *Pipeline) Complete(ctx context.Context, c *Claim, r *harness.Report) er
 	err := pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx, `
 			UPDATE submissions
-			SET status = 'COMPLETED', total_score = $2, max_score = $3, graded_at = now()
+			SET status = 'COMPLETED', total_score = $2, max_score = $3, graded_at = now(), attempts = 0
 			WHERE id = $1 AND status = 'RUNNING'`, c.SubmissionID, r.TotalScore, r.MaxScore)
 		if err != nil {
 			return err
@@ -204,7 +215,8 @@ func audit(res *harness.Result) (event string, syscall *int, detail string) {
 // Fail marks a RUNNING submission FAILED: the grading pipeline broke, not the student's program. It
 // returns ErrNotRunning if the submission is in another state.
 func (p *Pipeline) Fail(ctx context.Context, submissionID int64) error {
-	tag, err := p.pool.Exec(ctx, `UPDATE submissions SET status = 'FAILED' WHERE id = $1 AND status = 'RUNNING'`, submissionID)
+	tag, err := p.pool.Exec(ctx, `
+		UPDATE submissions SET status = 'FAILED', attempts = 0 WHERE id = $1 AND status = 'RUNNING'`, submissionID)
 	if err != nil {
 		return fmt.Errorf("store: fail submission %d: %w", submissionID, err)
 	}
@@ -219,12 +231,36 @@ func (p *Pipeline) Fail(ctx context.Context, submissionID int64) error {
 // then lists every QUEUED submission, oldest first, for the caller to enqueue. A staleAfter of zero
 // requeues all RUNNING submissions, which is right at start-up when nothing is running yet.
 //
+// A stale RUNNING submission that has already been started MaxAttempts times is marked FAILED instead
+// (and logged): grading it keeps losing the worker, so requeuing it again would only repeat the crash.
+// A regrade of it starts with a clean count.
+//
 // The queue is in memory, so a restart empties it while the database still says QUEUED; this list is
 // how the queue is rebuilt. Calling it while the queue holds jobs lists those too, and the queue
 // rejects the duplicates.
 func (p *Pipeline) Reconcile(ctx context.Context, staleAfter time.Duration) ([]queue.Job, error) {
 	var jobs []queue.Job
+	maxAttempts := p.MaxAttempts
+	if maxAttempts == 0 {
+		maxAttempts = DefaultMaxAttempts
+	}
 	err := pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
+		if maxAttempts > 0 {
+			rows, err := tx.Query(ctx, `
+				UPDATE submissions SET status = 'FAILED', attempts = 0
+				WHERE status = 'RUNNING' AND attempts >= $2 AND updated_at <= now() - make_interval(secs => $1)
+				RETURNING id`, staleAfter.Seconds(), maxAttempts)
+			if err != nil {
+				return err
+			}
+			ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+			if err != nil {
+				return err
+			}
+			if len(ids) > 0 {
+				slog.Warn("gave up on submissions that were lost mid-grading", "submissions", ids, "attempts", maxAttempts)
+			}
+		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE submissions SET status = 'QUEUED'
 			WHERE status = 'RUNNING' AND updated_at <= now() - make_interval(secs => $1)`,

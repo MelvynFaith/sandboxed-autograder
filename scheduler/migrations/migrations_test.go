@@ -249,6 +249,9 @@ func TestConstraints(t *testing.T) {
 		{"a rate limit has an upper bound",
 			`UPDATE settings SET max_submissions_per_assignment = 10001`,
 			checkViolation},
+		{"attempts cannot be negative",
+			`UPDATE submissions SET attempts = -1 WHERE id = 1`,
+			checkViolation},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
