@@ -4,9 +4,9 @@ A Go service that exposes the REST and WebSocket API, queues grading jobs, runs 
 persists results. It is **the only component that writes to PostgreSQL.**
 
 **Owner:** Evan William
-**Status:** the grading pipeline exists without its front end. The schema, the in-process queue, the
-Harness runner, the grading store and the worker pool are written and tested. The HTTP API, the
-WebSocket and the program entry point are not.
+**Status:** authentication/session endpoints and the in-process `JobQueue` are implemented. The
+Harness runner, grading store, and worker pool are implemented. Assignment, submission, grading,
+and WebSocket upgrade APIs are not implemented.
 
 ## Responsibilities
 
@@ -24,18 +24,76 @@ WebSocket and the program entry point are not.
 
 ```
 go.mod
+cmd/autograder/    API process entry point
 migrations/        schema, one NNNNNN_name.up.sql / .down.sql pair per change, embedded as migrations.FS
-internal/queue/    the JobQueue interface between the HTTP handlers and the worker pool, and Memory,
-                   its in-process implementation (round-robin per student, FIFO within a student)
+internal/api/      authentication HTTP routes and handlers
+internal/auth/     authentication, password/token helpers, PostgreSQL user/session store, WS tickets
+internal/queue/    JobQueue interface between the handlers and worker pool; in-process Memory implementation
 internal/harness/  starts the Grading Harness for one submission and checks its report
-internal/store/    the database side of grading: claim, complete, fail, reconcile
-internal/worker/   the worker pool that joins the queue, the store and the Harness
-internal/testdb/   a migrated schema of its own for each database test
+internal/store/    grading database operations: claim, complete, fail, and reconcile
+internal/worker/   worker pool joining the queue, store, and Harness
+internal/testdb/   isolated migrated schema for each database test
 ```
 
-Code that accepts requests (an `internal/api` package, not written yet) and code that grades
-(`internal/queue` and the worker) stay in separate packages. They meet at `JobQueue`: a handler
-stores the submission as `QUEUED` and calls `Enqueue`; a worker calls `Dequeue`.
+The API/authentication packages are separate from grading work in `internal/queue`. The current
+auth/session endpoints do not enqueue grading jobs.
+The grading pipeline includes the schema, in-process queue, Harness runner, grading store, and
+worker pool. Request-handling code and grading work meet at `JobQueue`: a handler stores a
+submission as `QUEUED` and calls `Enqueue`; a worker calls `Dequeue`. The authentication endpoints
+are implemented; assignment, submission, grading, and WebSocket upgrade APIs are not.
+
+## Authentication API
+
+Run the API with Go 1.27.2 or newer. Configuration is supplied through environment variables:
+
+```sh
+export DATABASE_URL='postgres://USER:PASSWORD@localhost:5432/DATABASE?sslmode=disable'
+export JWT_SECRET='at-least-32-random-bytes-from-a-local-secret-manager'
+export HTTP_ADDR=':8080'
+go run ./cmd/autograder
+```
+
+Do not commit credentials or a `.env` file. Register/login, self-profile, password change, one-time
+WebSocket ticket issuance, and administrator user management are implemented under `/api/v1`.
+Refresh tokens are opaque random values; only their SHA-256 hashes are stored. Access JWTs use
+HS256 and expire after 15 minutes. Password hashes use Argon2id (`m=65536,t=3,p=2`).
+At most three password hash or verification operations run concurrently; requests waiting for a slot
+can be cancelled with their request context.
+
+The client contract is:
+
+- `POST /auth/register` accepts `{ "name", "email", "password" }`, always creates a `STUDENT`, and
+  returns the created user with status 201. A duplicate email returns 409.
+- `POST /auth/login` returns `access_token`, `refresh_token`, and `user`.
+- `POST /auth/refresh` accepts `{ "refresh_token" }`, revokes it, and returns new access and refresh
+  tokens. `POST /auth/logout` accepts `{ "refresh_token" }` and revokes all active refresh tokens
+  belonging to that user.
+- `GET /users/me` and `PUT /users/me` return the user; the latter accepts `{ "name" }`.
+- `PUT /users/me/password` accepts `{ "current_password", "new_password" }`, verifies the old
+  password, then revokes every refresh token for the user.
+- `POST /ws-tickets` accepts `{ "submission_id" }` and returns `{ "ticket" }`. The request field
+  follows `frontend/src/api/submissionStatus.js`; the frontend sends the ID as JSON. Issued tickets
+  are held in process memory, bound to the authenticated user and submission, and expire within 60
+  seconds. `TicketStore.Consume` atomically removes a ticket; a second or expired use is rejected.
+  The WebSocket upgrade endpoint that consumes tickets is outside this API increment.
+- `GET /admin/users?page=N&page_size=N` returns `items`, `page`, `page_size`, and `has_next`.
+  `PUT /admin/users/{id}/role` accepts `{ "role" }`. Only `ADMIN` can use these routes; role changes
+  revoke every refresh token for the target user and write a `ROLE_CHANGED` audit row in the same
+  transaction. A non-admin role-change attempt returns 403 and writes `ROLE_CHANGE_DENIED`.
+  Registration and profile updates limit display names to 200 Unicode characters.
+
+The SRS does not define the request body fields for registration, password change, or WebSocket
+ticket issuance. They follow the current frontend assumptions: register `{name,email,password}`,
+password `{current_password,new_password}` (documented in `frontend/README.md`), and ticket
+`{submission_id}`. Login/refresh/logout use `email`, `password`, and `refresh_token`, respectively.
+If the frontend contract changes, update the adapters and this note together.
+
+Errors use `{"error":{"code":"...","message":"..."}}`. Authentication failures return 401,
+authenticated non-admin access returns 403, and a missing or another user's submission returns 404.
+Admin user lists accept `page` and `page_size` (maximum 100).
+
+Dependencies added for B1 via `go get`: `github.com/golang-jwt/jwt/v5` (JWT) and
+`golang.org/x/crypto` (Argon2id). The existing `pgx/v5` module is used for PostgreSQL access.
 
 ## Migrations
 
@@ -63,6 +121,16 @@ comment is the contract between the worker and the Harness, and the Harness owne
   report that does not match the definition (wrong submission, missing or extra test case, a score above
   the weight, totals that do not add up), makes the submission `FAILED` and nothing is stored.
 - On a deadline the Harness and the processes it started are killed.
+
+## Settings
+
+The settings an administrator can change (FR-14, US-20) are one row of the `settings` table: the
+maximum active submissions, the minimum seconds between submissions, and the maximum submissions per
+assignment. The migration creates the row with the FR-14 values (1, 30, 30), so reading never meets a
+missing row; 0 switches a rule off. `internal/settings.Store` reads it (`Get`) and saves a change
+(`Update`), which validates the bounds and writes a `SETTINGS_CHANGED` audit log row naming the
+administrator and the old and new values in the same transaction. The `GET` and `PUT` endpoints belong
+to the API package.
 
 ## Grading state
 
@@ -101,6 +169,9 @@ runs the Harness and stores the report (SRS 3.3, steps 3 to 8). It is built from
 - At start-up, and every minute after, `RUNNING` submissions that have not changed for the lease (30
   minutes) go back to `QUEUED`, and `QUEUED` submissions the queue does not hold are added to it
   (NFR-04).
+- Before it requeues anything, `Run` calls `Config.Sweep` once. `internal/sandbox.Sweeper` is the
+  implementation: it runs `sandbox-exec --sweep` to remove the empty cgroups and run directories that
+  a crashed run left behind. A sweep that fails is logged and does not stop the pool.
 - On shutdown a job in progress is interrupted and left `RUNNING`, not failed: the next start-up
   requeues it, so a restart does not cost anyone a grade.
 
@@ -124,3 +195,6 @@ export AUTOGRADER_TEST_DATABASE_URL='postgres://USER:PASSWORD@localhost:5432/DAT
 Each test creates its own schema in that database and drops it afterwards, so a scratch database is
 enough; use a user that may create schemas. CI runs PostgreSQL 16, the version Ubuntu 24.04
 packages, and fails instead of skipping when the variable is missing.
+
+The API process uses `DATABASE_URL`, `JWT_SECRET` (at least 32 bytes), and `HTTP_ADDR`; tests use
+`AUTOGRADER_TEST_DATABASE_URL` and apply migrations in isolated schemas.

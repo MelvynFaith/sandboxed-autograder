@@ -25,8 +25,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   migration pair with a test that applies, reverses and checks its constraints, and the `JobQueue`
   interface with its in-process implementation, which serves students round-robin (FR-13). The
   scheduler CI job now starts a PostgreSQL service.
+- Scheduler authentication and sessions (`scheduler/`): Argon2id registration/login, JWT access
+  tokens, hashed and revocable refresh tokens, self-profile and password management, single-use
+  WebSocket tickets, and paginated administrator user management (FR-01, FR-15, FR-19).
+- Scheduler auth review updates (`scheduler/`): audit administrator role changes and denied
+  attempts; bound Argon2id concurrency; serialize refresh rotation/revocation against user
+  credential changes; enforce 200-character display names and equalize unknown-email login work.
 - Grading pipeline (`scheduler/`): the Grading Harness runner, which keeps the assignment definition
   off the command line and checks the report; the grading store, which moves a submission through
   `QUEUED`, `RUNNING` and `COMPLETED` or `FAILED` and writes results and audit rows in one
-  transaction; and the worker pool, with panic recovery, a backstop deadline and reconciliation of
-  lost submissions.
+  transaction; and the worker pool, with panic recovery, a backstop deadline, reconciliation of
+  lost submissions, and a sweep of what dead sandbox runs left behind.
