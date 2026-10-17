@@ -65,6 +65,22 @@ jobs:
     defaults:
       run:
         working-directory: scheduler
+    # PostgreSQL 16 is what Ubuntu 24.04, the deployment target, packages. The password belongs to
+    # a container that lives for this job only.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AUTOGRADER_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
