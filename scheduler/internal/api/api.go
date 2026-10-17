@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/auth"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/courses"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -27,16 +28,17 @@ var (
 
 type API struct {
 	store   *auth.Store
+	courses *courses.Store
 	tokens  *auth.Tokens
 	tickets *auth.TicketStore
 	mux     *http.ServeMux
 }
 
-func NewHandler(store *auth.Store, tokens *auth.Tokens, tickets *auth.TicketStore) *API {
+func NewHandler(store *auth.Store, tokens *auth.Tokens, tickets *auth.TicketStore, courseStore *courses.Store) *API {
 	if tickets == nil {
 		tickets, _ = auth.NewTicketStore(auth.MaxTicketTTL)
 	}
-	api := &API{store: store, tokens: tokens, tickets: tickets, mux: http.NewServeMux()}
+	api := &API{store: store, courses: courseStore, tokens: tokens, tickets: tickets, mux: http.NewServeMux()}
 	api.routes()
 	return api
 }
@@ -54,6 +56,12 @@ func (a *API) routes() {
 	a.mux.HandleFunc("PUT /api/v1/users/me", a.requireAuth(a.updateMe))
 	a.mux.HandleFunc("PUT /api/v1/users/me/password", a.requireAuth(a.changePassword))
 	a.mux.HandleFunc("POST /api/v1/ws-tickets", a.requireAuth(a.createWSTicket))
+	a.mux.HandleFunc("GET /api/v1/courses", a.requireAuth(a.listCourses))
+	a.mux.HandleFunc("POST /api/v1/courses", a.requireAuth(a.createCourse))
+	a.mux.HandleFunc("GET /api/v1/courses/{id}/enrollments", a.requireAuth(a.listEnrollments))
+	a.mux.HandleFunc("POST /api/v1/courses/{id}/enrollments", a.requireAuth(a.createEnrollment))
+	a.mux.HandleFunc("DELETE /api/v1/courses/{id}/enrollments/{user_id}", a.requireAuth(a.deleteEnrollment))
+	a.mux.HandleFunc("GET /api/v1/courses/{id}/assignments", a.requireAuth(a.listCourseAssignments))
 	a.mux.HandleFunc("GET /api/v1/admin/users", a.requireAdmin(a.listUsers))
 	a.mux.HandleFunc("PUT /api/v1/admin/users/{id}/role", a.requireAuth(a.updateRole))
 	a.mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, _ *http.Request) {

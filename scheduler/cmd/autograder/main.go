@@ -12,6 +12,7 @@ import (
 
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/api"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/auth"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/courses"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -50,7 +51,7 @@ func run() error {
 
 	server := &http.Server{
 		Addr:              address,
-		Handler:           api.NewHandler(auth.NewStore(pool), tokens, ticketStore),
+		Handler:           api.NewHandler(auth.NewStore(pool), tokens, ticketStore, courses.NewStore(pool)),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
