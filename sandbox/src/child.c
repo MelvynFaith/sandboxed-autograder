@@ -363,6 +363,7 @@ void child_main(struct run *r)
 	static char *const envp[] = { e_path, e_home, e_hash, e_lang, e_tz, NULL };
 	struct msg m = { 0 };
 	sigset_t none;
+	bool traced = false;
 	int nfd = -1;
 
 	close(r->sock[0]);
@@ -396,13 +397,15 @@ void child_main(struct run *r)
 
 	drop_privileges(r);
 
-	if (filter_install(&nfd))
+	if (filter_install(&nfd, &traced))
 		die(r, "%s", sbx_error());
 	/*
 	 * execve() closes the listener, so the supervisor has to copy it first
-	 * (pidfd_getfd) and acknowledge. Only recv/send are used from here on.
+	 * (pidfd_getfd) and acknowledge. In trace mode there is no listener: the
+	 * supervisor attaches as the tracer instead, and must do so before the
+	 * program runs. Only recv/send are used from here on.
 	 */
-	m = (struct msg){ .type = MSG_NOTIFY_FD, .value = nfd };
+	m = (struct msg){ .type = traced ? MSG_TRACE_READY : MSG_NOTIFY_FD, .value = nfd };
 	if (send(r->sock[1], &m, sizeof(m), MSG_NOSIGNAL) != (ssize_t)sizeof(m) ||
 	    recv(r->sock[1], &m, sizeof(m), 0) != (ssize_t)sizeof(m) || m.type != MSG_ACK)
 		_exit(SBX_EXIT_INTERNAL);

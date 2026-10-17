@@ -5,6 +5,7 @@
 #   make          build ./sandbox-exec
 #   make test     adversarial suite (Linux, cgroup v2, user namespaces)
 #   make asan     rebuild with AddressSanitizer + UBSan and run the suite
+#   make trace    rebuild forcing the ptrace fallback for denied syscalls, and run the suite
 #   make tidy     clang-tidy
 #   make install  binary and man page under $(DESTDIR)$(PREFIX)
 #   make clean
@@ -34,7 +35,7 @@ endif
 SRCS := $(wildcard src/*.c)
 OBJS := $(SRCS:src/%.c=$(BUILD_DIR)/%.o)
 
-.PHONY: all test asan tidy install clean
+.PHONY: all test asan trace tidy install clean
 all: $(BIN)
 
 $(BIN): $(OBJS)
@@ -52,6 +53,11 @@ test: $(BIN)
 asan:
 	$(MAKE) SANITIZE=1 BUILD_DIR=$(BUILD_DIR)/asan BIN=$(BIN)-asan
 	bash tests/run.sh $(abspath $(BIN)-asan)
+
+# What runs on a kernel without seccomp user notification (SRS risk R12); see filter_install().
+trace:
+	$(MAKE) CFLAGS=-DSBX_FORCE_TRACE BUILD_DIR=$(BUILD_DIR)/trace BIN=$(BIN)-trace
+	bash tests/run.sh $(abspath $(BIN)-trace)
 
 tidy:
 	clang-tidy $(SRCS) -- -std=gnu11 -D_GNU_SOURCE $(SECCOMP_CFLAGS)

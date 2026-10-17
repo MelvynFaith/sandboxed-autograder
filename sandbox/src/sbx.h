@@ -162,7 +162,8 @@ struct run {
 	int sock[2];		/* setup channel: [0] supervisor, [1] child */
 	pid_t pid;
 	int pidfd;
-	int notify_fd;		/* seccomp listener */
+	int notify_fd;		/* seccomp listener; -1 in trace mode */
+	bool traced;		/* fallback: denied syscalls are ptrace stops, not notifications */
 	const unsigned char *input;
 	size_t input_len;
 };
@@ -176,7 +177,8 @@ enum msg_type {
 	MSG_GO = 1,	/* supervisor: id maps written, child is in its cgroup */
 	MSG_ERR,	/* child: setup or execve failed, text says why */
 	MSG_NOTIFY_FD,	/* child: seccomp listener fd number in value */
-	MSG_ACK,	/* supervisor: listener fd duplicated, execve() may proceed */
+	MSG_ACK,	/* supervisor: listener copied or tracer attached, execve() may proceed */
+	MSG_TRACE_READY,/* child: filter traces, attach as tracer before execve() */
 };
 
 struct msg {
@@ -191,8 +193,12 @@ void result_free(struct result *res);
 
 /* Never returns; failures are sent as MSG_ERR and end in _exit(SBX_EXIT_INTERNAL). */
 void child_main(struct run *r) __noreturn;
-/* Installs the seccomp allowlist; *notify_fd receives the listener (CLOEXEC). */
-int filter_install(int *notify_fd);
+/*
+ * Installs the seccomp allowlist. Normally *notify_fd receives the listener
+ * (CLOEXEC); if the kernel or libseccomp cannot notify, the filter traces
+ * instead and *traced is true.
+ */
+int filter_install(int *notify_fd, bool *traced);
 
 void supervisor_signals(void);
 /* Watchdog loop. Returns once the child is reaped; -1 on internal error. */
