@@ -574,7 +574,10 @@ class ResultChannel(unittest.TestCase):
                         leaked.append(pid)
                 except OSError:
                     pass
-            p.communicate()
+            # Not communicate(): it flushes the closed stdin and raises on Python 3.12.3.
+            p.stdout.read()
+            p.stdout.close()
+            p.wait()
         self.assertEqual(leaked, [], "test input must travel on stdin, never in argv")
 
 
