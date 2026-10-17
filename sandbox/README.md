@@ -52,7 +52,8 @@ Code follows the Linux kernel coding style (tabs, 100 columns); `.clang-format` 
 - seccomp user notification (kernel ≥ 5.0, libseccomp ≥ 2.5), `clone3` (5.3), `pidfd_getfd` (5.6),
   `close_range` (5.9).
 - Unprivileged user namespaces. On Ubuntu 24.04+ set `kernel.apparmor_restrict_unprivileged_userns=0`
-  or ship an AppArmor profile for `sandbox-exec` (SRS risk R9); otherwise `mount` fails with `EPERM`.
+  or install the AppArmor profile in `infra/apparmor/` (SRS risk R9); otherwise `mount` fails with
+  `EPERM`.
 - Tested with Yama `ptrace_scope=1` (the supervisor is the child's ancestor, which `pidfd_getfd`
   needs). Stricter values were not tested.
 
@@ -61,7 +62,8 @@ Code follows the Linux kernel coding style (tabs, 100 columns); `.clang-format` 
 `--cgroup-root` must be a cgroup the service user owns, with `memory`, `pids` and `cpu` enabled in
 `cgroup.subtree_control` and **no processes of its own** (cgroup v2 "no internal process" rule).
 `sandbox-exec` itself must run below the same delegated cgroup, because moving the child needs write
-access to `cgroup.procs` of the common ancestor. For a systemd unit:
+access to `cgroup.procs` of the common ancestor. For a systemd unit (the full unit is
+`infra/systemd/autograder.service`):
 
 ```ini
 [Service]
