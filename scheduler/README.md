@@ -4,8 +4,8 @@ A Go service that exposes the REST and WebSocket API, queues grading jobs, runs 
 persists results. It is **the only component that writes to PostgreSQL.**
 
 **Owner:** Evan William
-**Status:** foundation only. The schema migrations and the `JobQueue` interface exist; the queue
-implementation, worker pool and HTTP API do not.
+**Status:** foundation only. The schema migrations and the in-process `JobQueue` exist; the worker
+pool and HTTP API do not.
 
 ## Responsibilities
 
@@ -24,7 +24,8 @@ implementation, worker pool and HTTP API do not.
 ```
 go.mod
 migrations/        schema, one NNNNNN_name.up.sql / .down.sql pair per change, embedded as migrations.FS
-internal/queue/    the JobQueue interface between the HTTP handlers and the worker pool
+internal/queue/    the JobQueue interface between the HTTP handlers and the worker pool, and Memory,
+                   its in-process implementation (round-robin per student, FIFO within a student)
 ```
 
 Code that accepts requests (an `internal/api` package, not written yet) and code that grades
