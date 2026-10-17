@@ -4,8 +4,9 @@ A Go service that exposes the REST and WebSocket API, queues grading jobs, runs 
 persists results. It is **the only component that writes to PostgreSQL.**
 
 **Owner:** Evan William
-**Status:** foundation only. The schema migrations and the in-process `JobQueue` exist; the worker
-pool and HTTP API do not.
+**Status:** the grading pipeline exists without its front end. The schema, the in-process queue, the
+Harness runner, the grading store and the worker pool are written and tested. The HTTP API, the
+WebSocket and the program entry point are not.
 
 ## Responsibilities
 
@@ -26,11 +27,15 @@ go.mod
 migrations/        schema, one NNNNNN_name.up.sql / .down.sql pair per change, embedded as migrations.FS
 internal/queue/    the JobQueue interface between the HTTP handlers and the worker pool, and Memory,
                    its in-process implementation (round-robin per student, FIFO within a student)
+internal/harness/  starts the Grading Harness for one submission and checks its report
+internal/store/    the database side of grading: claim, complete, fail, reconcile
+internal/worker/   the worker pool that joins the queue, the store and the Harness
+internal/testdb/   a migrated schema of its own for each database test
 ```
 
 Code that accepts requests (an `internal/api` package, not written yet) and code that grades
-(`internal/queue` and the worker) stay in separate packages. They meet at `JobQueue`: a handler stores the submission as `QUEUED` and calls
-`Enqueue`; a worker calls `Dequeue`.
+(`internal/queue` and the worker) stay in separate packages. They meet at `JobQueue`: a handler
+stores the submission as `QUEUED` and calls `Enqueue`; a worker calls `Dequeue`.
 
 ## Migrations
 
@@ -82,6 +87,22 @@ lock per student and assignment until the transaction ends, so two simultaneous 
 a limit of one. The counts come from the database, not memory, so they survive a restart. The thresholds
 are admin-configurable (FR-14) but the SRS has no entity to store them, so for now the caller passes a
 `Limits` value.
+
+## Worker pool
+
+`internal/worker.Pool` runs `Workers` goroutines, each of which dequeues a job, claims the submission,
+runs the Harness and stores the report (SRS 3.3, steps 3 to 8). It is built from three interfaces
+(`queue.JobQueue`, `worker.Store`, `worker.Grader`), so it is tested with fakes.
+
+- A job runs under `recover()`. A panic, a failed Harness or an invalid report marks that submission
+  `FAILED`, and the worker takes the next job.
+- A job has a backstop deadline computed from its definition: each test case may use its `timeout_s`
+  plus a small overhead, plus a margin, and never more than half the lease.
+- At start-up, and every minute after, `RUNNING` submissions that have not changed for the lease (30
+  minutes) go back to `QUEUED`, and `QUEUED` submissions the queue does not hold are added to it
+  (NFR-04).
+- On shutdown a job in progress is interrupted and left `RUNNING`, not failed: the next start-up
+  requeues it, so a restart does not cost anyone a grade.
 
 ## Build and test
 
