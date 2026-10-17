@@ -79,6 +79,11 @@ type Config struct {
 	// DefaultMargin.
 	Margin time.Duration
 
+	// Sweep removes what dead sandbox runs left behind (empty cgroups, run directories). Run calls it
+	// once, before it requeues anything, when no sandbox of this process can be alive. A failure is
+	// logged and does not stop the pool. Nil means no sweep; sandbox.Sweeper.Sweep fits.
+	Sweep func(ctx context.Context) error
+
 	// Logger receives one line per job. Nil means slog.Default().
 	Logger *slog.Logger
 }
@@ -123,6 +128,13 @@ func New(cfg Config, q queue.JobQueue, s Store, g Grader) (*Pool, error) {
 // every worker has stopped. The error is non-nil only if the start-up reconciliation fails: a pool that
 // cannot read the database should not start.
 func (p *Pool) Run(ctx context.Context) error {
+	if p.cfg.Sweep != nil {
+		if err := p.cfg.Sweep(ctx); err != nil {
+			p.log.Error("sweep of dead sandbox runs failed; continuing", "err", err)
+		} else {
+			p.log.Info("swept leftovers of dead sandbox runs")
+		}
+	}
 	// Nothing is running yet, so every RUNNING submission belongs to a previous process.
 	if err := p.reconcile(ctx, 0); err != nil {
 		return fmt.Errorf("worker: reconcile at start-up: %w", err)

@@ -142,6 +142,12 @@ the `QUEUED` ones, which is how the in-memory queue is rebuilt after a restart. 
 conditional `UPDATE`, so a cancel, a requeue and a worker cannot push a submission into a state the
 diagram in SRS 3.3 does not allow.
 
+A submission that is lost mid-grading, because the scheduler died while it ran, is requeued by
+`Reconcile`. `Claim` counts each start in `submissions.attempts`; `Complete` and `Fail` clear the count.
+Once a lost submission has been started `Pipeline.MaxAttempts` times (3 by default) `Reconcile` marks it
+`FAILED` and logs it instead, so a submission that crashes the scheduler every time cannot loop across
+restarts. A regrade starts with a clean count.
+
 ## Rate limits
 
 `internal/ratelimit.Limits.Check` enforces FR-14 per student and assignment: at most `MaxActive` (1)
@@ -169,6 +175,9 @@ runs the Harness and stores the report (SRS 3.3, steps 3 to 8). It is built from
 - At start-up, and every minute after, `RUNNING` submissions that have not changed for the lease (30
   minutes) go back to `QUEUED`, and `QUEUED` submissions the queue does not hold are added to it
   (NFR-04).
+- Before it requeues anything, `Run` calls `Config.Sweep` once. `internal/sandbox.Sweeper` is the
+  implementation: it runs `sandbox-exec --sweep` to remove the empty cgroups and run directories that
+  a crashed run left behind. A sweep that fails is logged and does not stop the pool.
 - On shutdown a job in progress is interrupted and left `RUNNING`, not failed: the next start-up
   requeues it, so a restart does not cost anyone a grade.
 
