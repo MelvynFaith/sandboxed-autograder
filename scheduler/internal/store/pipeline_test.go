@@ -429,3 +429,102 @@ func TestReconcile(t *testing.T) {
 		t.Fatalf("jobs = %v, want %v", ids(jobs), want)
 	}
 }
+
+func (e *env) attempts(t *testing.T, id int64) int {
+	t.Helper()
+	return e.count(t, `SELECT attempts FROM submissions WHERE id = $1`, id)
+}
+
+func TestAttemptsAreCountedByClaimAndClearedByCompleteAndFail(t *testing.T) {
+	e := setup(t)
+	id, c := e.claimed(t)
+	if got := e.attempts(t, id); got != 1 {
+		t.Fatalf("attempts after Claim = %d, want 1", got)
+	}
+	if err := e.p.Complete(context.Background(), c, report(c, harness.StatusPassed, harness.StatusPassed)); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.attempts(t, id); got != 0 {
+		t.Errorf("attempts after Complete = %d, want 0", got)
+	}
+
+	id, _ = e.claimed(t)
+	if err := e.p.Fail(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.attempts(t, id); got != 0 {
+		t.Errorf("attempts after Fail = %d, want 0", got)
+	}
+}
+
+// A submission that crashes the scheduler on every grading: it is claimed, the process dies, and
+// start-up reconciliation runs. After MaxAttempts claims it must be given up on, not requeued again.
+func TestReconcileGivesUpOnASubmissionThatKeepsBeingLost(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	id := e.submission(t, "QUEUED", time.Now())
+
+	for attempt := 1; attempt <= store.DefaultMaxAttempts; attempt++ {
+		if _, err := e.p.Claim(ctx, id); err != nil {
+			t.Fatalf("Claim %d: %v", attempt, err)
+		}
+		jobs, err := e.p.Reconcile(ctx, 0) // the scheduler restarted
+		if err != nil {
+			t.Fatalf("Reconcile %d: %v", attempt, err)
+		}
+		if attempt < store.DefaultMaxAttempts {
+			if len(jobs) != 1 || jobs[0].SubmissionID != id || e.status(t, id) != "QUEUED" {
+				t.Fatalf("after attempt %d: jobs = %v, status %s; want it requeued", attempt, jobs, e.status(t, id))
+			}
+		}
+	}
+	if got := e.status(t, id); got != "FAILED" {
+		t.Fatalf("status after %d lost attempts = %s, want FAILED", store.DefaultMaxAttempts, got)
+	}
+	if got := e.attempts(t, id); got != 0 {
+		t.Errorf("attempts = %d, want 0 so that a regrade starts clean", got)
+	}
+	if jobs, _ := e.p.Reconcile(ctx, 0); len(jobs) != 0 {
+		t.Errorf("the failed submission was listed again: %v", jobs)
+	}
+}
+
+func TestMaxAttemptsIsConfigurable(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	stale := func(attempts int) int64 {
+		id := e.submission(t, "RUNNING", time.Now())
+		e.exec(t, `UPDATE submissions SET attempts = $2 WHERE id = $1`, id, attempts)
+		return id
+	}
+
+	e.p.MaxAttempts = 5
+	four, five := stale(4), stale(5)
+	if _, err := e.p.Reconcile(ctx, 0); err != nil {
+		t.Fatal(err)
+	}
+	if e.status(t, four) != "QUEUED" || e.status(t, five) != "FAILED" {
+		t.Errorf("with a limit of 5: attempts 4 is %s, attempts 5 is %s; want QUEUED and FAILED", e.status(t, four), e.status(t, five))
+	}
+
+	e.p.MaxAttempts = -1 // no limit
+	many := stale(1000)
+	if _, err := e.p.Reconcile(ctx, 0); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.status(t, many); got != "QUEUED" {
+		t.Errorf("with no limit, 1000 attempts is %s, want QUEUED", got)
+	}
+}
+
+func TestFreshRunningSubmissionIsNotGivenUpOnBeforeItIsStale(t *testing.T) {
+	e := setup(t)
+	id := e.submission(t, "RUNNING", time.Now())
+	e.exec(t, `UPDATE submissions SET attempts = 9 WHERE id = $1`, id)
+	if _, err := e.p.Reconcile(context.Background(), time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.status(t, id); got != "RUNNING" {
+		t.Fatalf("status = %s, want RUNNING: it is not stale yet", got)
+	}
+}
