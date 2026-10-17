@@ -8,6 +8,10 @@
  * SCMP_ACT_TRAP does not work for this: SIGSYS is delivered to the offending
  * process, not to the supervisor, and execve() resets the handler.
  *
+ * Where notification is not available the default action is SCMP_ACT_TRACE
+ * and the supervisor is a ptrace tracer instead (filter_install(), SRS risk
+ * R12). The allowlist is the same.
+ *
  * The list is what CPython 3.11+ and its standard library need with no
  * network, mount, ptrace, namespace or credential changes. Extending it is a
  * security-sensitive change: say in the review what the syscall exposes.
@@ -17,6 +21,7 @@
 #include <fcntl.h>
 #include <sched.h>
 #include <seccomp.h>
+#include <string.h>
 #include <sys/ioctl.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
@@ -84,8 +89,12 @@ static const char *const enosys[] = {
 	"openat2",
 };
 
+/*
+ * Flags a clone() may not carry: a new namespace, and CLONE_UNTRACED, which would make the child
+ * invisible to a ptrace-based supervisor (the fallback in filter_install()).
+ */
 #define NS_MASK	(CLONE_NEWNS | CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWIPC | \
-		 CLONE_NEWUTS | CLONE_NEWCGROUP | CLONE_NEWTIME)
+		 CLONE_NEWUTS | CLONE_NEWCGROUP | CLONE_NEWTIME | CLONE_UNTRACED)
 
 /* Allowed only with the given argument; one entry per permitted value. */
 static const struct {
@@ -135,48 +144,91 @@ static int add_rule(scmp_filter_ctx ctx, uint32_t action, const char *name,
 	return 0;
 }
 
-int filter_install(int *notify_fd)
+/*
+ * Builds the allowlist with the given default action for everything else. Returns NULL without a
+ * message when libseccomp does not know the action, and NULL with one when a rule cannot be added.
+ */
+static scmp_filter_ctx build(uint32_t deflt)
 {
-	scmp_filter_ctx ctx = seccomp_init(SCMP_ACT_NOTIFY);
+	scmp_filter_ctx ctx = seccomp_init(deflt);
 	size_t i;
-	int fd, ret = -1;
 
 	if (!ctx)
-		return sbx_fail("seccomp_init failed");
+		return NULL;
 	/* Binary-tree layout: cheapest to build, and to evaluate without the syscall bitmap. */
 	if (seccomp_attr_set(ctx, SCMP_FLTATR_CTL_OPTIMIZE, 2)) {
 		sbx_fail("seccomp_attr_set failed");
-		goto out;
+		goto fail;
 	}
 
 	for (i = 0; i < ARRAY_SIZE(allowed); i++)
 		if (add_rule(ctx, SCMP_ACT_ALLOW, allowed[i], NULL))
-			goto out;
+			goto fail;
 	for (i = 0; i < ARRAY_SIZE(enosys); i++)
 		if (add_rule(ctx, SCMP_ACT_ERRNO(ENOSYS), enosys[i], NULL))
-			goto out;
+			goto fail;
 	for (i = 0; i < ARRAY_SIZE(arg_rules); i++) {
 		struct scmp_arg_cmp cmp = SCMP_CMP(arg_rules[i].arg, arg_rules[i].op,
 						   arg_rules[i].a, arg_rules[i].b);
 
 		if (add_rule(ctx, SCMP_ACT_ALLOW, arg_rules[i].name, &cmp))
-			goto out;
+			goto fail;
 	}
-
-	/* seccomp(SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_NEW_LISTENER); sets no_new_privs. */
-	if (seccomp_load(ctx)) {
-		sbx_fail("seccomp_load failed (no user notification support?)");
-		goto out;
-	}
-	/* The context owns its fd and closes it on release: keep a CLOEXEC copy. */
-	fd = fcntl(seccomp_notify_fd(ctx), F_DUPFD_CLOEXEC, 3);
-	if (fd < 0) {
-		sbx_fail("seccomp listener: %m");
-		goto out;
-	}
-	*notify_fd = fd;
-	ret = 0;
-out:
+	return ctx;
+fail:
 	seccomp_release(ctx);
-	return ret;
+	return NULL;
+}
+
+/*
+ * Installs the filter. The preferred default action is SCMP_ACT_NOTIFY;
+ * *notify_fd receives the listener and *traced is false.
+ *
+ * When the kernel or libseccomp cannot do user notification (SRS risk R12)
+ * the default action is SCMP_ACT_TRACE(0) instead, *notify_fd is -1 and
+ * *traced is true: the supervisor must PTRACE_SEIZE the process before it
+ * runs the program, and then sees each denied syscall as a
+ * PTRACE_EVENT_SECCOMP stop. Without a tracer the kernel fails a traced
+ * syscall with ENOSYS, so the filter still refuses.
+ *
+ * Building with -DSBX_FORCE_TRACE always takes the fallback, which is how
+ * the suite exercises it.
+ */
+int filter_install(int *notify_fd, bool *traced)
+{
+	scmp_filter_ctx ctx;
+	int rc;
+
+#ifndef SBX_FORCE_TRACE
+	ctx = build(SCMP_ACT_NOTIFY);
+	if (!ctx && sbx_error()[0])
+		return -1;
+	if (ctx) {
+		int fd;
+
+		/* seccomp(SET_MODE_FILTER, FLAG_NEW_LISTENER); sets no_new_privs. */
+		if (!seccomp_load(ctx)) {
+			/* The context owns its fd and closes it on release: keep a CLOEXEC copy. */
+			fd = fcntl(seccomp_notify_fd(ctx), F_DUPFD_CLOEXEC, 3);
+			seccomp_release(ctx);
+			if (fd < 0)
+				return sbx_fail("seccomp listener: %m");
+			*notify_fd = fd;
+			*traced = false;
+			return 0;
+		}
+		seccomp_release(ctx);
+	}
+#endif
+
+	ctx = build(SCMP_ACT_TRACE(0));
+	if (!ctx)
+		return sbx_error()[0] ? -1 : sbx_fail("seccomp_init failed");
+	rc = seccomp_load(ctx);
+	seccomp_release(ctx);
+	if (rc)
+		return sbx_fail("seccomp_load failed: %s", strerror(-rc));
+	*notify_fd = -1;
+	*traced = true;
+	return 0;
 }
