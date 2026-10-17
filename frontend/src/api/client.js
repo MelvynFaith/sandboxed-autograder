@@ -9,7 +9,7 @@ function invalidateStoredSession() {
   window.dispatchEvent(new Event(AUTH_SESSION_INVALIDATED))
 }
 
-export async function throwApiError(response, fallbackMessage) {
+export async function throwApiError(response, fallbackMessage, statusMessages = {}) {
   let payload
   try {
     payload = await response.json()
@@ -27,6 +27,13 @@ export async function throwApiError(response, fallbackMessage) {
     apiError.message.trim()
   ) {
     throw new Error(apiError.message)
+  }
+
+  const statusMessage = statusMessages[response.status]
+  if (statusMessage) {
+    throw new Error(
+      typeof statusMessage === 'function' ? statusMessage(response) : statusMessage,
+    )
   }
 
   if (response.status === 429) {

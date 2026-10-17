@@ -58,7 +58,7 @@ function AssignmentsPage() {
       setFiles((current) => ({ ...current, [assignmentId]: null }))
       setMessages((current) => ({
         ...current,
-        [assignmentId]: { type: 'error', text: 'Pilih berkas dengan ekstensi .py.' },
+        [assignmentId]: { type: 'failure', text: 'Pilih berkas dengan ekstensi .py.' },
       }))
       return
     }
@@ -67,7 +67,7 @@ function AssignmentsPage() {
       setFiles((current) => ({ ...current, [assignmentId]: null }))
       setMessages((current) => ({
         ...current,
-        [assignmentId]: { type: 'error', text: 'Ukuran berkas maksimal 256 KiB.' },
+        [assignmentId]: { type: 'failure', text: 'Ukuran berkas maksimal 256 KB.' },
       }))
       return
     }
@@ -83,7 +83,7 @@ function AssignmentsPage() {
     if (!file) {
       setMessages((current) => ({
         ...current,
-        [assignment.id]: { type: 'error', text: 'Pilih berkas Python sebelum mengunggah.' },
+        [assignment.id]: { type: 'failure', text: 'Pilih berkas Python sebelum mengunggah.' },
       }))
       return
     }
@@ -109,7 +109,7 @@ function AssignmentsPage() {
     } catch (error) {
       setMessages((current) => ({
         ...current,
-        [assignment.id]: { type: 'error', text: error.message },
+        [assignment.id]: { type: 'failure', text: error.message },
       }))
     } finally {
       setSubmittingId(null)
@@ -160,7 +160,7 @@ function AssignmentsPage() {
                     }
                     type="file"
                   />
-                  <p className="mt-1 text-sm text-slate-600">Berkas .py, maksimal 256 KiB.</p>
+                  <p className="mt-1 text-sm text-slate-600">Berkas .py, maksimal 256 KB.</p>
                 </div>
                 {messages[assignment.id] && (
                   <p

@@ -57,7 +57,7 @@ describe('subscribeToSubmissionStatus', () => {
       data: JSON.stringify({ status: 'RUNNING', current_test: 1, total_tests: 2 }),
     })
     expect(onStatus).toHaveBeenCalledWith({
-      status: 'running',
+      status: 'RUNNING',
       current_test: 1,
       total_tests: 2,
     })
@@ -96,7 +96,7 @@ describe('subscribeToSubmissionStatus', () => {
     )
     await vi.waitFor(() => {
       expect(onStatus).toHaveBeenCalledWith({
-        status: 'running',
+        status: 'RUNNING',
         current_test: 1,
         total_tests: 3,
       })
@@ -126,7 +126,7 @@ describe('subscribeToSubmissionStatus', () => {
 
     await vi.waitFor(() => {
       expect(onStatus).toHaveBeenCalledWith({
-        status: 'completed',
+        status: 'COMPLETED',
         current_test: 3,
         total_tests: 3,
       })
@@ -153,12 +153,38 @@ describe('subscribeToSubmissionStatus', () => {
     })
 
     expect(onStatus).toHaveBeenCalledWith({
-      status: 'failed',
+      status: 'FAILED',
       current_test: 1,
       total_tests: 2,
     })
     cleanup()
   })
+
+  it.each(['ERROR', 'TIMEOUT'])(
+    'rejects %s because it is not a Submission status',
+    async (status) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ ticket: 'ticket' }),
+      }))
+      const onError = vi.fn()
+      const cleanup = subscribeToSubmissionStatus('submission-1', {
+        onStatus: vi.fn(),
+        onFallback: vi.fn(),
+        onError,
+      })
+
+      await vi.waitFor(() => expect(sockets).toHaveLength(1))
+      sockets[0].onmessage({
+        data: JSON.stringify({ status, current_test: 1, total_tests: 2 }),
+      })
+
+      expect(onError).toHaveBeenCalledWith(
+        'Pesan status submission tidak sesuai format yang diharapkan.',
+      )
+      cleanup()
+    },
+  )
 
   it('simulates queued, running, and completed statuses in mock mode', () => {
     vi.stubEnv('VITE_USE_MOCK', 'true')
@@ -171,19 +197,19 @@ describe('subscribeToSubmissionStatus', () => {
     })
 
     expect(onStatus).toHaveBeenNthCalledWith(1, {
-      status: 'queued',
+      status: 'QUEUED',
       current_test: 0,
       total_tests: 3,
     })
     vi.advanceTimersByTime(1800)
     expect(onStatus).toHaveBeenCalledWith({
-      status: 'running',
+      status: 'RUNNING',
       current_test: 2,
       total_tests: 3,
     })
     vi.advanceTimersByTime(600)
     expect(onStatus).toHaveBeenLastCalledWith({
-      status: 'completed',
+      status: 'COMPLETED',
       current_test: 3,
       total_tests: 3,
     })

@@ -25,7 +25,7 @@ function isIdentifier(value) {
   return typeof value === 'string' || typeof value === 'number'
 }
 
-function readHistoryResponse(payload) {
+function readHistoryResponse(payload, requestedPage, requestedPageSize) {
   const submissions = Array.isArray(payload) ? payload : payload?.items
   if (
     !Array.isArray(submissions) ||
@@ -47,26 +47,44 @@ function readHistoryResponse(payload) {
     throw new Error('Respons riwayat submission tidak sesuai format yang diharapkan.')
   }
 
-  return submissions.map((submission) => ({
-    id: String(submission.id),
-    assignmentId: String(submission.assignment_id),
-    assignmentTitle: submission.assignment_title,
-    status: submission.status.toLowerCase(),
-    totalScore: submission.total_score,
-    isLate: submission.is_late,
-    submittedAt: submission.submitted_at,
-  }))
+  const page = Number.isInteger(payload?.page) && payload.page > 0
+    ? payload.page
+    : requestedPage
+  const pageSize = Number.isInteger(payload?.page_size) && payload.page_size > 0
+    ? payload.page_size
+    : requestedPageSize
+
+  return {
+    items: submissions.map((submission) => ({
+      id: String(submission.id),
+      assignmentId: String(submission.assignment_id),
+      assignmentTitle: submission.assignment_title,
+      status: submission.status,
+      totalScore: submission.total_score,
+      isLate: submission.is_late,
+      submittedAt: submission.submitted_at,
+    })),
+    page,
+    pageSize,
+    hasNextPage: typeof payload?.has_next === 'boolean'
+      ? payload.has_next
+      : submissions.length >= pageSize,
+  }
 }
 
-export async function getSubmissionHistory() {
-  if (import.meta.env.VITE_USE_MOCK === 'true') {
-    return readHistoryResponse(mockSubmissionHistory)
+export async function getSubmissionHistory({ page = 1, pageSize = 50 } = {}) {
+  if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
+    throw new Error('Nomor halaman dan ukuran halaman harus bilangan bulat positif.')
   }
 
-  const response = await apiRequest('/submissions?page=1&page_size=50')
+  if (import.meta.env.VITE_USE_MOCK === 'true') {
+    return readHistoryResponse(mockSubmissionHistory, page, pageSize)
+  }
+
+  const response = await apiRequest(`/submissions?page=${page}&page_size=${pageSize}`)
   if (!response.ok) {
     await throwApiError(response, `Gagal memuat riwayat submission (${response.status}).`)
   }
 
-  return readHistoryResponse(await response.json())
+  return readHistoryResponse(await response.json(), page, pageSize)
 }

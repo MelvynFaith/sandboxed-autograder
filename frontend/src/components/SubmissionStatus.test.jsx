@@ -9,11 +9,11 @@ vi.mock('../api/submissionStatus.js', () => ({
 }))
 
 const statuses = [
-  ['queued', 'Antre'],
-  ['running', 'Sedang berjalan'],
-  ['completed', 'Selesai'],
-  ['failed', 'Gagal'],
-  ['cancelled', 'Dibatalkan'],
+  ['QUEUED', 'Antre'],
+  ['RUNNING', 'Sedang berjalan'],
+  ['COMPLETED', 'Selesai'],
+  ['FAILED', 'Pipeline gagal'],
+  ['CANCELLED', 'Dibatalkan'],
 ]
 
 let handlers
@@ -22,7 +22,7 @@ beforeEach(() => {
   handlers = null
   subscribeToSubmissionStatus.mockImplementation((_id, callbacks) => {
     handlers = callbacks
-    callbacks.onStatus({ status: 'queued', current_test: 0, total_tests: 3 })
+    callbacks.onStatus({ status: 'QUEUED', current_test: 0, total_tests: 3 })
     return vi.fn()
   })
 })
@@ -44,7 +44,7 @@ describe('SubmissionStatus', () => {
   it('shows test progress', () => {
     render(<SubmissionStatus submissionId="submission-1" />)
 
-    act(() => handlers.onStatus({ status: 'running', current_test: 2, total_tests: 4 }))
+    act(() => handlers.onStatus({ status: 'RUNNING', current_test: 2, total_tests: 4 }))
 
     expect(screen.getByText('Test 2 dari 4')).toBeInTheDocument()
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '2')

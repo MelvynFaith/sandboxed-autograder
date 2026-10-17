@@ -1,11 +1,10 @@
 import { apiRequest, throwApiError } from './client.js'
 
-const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+const TERMINAL_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELLED'])
 const VALID_STATUSES = new Set(['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'])
 const POLL_INTERVAL_MS = 3000
 
 function readStatusMessage(payload) {
-  const status = payload?.status?.toLowerCase?.()
   if (
     !payload ||
     typeof payload !== 'object' ||
@@ -20,7 +19,7 @@ function readStatusMessage(payload) {
   }
 
   return {
-    status,
+    status: payload.status,
     current_test: payload.current_test,
     total_tests: payload.total_tests,
   }
@@ -70,10 +69,10 @@ function createWebSocketUrl(submissionId, ticket) {
 
 function startMockStatus(onStatus) {
   const updates = [
-    { status: 'queued', current_test: 0, total_tests: 3 },
-    { status: 'running', current_test: 1, total_tests: 3 },
-    { status: 'running', current_test: 2, total_tests: 3 },
-    { status: 'completed', current_test: 3, total_tests: 3 },
+    { status: 'QUEUED', current_test: 0, total_tests: 3 },
+    { status: 'RUNNING', current_test: 1, total_tests: 3 },
+    { status: 'RUNNING', current_test: 2, total_tests: 3 },
+    { status: 'COMPLETED', current_test: 3, total_tests: 3 },
   ]
   let index = 0
 

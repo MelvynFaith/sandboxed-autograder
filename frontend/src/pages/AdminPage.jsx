@@ -10,6 +10,10 @@ const roleLabels = {
 function AdminPage() {
   const [users, setUsers] = useState([])
   const [auditLogs, setAuditLogs] = useState([])
+  const [usersPage, setUsersPage] = useState(1)
+  const [auditLogsPage, setAuditLogsPage] = useState(1)
+  const [usersHasNextPage, setUsersHasNextPage] = useState(false)
+  const [auditLogsHasNextPage, setAuditLogsHasNextPage] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [actionError, setActionError] = useState('')
@@ -18,7 +22,12 @@ function AdminPage() {
   useEffect(() => {
     let active = true
     async function loadData() {
-      const results = await Promise.allSettled([getAdminUsers(), getAdminAuditLogs()])
+      setIsLoading(true)
+      setLoadError('')
+      const results = await Promise.allSettled([
+        getAdminUsers(usersPage, 50),
+        getAdminAuditLogs(auditLogsPage, 50),
+      ])
       if (!active) {
         return
       }
@@ -26,8 +35,11 @@ function AdminPage() {
       if (errors.length) {
         setLoadError(errors.map((result) => result.reason.message).join(' '))
       } else {
-        setUsers(results[0].value.items)
-        setAuditLogs(results[1].value.items)
+        const [usersResult, auditLogsResult] = results.map((result) => result.value)
+        setUsers(usersResult.items)
+        setAuditLogs(auditLogsResult.items)
+        setUsersHasNextPage(usersResult.hasNextPage)
+        setAuditLogsHasNextPage(auditLogsResult.hasNextPage)
       }
       setIsLoading(false)
     }
@@ -35,7 +47,7 @@ function AdminPage() {
     return () => {
       active = false
     }
-  }, [])
+  }, [usersPage, auditLogsPage])
 
   async function handleRoleChange(user, role) {
     setActionError('')
@@ -108,6 +120,25 @@ function AdminPage() {
                 </table>
               </div>
             )}
+            <nav aria-label="Paginasi pengguna" className="flex items-center gap-3">
+              <button
+                className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50"
+                disabled={usersPage === 1 || isLoading}
+                onClick={() => setUsersPage((current) => Math.max(1, current - 1))}
+                type="button"
+              >
+                Pengguna sebelumnya
+              </button>
+              <span aria-current="page">Halaman pengguna {usersPage}</span>
+              <button
+                className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50"
+                disabled={!usersHasNextPage || isLoading}
+                onClick={() => setUsersPage((current) => current + 1)}
+                type="button"
+              >
+                Pengguna berikutnya
+              </button>
+            </nav>
           </section>
 
           <section aria-labelledby="audit-log-title" className="space-y-4">
@@ -144,6 +175,25 @@ function AdminPage() {
                 ))}
               </ul>
             )}
+            <nav aria-label="Paginasi audit log" className="flex items-center gap-3">
+              <button
+                className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50"
+                disabled={auditLogsPage === 1 || isLoading}
+                onClick={() => setAuditLogsPage((current) => Math.max(1, current - 1))}
+                type="button"
+              >
+                Audit log sebelumnya
+              </button>
+              <span aria-current="page">Halaman audit log {auditLogsPage}</span>
+              <button
+                className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50"
+                disabled={!auditLogsHasNextPage || isLoading}
+                onClick={() => setAuditLogsPage((current) => current + 1)}
+                type="button"
+              >
+                Audit log berikutnya
+              </button>
+            </nav>
           </section>
         </>
       )}

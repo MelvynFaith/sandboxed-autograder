@@ -14,7 +14,7 @@ function readSubmissionResponse(payload) {
 
   return {
     id: String(payload.id),
-    status: payload.status.toLowerCase(),
+    status: payload.status,
     isLate: payload.is_late === true,
     submittedAt: payload.submitted_at,
   }
@@ -39,7 +39,20 @@ export async function submitSubmission(assignmentId, file) {
     body,
   })
   if (!response.ok) {
-    await throwApiError(response, `Gagal mengunggah kode (${response.status}). Silakan coba lagi.`)
+    await throwApiError(
+      response,
+      `Gagal mengunggah kode (${response.status}). Silakan coba lagi.`,
+      {
+        409: 'Submission ditolak karena batas waktu pengumpulan telah lewat.',
+        413: 'Ukuran berkas melebihi batas maksimum 256 KB.',
+        429: (failedResponse) => {
+          const retryAfter = failedResponse.headers?.get('Retry-After')
+          return retryAfter && /^\d+$/.test(retryAfter)
+            ? `Terlalu sering mengunggah. Coba lagi dalam ${retryAfter} detik.`
+            : 'Terlalu sering mengunggah. Silakan tunggu sebelum mencoba lagi.'
+        },
+      },
+    )
   }
 
   return readSubmissionResponse(await response.json())

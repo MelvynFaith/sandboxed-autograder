@@ -77,4 +77,44 @@ describe('AdminPage', () => {
     expect(screen.queryByRole('heading', { name: 'Administrasi' })).not.toBeInTheDocument()
     expect(getAdminUsers).not.toHaveBeenCalled()
   })
+
+  it('paginates user and audit-log lists independently', async () => {
+    setUser('admin')
+    getAdminUsers.mockImplementation(async (page) =>
+      page === 1
+        ? { ...adminUsers, hasNextPage: true }
+        : {
+            items: [
+              {
+                id: 'student-2',
+                name: 'Mahasiswa Halaman 2',
+                email: 'second@example.test',
+                role: 'STUDENT',
+              },
+            ],
+            hasNextPage: false,
+          },
+    )
+    getAdminAuditLogs.mockImplementation(async (page) =>
+      page === 1
+        ? { ...auditLogs, hasNextPage: true }
+        : {
+            items: [{ ...auditLogs.items[0], id: 'audit-2', eventType: 'PAGE_TWO_EVENT' }],
+            hasNextPage: false,
+          },
+    )
+    render(<App />)
+
+    expect(await screen.findByText('Mahasiswa Demo')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Pengguna berikutnya' }))
+    expect(await screen.findByText('Mahasiswa Halaman 2')).toBeInTheDocument()
+    expect(getAdminUsers).toHaveBeenLastCalledWith(2, 50)
+    expect(getAdminAuditLogs).toHaveBeenLastCalledWith(1, 50)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Audit log berikutnya' }))
+    expect(await screen.findByText('PAGE_TWO_EVENT')).toBeInTheDocument()
+    expect(getAdminAuditLogs).toHaveBeenLastCalledWith(2, 50)
+    expect(getAdminUsers).toHaveBeenLastCalledWith(2, 50)
+    expect(screen.getByRole('button', { name: 'Audit log sebelumnya' })).toBeEnabled()
+  })
 })

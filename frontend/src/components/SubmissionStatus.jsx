@@ -2,24 +2,24 @@ import { useEffect, useState } from 'react'
 import { subscribeToSubmissionStatus } from '../api/submissionStatus.js'
 
 const statusLabels = {
-  queued: 'Antre',
-  running: 'Sedang berjalan',
-  completed: 'Selesai',
-  failed: 'Gagal',
-  cancelled: 'Dibatalkan',
+  QUEUED: 'Antre',
+  RUNNING: 'Sedang berjalan',
+  COMPLETED: 'Selesai',
+  FAILED: 'Pipeline gagal',
+  CANCELLED: 'Dibatalkan',
 }
 
 const statusStyles = {
-  queued: 'bg-amber-100 text-amber-900',
-  running: 'bg-blue-100 text-blue-900',
-  completed: 'bg-green-100 text-green-900',
-  failed: 'bg-red-100 text-red-900',
-  cancelled: 'bg-slate-200 text-slate-900',
+  QUEUED: 'bg-amber-100 text-amber-900',
+  RUNNING: 'bg-blue-100 text-blue-900',
+  COMPLETED: 'bg-green-100 text-green-900',
+  FAILED: 'bg-red-100 text-red-900',
+  CANCELLED: 'bg-slate-200 text-slate-900',
 }
 
 function SubmissionStatus({ submissionId }) {
   const [status, setStatus] = useState({
-    status: 'queued',
+    status: 'QUEUED',
     current_test: 0,
     total_tests: 0,
   })
