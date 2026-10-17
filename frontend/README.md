@@ -60,27 +60,31 @@ the frontend currently relies on; confirm exact payloads with the backend in
 | --- | --- |
 | Authentication | `POST /api/v1/auth/login` returns `access_token`, `refresh_token`, and a user with `id`, `name`, `email`, and uppercase `role`. Refresh uses `POST /api/v1/auth/refresh`; logout uses `POST /api/v1/auth/logout`. |
 | Course and assignments | Course-scoped assignment listing/creation uses `/api/v1/courses/{course_id}/assignments`. Assignment fields use the SRS names `title`, `description`, `deadline_at`, and `late_until_at`. Assignment edit/delete use `PUT`/`DELETE /api/v1/assignments/{id}`. |
-| Resource limits | Read/update use `/api/v1/assignments/{id}/resource-limit`; request fields include `cpu_time_ms`, `memory_mb`, `max_processes`, `timeout_s`, `max_output_bytes`, and `tmpfs_size_mb`. |
-| Test cases | List/add are scoped to `/api/v1/assignments/{id}/testcases`; edit/delete use `/api/v1/testcases/{id}`. Fields use `external_id`, `input`, `expected_output`, `weight`, `is_hidden`, and `match_mode` (`EXACT` or `WHITESPACE_INSENSITIVE`). |
-| Upload | Submission uses `POST /api/v1/submissions` with `assignment_id` and a `.py` file. The client rejects files larger than 256 KiB; the backend must enforce the limit as well. |
-| Status and WebSocket | The frontend obtains a one-time ticket from `POST /api/v1/ws-tickets` with `{ "submission_id" }`, then connects to `WS /ws/v1/submissions/{id}?ticket=<ticket>`. Status values are `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, or `CANCELLED`; the UI maps them for display. On disconnect it polls `GET /api/v1/submissions/{id}` every 3 seconds. |
-| History and report | History uses `GET /api/v1/submissions`; report uses `GET /api/v1/submissions/{id}/report`. History/report fields follow the SRS English names, including `assignment_title`, `total_score`, `score`, `exec_time_ms`, and `memory_kb`. Per-test verdicts use the seven SRS enum values. |
-| Admin | `GET /api/v1/admin/users`, `PUT /api/v1/admin/users/{id}/role`, and `GET /api/v1/admin/audit-logs` support the role-management and audit-log view. The API adapters are in `src/api/admin.js`. |
+| Resource limits | Bagian 6.3 menetapkan `GET`/`PUT /api/v1/assignments/{id}/resource-limit`; FR-06 menetapkan field `cpu_time_ms`, `memory_mb`, `max_processes`, `timeout_s`, `max_output_bytes`, dan `tmpfs_size_mb` beserta invarian kapasitas yang divalidasi form. |
+| Test cases | Endpoint berada di bawah `/api/v1/assignments/{id}/testcases` (Bagian 6.3). Field entitas `external_id`, `input`, `expected_output`, `weight`, `is_hidden`, dan `match_mode` mengikuti Bagian 7.1. |
+| Upload | FR-04 menetapkan `POST /api/v1/submissions` dengan `assignment_id` dan berkas `.py`; berkas di atas 256 KB (frontend mengukur 256 × 1024 byte) ditolak, submission dalam jendela terlambat ditandai `is_late`, dan submission setelah `late_until_at` ditolak (409). FR-14 membatasi satu submission `QUEUED`/`RUNNING` per assignment, jeda minimum 30 detik, dan 30 submission per assignment per mahasiswa. UI menampilkan `is_late` tanpa mengubah skor. |
+| Status and WebSocket | Bagian 6.3 menetapkan endpoint submission dan tiket WebSocket. Status Submission (`QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED`) mengikuti Bagian 7.1/FR-08; tujuh verdict `Result.status` tetap berbeda dari status Submission. Saat WebSocket putus, UI melakukan polling `GET /api/v1/submissions/{id}` tiap 3 detik. |
+| History and report | Riwayat menggunakan `GET /api/v1/submissions` dan laporan `GET /api/v1/submissions/{id}/report` (Bagian 6.3); daftar meminta parameter `page` dan `page_size`. Field laporan mengikuti nama Inggris di Bagian 7.1 dan FR hasil: `assignment_title`, `total_score`, `score`, `exec_time_ms`, dan `memory_kb`. |
+| Admin | `GET /api/v1/admin/users`, `PUT /api/v1/admin/users/{id}/role`, dan `GET /api/v1/admin/audit-logs` mendukung panel admin (Bagian 6.3); kedua daftar mengirim `page` dan `page_size`. Adapter berada di `src/api/admin.js`. |
 
-The lecturer form validates the SRS resource constraints
-`tmpfs_size_mb + 16 <= memory_mb` and
-`2 * max_output_bytes < tmpfs_size_mb * 2^20` before saving limits through
-`PUT /api/v1/assignments/{id}/resource-limit`. Resource values must be positive
-integers, and `late_until_at` must be at or after `deadline_at`.
+Sumber resource limits adalah FR-06: `tmpfs_size_mb + 16 <= memory_mb` dan
+`2 * max_output_bytes < tmpfs_size_mb * 2^20`, dengan `max_output_bytes` dalam
+byte serta MB = `2^20` byte. Form mengirim integer positif menggunakan
+`PUT /api/v1/assignments/{id}/resource-limit`. `late_until_at` harus sama dengan
+atau setelah `deadline_at`.
 
-Assignment listing and admin/history lists currently request `page=1&page_size=50`
-and accept either an array or an `{ "items": [...] }` response. The frontend maps
-the SRS API field names to UI models in the API modules; those mappings do not
+Assignment, history, user, and audit-log list adapters accept either an array or
+an `{ "items": [...] }` response; paginated history/admin requests include the
+current `page` and `page_size=50`, with previous/next controls. The UI reads an
+optional `has_next` boolean when present; otherwise it infers whether another
+page may exist from the returned item count and requested page size. The frontend
+maps SRS API field names to UI models in API modules; those mappings do not
 change the backend contract.
 
 API failures read the SRS `{ "error": { "code", "message" } }` envelope and
-display its message. HTTP 429 responses show a rate-limit notice and honor a
-numeric `Retry-After` header when present.
+display its message. Upload HTTP 409, 413, and 429 responses show specific
+deadline, file-size, and frequency-limit messages. HTTP 429 responses honor a
+numeric `Retry-After` header when present (FR-04/FR-14).
 
 The WebSocket ticket is placed in the connection URL because the browser
 WebSocket API does not support custom Authorization headers. A one-time ticket
