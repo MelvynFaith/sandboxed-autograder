@@ -122,6 +122,16 @@ comment is the contract between the worker and the Harness, and the Harness owne
   the weight, totals that do not add up), makes the submission `FAILED` and nothing is stored.
 - On a deadline the Harness and the processes it started are killed.
 
+## Settings
+
+The settings an administrator can change (FR-14, US-20) are one row of the `settings` table: the
+maximum active submissions, the minimum seconds between submissions, and the maximum submissions per
+assignment. The migration creates the row with the FR-14 values (1, 30, 30), so reading never meets a
+missing row; 0 switches a rule off. `internal/settings.Store` reads it (`Get`) and saves a change
+(`Update`), which validates the bounds and writes a `SETTINGS_CHANGED` audit log row naming the
+administrator and the old and new values in the same transaction. The `GET` and `PUT` endpoints belong
+to the API package.
+
 ## Grading state
 
 `internal/store.Pipeline` is the database side of grading. `Claim` moves a `QUEUED` submission to
