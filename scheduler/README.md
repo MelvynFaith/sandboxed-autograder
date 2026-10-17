@@ -4,10 +4,10 @@ A Go service that exposes the REST and WebSocket API, queues grading jobs, runs 
 persists results. It is **the only component that writes to PostgreSQL.**
 
 **Owner:** Evan William
-**Status:** authentication/session endpoints and the in-process `JobQueue` are implemented. The
-Harness runner, grading store, and worker pool are implemented, and `cmd/autograder` runs them in
-the API process, with `/healthz` and the WebSocket progress stream. Assignment, submission and
-grading APIs are not implemented.
+**Status:** authentication/session and course/enrollment APIs, plus the in-process `JobQueue`, are
+implemented. The Harness runner, grading store, and worker pool run in the `cmd/autograder` process,
+which also serves `/healthz` and the WebSocket progress stream. Course-scoped assignment listing is
+implemented; assignment CRUD, submission, and grading APIs are not implemented.
 
 ## Responsibilities
 
@@ -30,6 +30,7 @@ migrations/        schema, one NNNNNN_name.up.sql / .down.sql pair per change, e
 internal/api/      authentication HTTP routes and handlers
 internal/health/   the /healthz handler: database, live workers, queue depth
 internal/auth/     authentication, password/token helpers, PostgreSQL user/session store, WS tickets
+internal/courses/  course, enrollment, and course-scoped assignment listing store
 internal/queue/    JobQueue interface between the handlers and worker pool; in-process Memory implementation
 internal/harness/  starts the Grading Harness for one submission and checks its report
 internal/progress/ in-process hub that carries grading progress from the workers to the WebSocket
@@ -67,12 +68,13 @@ The queue is in memory and is filled from the database: at start-up and every mi
 `QUEUED` submission is added to it. Until a submission handler enqueues directly, a new submission
 therefore waits up to a minute before a worker takes it.
 
-The API/authentication packages are separate from grading work in `internal/queue`. The current
-auth/session endpoints do not enqueue grading jobs.
+The API and authentication packages are separate from grading work in `internal/queue`. The current
+auth/session and course endpoints do not enqueue grading jobs.
 The grading pipeline includes the schema, in-process queue, Harness runner, grading store, and
 worker pool. Request-handling code and grading work meet at `JobQueue`: a handler stores a
-submission as `QUEUED` and calls `Enqueue`; a worker calls `Dequeue`. The authentication endpoints
-are implemented; assignment, submission and grading APIs are not.
+submission as `QUEUED` and calls `Enqueue`; a worker calls `Dequeue`. Authentication, course, and
+enrollment endpoints are implemented. Course-scoped assignment listing is available, but assignment
+CRUD, submission, and grading APIs are not.
 
 ## Authentication API
 
@@ -113,6 +115,21 @@ The client contract is:
   `PUT /admin/users/{id}/role` accepts `{ "role" }`. Only `ADMIN` can use these routes; role changes
   revoke every refresh token for the target user and write a `ROLE_CHANGED` audit row in the same
   transaction. A non-admin role-change attempt returns 403 and writes `ROLE_CHANGE_DENIED`.
+- `GET /courses?page=N&page_size=N` returns a paginated course list. Students see enrolled courses,
+  lecturers see owned courses, and administrators see all courses. `GET
+  /courses/{id}/enrollments` lists enrollments, `POST /courses/{id}/enrollments` adds a student, and
+  `DELETE /courses/{id}/enrollments/{user_id}` removes one. These enrollment routes are available to
+  the course owner or an administrator. `GET /courses/{id}/assignments?page=N&page_size=N` lists
+  existing assignments without providing assignment CRUD; students must be enrolled, while the course
+  owner and administrators may list them.
+- `POST /courses` accepts `{ "name", "code", "term" }` and returns the created course, including
+  `lecturer_id`. FR-18 does not specify this request body; requiring `code` and `term` is an
+  implementation assumption because the existing schema requires both values and the frontend
+  course adapter expects `code` and `term` when reading courses. The API does not generate either
+  field and does not alter the merged migration.
+- `POST /courses/{id}/enrollments` accepts `{ "email" }`. FR-18 does not specify enrollment body
+  fields, and the current frontend course adapter has no enrollment request, so this payload is an
+  explicit backend assumption awaiting frontend alignment.
   Registration and profile updates limit display names to 200 Unicode characters.
 
 The SRS does not define the request body fields for registration, password change, or WebSocket
