@@ -34,5 +34,5 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Grading pipeline (`scheduler/`): the Grading Harness runner, which keeps the assignment definition
   off the command line and checks the report; the grading store, which moves a submission through
   `QUEUED`, `RUNNING` and `COMPLETED` or `FAILED` and writes results and audit rows in one
-  transaction; and the worker pool, with panic recovery, a backstop deadline and reconciliation of
-  lost submissions.
+  transaction; and the worker pool, with panic recovery, a backstop deadline, reconciliation of
+  lost submissions, and a sweep of what dead sandbox runs left behind.
