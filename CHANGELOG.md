@@ -25,3 +25,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   migration pair with a test that applies, reverses and checks its constraints, and the `JobQueue`
   interface with its in-process implementation, which serves students round-robin (FR-13). The
   scheduler CI job now starts a PostgreSQL service.
+- Grading pipeline (`scheduler/`): the Grading Harness runner, which keeps the assignment definition
+  off the command line and checks the report; the grading store, which moves a submission through
+  `QUEUED`, `RUNNING` and `COMPLETED` or `FAILED` and writes results and audit rows in one
+  transaction; and the worker pool, with panic recovery, a backstop deadline and reconciliation of
+  lost submissions.
