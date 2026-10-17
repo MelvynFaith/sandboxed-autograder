@@ -39,8 +39,9 @@ applies both. Rules for a new migration:
 - Number it after the last one and write both files; never edit a migration that has been merged.
 - Enumerations are `text` with a `CHECK`, so adding a value is a constraint change.
 - PostgreSQL `text` cannot hold a NUL byte. Strip it from program output before inserting.
-- `ON DELETE RESTRICT` raises SQLSTATE `23001` (`restrict_violation`), not `23503`. Map both when
-  turning database errors into API errors.
+- Deleting a row that an `ON DELETE RESTRICT` key protects raises SQLSTATE `23503`
+  (`foreign_key_violation`) on PostgreSQL 16 and `23001` (`restrict_violation`) on 18. Map both
+  when turning database errors into API errors.
 
 ## Build and test
 

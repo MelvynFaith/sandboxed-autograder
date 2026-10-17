@@ -23,8 +23,9 @@ import (
 // variable, and a missing value there is a failure rather than a skip.
 const databaseURLEnv = "AUTOGRADER_TEST_DATABASE_URL"
 
-// SQLSTATE codes the schema is expected to raise. ON DELETE RESTRICT raises restrict_violation, not
-// foreign_key_violation, which only a missing parent on insert or update raises.
+// SQLSTATE codes the schema is expected to raise. Deleting a row that an ON DELETE RESTRICT key
+// protects raises foreign_key_violation on PostgreSQL 16 and restrict_violation on 18, so that case
+// accepts either.
 const (
 	notNullViolation    = "23502"
 	foreignKeyViolation = "23503"
@@ -32,6 +33,11 @@ const (
 	checkViolation      = "23514"
 	restrictViolation   = "23001"
 )
+
+// matches reports whether got is the SQLSTATE the case wants.
+func matches(got, want string) bool {
+	return got == want || (want == restrictViolation && got == foreignKeyViolation)
+}
 
 // tables is every table created by the migrations, which the round trip counts.
 const tables = 10
@@ -239,7 +245,7 @@ func TestConstraints(t *testing.T) {
 			if !errors.As(err, &pgErr) {
 				t.Fatalf("got %v, want SQLSTATE %s", err, tc.code)
 			}
-			if pgErr.Code != tc.code {
+			if !matches(pgErr.Code, tc.code) {
 				t.Fatalf("got SQLSTATE %s (%s), want %s", pgErr.Code, pgErr.Message, tc.code)
 			}
 		})
