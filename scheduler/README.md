@@ -59,14 +59,40 @@ comment is the contract between the worker and the Harness, and the Harness owne
   the weight, totals that do not add up), makes the submission `FAILED` and nothing is stored.
 - On a deadline the Harness and the processes it started are killed.
 
+## Grading state
+
+`internal/store.Pipeline` is the database side of grading. `Claim` moves a `QUEUED` submission to
+`RUNNING` and reads its definition (limits and live test cases); `Complete` stores the results, the
+totals and the audit log rows (`SANDBOX_VIOLATION`, `RESOURCE_LIMIT_EXCEEDED`) in one transaction;
+`Fail` marks a `RUNNING` submission `FAILED`; `Reconcile` requeues stale `RUNNING` submissions and lists
+the `QUEUED` ones, which is how the in-memory queue is rebuilt after a restart. Each state change is a
+conditional `UPDATE`, so a cancel, a requeue and a worker cannot push a submission into a state the
+diagram in SRS 3.3 does not allow.
+
+## Rate limits
+
+`internal/ratelimit.Limits.Check` enforces FR-14 per student and assignment: at most `MaxActive` (1)
+submissions `QUEUED` or `RUNNING`, at least `MinInterval` (30 s) between submissions, and at most
+`MaxPerAssignment` (30) in total. A rule set to zero is off. A refusal is an `*ratelimit.Error` naming
+the rule (and, for the interval, how long to wait), which the upload handler maps to `429` with a clear
+message. Cancelled submissions do not use up the quota (US-14).
+
+The upload handler must call `Check` inside the transaction that inserts the submission: `Check` takes a
+lock per student and assignment until the transaction ends, so two simultaneous uploads cannot both pass
+a limit of one. The counts come from the database, not memory, so they survive a restart. The thresholds
+are admin-configurable (FR-14) but the SRS has no entity to store them, so for now the caller passes a
+`Limits` value.
+
 ## Build and test
 
-Needs Go 1.27 or newer. The migration tests need a PostgreSQL server; without one they are skipped.
+Needs Go 1.27 or newer. Tests that touch the database (the migrations and `internal/store`) need a
+PostgreSQL server and are skipped without one. `internal/testdb` gives each of them its own migrated
+schema.
 
 ```sh
 cd scheduler
 go vet ./...
-go test -race ./...       # migration tests skipped unless the variable below is set
+go test -race ./...       # database tests skipped unless the variable below is set
 go build ./...
 ```
 
