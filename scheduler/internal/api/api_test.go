@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -227,6 +229,22 @@ func TestAuthSessionAndProfileLifecycle(t *testing.T) {
 	}
 	assertError(t, rolePayload, "invalid_request")
 
+	tooLongName, tooLongNamePayload := env.request(t, http.MethodPost, "/api/v1/auth/register", map[string]string{
+		"name": strings.Repeat("n", 201), "email": "long-name@example.test", "password": "pass",
+	}, "")
+	if tooLongName.StatusCode != http.StatusBadRequest {
+		t.Fatalf("201-character registration name status = %d; want 400", tooLongName.StatusCode)
+	}
+	assertError(t, tooLongNamePayload, "invalid_request")
+
+	unknownLogin, unknownLoginPayload := env.request(t, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"email": "missing@example.test", "password": "wrong",
+	}, "")
+	if unknownLogin.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unknown email login status = %d; want 401", unknownLogin.StatusCode)
+	}
+	assertError(t, unknownLoginPayload, "invalid_credentials")
+
 	login := env.login(t, "student@example.test", "old-password")
 	access := stringField(t, login, "access_token")
 	refresh := stringField(t, login, "refresh_token")
@@ -265,6 +283,13 @@ func TestAuthSessionAndProfileLifecycle(t *testing.T) {
 	if updatedName.StatusCode != http.StatusOK || updatedNamePayload["name"] != "Student Renamed" {
 		t.Fatalf("update profile = %d, %#v", updatedName.StatusCode, updatedNamePayload)
 	}
+	tooLongProfileName, tooLongProfileNamePayload := env.request(t, http.MethodPut, "/api/v1/users/me", map[string]string{
+		"name": strings.Repeat("n", 201),
+	}, access)
+	if tooLongProfileName.StatusCode != http.StatusBadRequest {
+		t.Fatalf("201-character profile name status = %d; want 400", tooLongProfileName.StatusCode)
+	}
+	assertError(t, tooLongProfileNamePayload, "invalid_request")
 
 	wrongPassword, wrongPasswordPayload := env.request(t, http.MethodPut, "/api/v1/users/me/password", map[string]string{
 		"current_password": "wrong-password", "new_password": "new-password",
@@ -352,6 +377,19 @@ func TestAdminAuthorizationRoleRevocationAndPagination(t *testing.T) {
 		}
 		assertError(t, payload, "forbidden")
 	}
+	var deniedCount int
+	var deniedDetail string
+	if err := env.pool.QueryRow(context.Background(), `
+		SELECT count(*), max(detail) FROM audit_logs
+		WHERE user_id = $1 AND event_type = 'ROLE_CHANGE_DENIED'
+	`, studentID).Scan(&deniedCount, &deniedDetail); err != nil {
+		t.Fatal(err)
+	}
+	var deniedAudit map[string]any
+	if deniedCount != 1 || json.Unmarshal([]byte(deniedDetail), &deniedAudit) != nil ||
+		deniedAudit["target_user_id"] != strconv.FormatInt(studentID, 10) {
+		t.Fatalf("denied role-change audit = count %d, detail %q", deniedCount, deniedDetail)
+	}
 
 	usersResponse, usersPayload := env.request(t, http.MethodGet, "/api/v1/admin/users?page=1&page_size=1", nil, adminAccess)
 	if usersResponse.StatusCode != http.StatusOK {
@@ -384,6 +422,25 @@ func TestAdminAuthorizationRoleRevocationAndPagination(t *testing.T) {
 	if roleResponse.StatusCode != http.StatusOK || rolePayload["role"] != auth.RoleLecturer {
 		t.Fatalf("admin role change = %d, %#v", roleResponse.StatusCode, rolePayload)
 	}
+	admin, _, err := env.store.UserByEmail(context.Background(), "admin@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var changedDetail string
+	if err := env.pool.QueryRow(context.Background(), `
+		SELECT detail FROM audit_logs
+		WHERE user_id = $1 AND event_type = 'ROLE_CHANGED'
+	`, admin.ID).Scan(&changedDetail); err != nil {
+		t.Fatal(err)
+	}
+	var changedAudit map[string]any
+	if err := json.Unmarshal([]byte(changedDetail), &changedAudit); err != nil {
+		t.Fatal(err)
+	}
+	if changedAudit["target_user_id"] != float64(studentID) ||
+		changedAudit["old_role"] != auth.RoleStudent || changedAudit["new_role"] != auth.RoleLecturer {
+		t.Fatalf("role-change audit detail = %#v", changedAudit)
+	}
 	revoked, revokedPayload := env.request(t, http.MethodPost, "/api/v1/auth/refresh", map[string]string{
 		"refresh_token": studentRefresh,
 	}, "")
@@ -404,6 +461,7 @@ func TestWebSocketTicketIsBoundToOwnerAndSingleUse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var courseID, assignmentID, submissionID int64
 	err = env.pool.QueryRow(context.Background(), `
 		INSERT INTO courses (code, name, lecturer_id, term)
@@ -507,10 +565,101 @@ func TestParseIDAcceptsIntegerAndRejectsInvalidValues(t *testing.T) {
 		if err != nil || id != 7 {
 			t.Fatalf("parseID(%s) = %d, %v; want 7, nil", input, id, err)
 		}
+
 	}
 	for _, input := range []string{`null`, `0`, `-1`, `"not-an-id"`, `{}`} {
 		if _, err := parseID(json.RawMessage(input)); err == nil {
 			t.Fatalf("parseID(%s) succeeded; want error", input)
+		}
+	}
+}
+
+func TestFiftyConcurrentLoginsComplete(t *testing.T) {
+	env := newTestEnvironment(t)
+	_ = env.register(t, "Concurrent Login", "concurrent@example.test", "password")
+
+	var wait sync.WaitGroup
+	errorsFound := make(chan error, 50)
+	for range 50 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			body, err := json.Marshal(map[string]string{
+				"email": "concurrent@example.test", "password": "password",
+			})
+			if err != nil {
+				errorsFound <- err
+				return
+			}
+			response, err := env.server.Client().Post(
+				env.server.URL+"/api/v1/auth/login", "application/json", bytes.NewReader(body),
+			)
+			if err != nil {
+				errorsFound <- err
+				return
+			}
+			defer response.Body.Close()
+			if response.StatusCode != http.StatusOK {
+				payload, _ := io.ReadAll(response.Body)
+				errorsFound <- fmt.Errorf("login status %d: %s", response.StatusCode, payload)
+			}
+		}()
+	}
+	wait.Wait()
+	close(errorsFound)
+	for err := range errorsFound {
+		t.Error(err)
+	}
+}
+
+func TestConcurrentRefreshRotationAndPasswordChangeRevokeAllTokens(t *testing.T) {
+	env := newTestEnvironment(t)
+	user, err := env.store.CreateUser(context.Background(), "Race User", "race@example.test", "unused", auth.RoleStudent)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for iteration := range 40 {
+		oldHash := auth.HashRefreshToken(fmt.Sprintf("old-%d", iteration))
+		newHash := auth.HashRefreshToken(fmt.Sprintf("new-%d", iteration))
+		if err := env.store.InsertRefreshToken(context.Background(), user.ID, oldHash, time.Now().Add(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+
+		start := make(chan struct{})
+		var wait sync.WaitGroup
+		wait.Add(2)
+		rotationResult := make(chan error, 1)
+		passwordResult := make(chan error, 1)
+		go func() {
+			defer wait.Done()
+			<-start
+			_, err := env.store.RotateRefreshToken(context.Background(), oldHash, newHash, time.Now().Add(time.Hour))
+			rotationResult <- err
+		}()
+		go func() {
+			defer wait.Done()
+			<-start
+			passwordResult <- env.store.ChangePassword(context.Background(), user.ID, fmt.Sprintf("changed-%d", iteration))
+		}()
+		close(start)
+		wait.Wait()
+		if err := <-passwordResult; err != nil {
+			t.Fatalf("iteration %d: change password: %v", iteration, err)
+		}
+		if err := <-rotationResult; err != nil && !errors.Is(err, auth.ErrInvalidRefresh) {
+			t.Fatalf("iteration %d: rotate refresh token: %v", iteration, err)
+		}
+
+		var validTokens int
+		if err := env.pool.QueryRow(context.Background(), `
+				SELECT count(*) FROM refresh_tokens
+				WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()
+			`, user.ID).Scan(&validTokens); err != nil {
+			t.Fatalf("iteration %d: count valid refresh tokens: %v", iteration, err)
+		}
+		if validTokens != 0 {
+			t.Fatalf("iteration %d: found %d valid refresh tokens after concurrent password change", iteration, validTokens)
 		}
 	}
 }

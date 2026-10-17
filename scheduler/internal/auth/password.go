@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
@@ -12,6 +13,8 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
+var passwordHashSlots = make(chan struct{}, 3)
+
 const (
 	argonMemory      = 64 * 1024
 	argonIterations  = 3
@@ -22,9 +25,17 @@ const (
 
 // HashPassword stores passwords using Argon2id with a random salt.
 func HashPassword(password string) (string, error) {
+	return HashPasswordContext(context.Background(), password)
+}
+
+func HashPasswordContext(ctx context.Context, password string) (string, error) {
 	if password == "" || len(password) > 1024 {
 		return "", errors.New("password must be between 1 and 1024 bytes")
 	}
+	if err := acquirePasswordHashSlot(ctx); err != nil {
+		return "", err
+	}
+	defer releasePasswordHashSlot()
 	salt := make([]byte, argonSaltLength)
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("generate password salt: %w", err)
@@ -38,6 +49,14 @@ func HashPassword(password string) (string, error) {
 
 // VerifyPassword compares a password with a PHC-encoded Argon2id hash.
 func VerifyPassword(encodedHash, password string) (bool, error) {
+	return VerifyPasswordContext(context.Background(), encodedHash, password)
+}
+
+func VerifyPasswordContext(ctx context.Context, encodedHash, password string) (bool, error) {
+	if err := acquirePasswordHashSlot(ctx); err != nil {
+		return false, err
+	}
+	defer releasePasswordHashSlot()
 	parts := strings.Split(encodedHash, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" || parts[2] != "v=19" {
 		return false, errors.New("invalid Argon2id password hash")
@@ -79,4 +98,17 @@ func VerifyPassword(encodedHash, password string) (bool, error) {
 	}
 	actual := argon2.IDKey([]byte(password), salt, uint32(iterations), uint32(memory), uint8(parallelism), uint32(len(expected)))
 	return subtle.ConstantTimeCompare(actual, expected) == 1, nil
+}
+
+func acquirePasswordHashSlot(ctx context.Context) error {
+	select {
+	case passwordHashSlots <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func releasePasswordHashSlot() {
+	<-passwordHashSlots
 }

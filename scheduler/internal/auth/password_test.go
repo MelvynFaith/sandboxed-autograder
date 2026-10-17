@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -34,5 +36,25 @@ func TestHashPasswordRejectsEmptyAndOversizedPasswords(t *testing.T) {
 		if _, err := HashPassword(password); err == nil {
 			t.Fatalf("HashPassword accepted input with length %d", len(password))
 		}
+	}
+}
+
+func TestPasswordHashOperationsHonorContextWhileWaitingForCapacity(t *testing.T) {
+	for range cap(passwordHashSlots) {
+		passwordHashSlots <- struct{}{}
+	}
+	defer func() {
+		for range cap(passwordHashSlots) {
+			<-passwordHashSlots
+		}
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := HashPasswordContext(ctx, "password"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("HashPasswordContext error = %v; want context.Canceled", err)
+	}
+	if _, err := VerifyPasswordContext(ctx, "unused", "password"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("VerifyPasswordContext error = %v; want context.Canceled", err)
 	}
 }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -8,13 +9,21 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/auth"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const maxRequestBytes = 1 << 20
+const maxUserNameLength = 200
+
+var (
+	dummyPasswordHashMu sync.Mutex
+	dummyPasswordHash   string
+)
 
 type API struct {
 	store   *auth.Store
@@ -46,7 +55,7 @@ func (a *API) routes() {
 	a.mux.HandleFunc("PUT /api/v1/users/me/password", a.requireAuth(a.changePassword))
 	a.mux.HandleFunc("POST /api/v1/ws-tickets", a.requireAuth(a.createWSTicket))
 	a.mux.HandleFunc("GET /api/v1/admin/users", a.requireAdmin(a.listUsers))
-	a.mux.HandleFunc("PUT /api/v1/admin/users/{id}/role", a.requireAdmin(a.updateRole))
+	a.mux.HandleFunc("PUT /api/v1/admin/users/{id}/role", a.requireAuth(a.updateRole))
 	a.mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "Endpoint tidak ditemukan.")
 	})
@@ -100,11 +109,21 @@ func (a *API) register(w http.ResponseWriter, r *http.Request) {
 	}
 	request.Name = strings.TrimSpace(request.Name)
 	request.Email = strings.ToLower(strings.TrimSpace(request.Email))
-	if request.Name == "" || !validEmail(request.Email) || request.Password == "" || len(request.Password) > 1024 {
-		writeError(w, http.StatusBadRequest, "invalid_request", "Nama, email valid, dan kata sandi wajib diisi.")
+	if request.Name == "" || utf8.RuneCountInString(request.Name) > maxUserNameLength ||
+		!validEmail(request.Email) || request.Password == "" || len(request.Password) > 1024 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Nama wajib diisi dan maksimal 200 karakter; email dan kata sandi harus valid.")
 		return
 	}
-	passwordHash, err := auth.HashPassword(request.Password)
+	exists, err := a.store.EmailExists(r.Context(), request.Email)
+	if err != nil {
+		internalError(w, "check registration email", err)
+		return
+	}
+	if exists {
+		writeError(w, http.StatusConflict, "email_already_exists", "Email sudah terdaftar.")
+		return
+	}
+	passwordHash, err := auth.HashPasswordContext(r.Context(), request.Password)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "Kata sandi tidak valid.")
 		return
@@ -133,12 +152,20 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", "Email atau kata sandi tidak valid.")
 		return
 	}
+	dummyHash, err := getDummyPasswordHash(r.Context())
+	if err != nil {
+		internalError(w, "prepare login password verification", err)
+		return
+	}
 	user, passwordHash, err := a.store.UserByEmail(r.Context(), strings.ToLower(strings.TrimSpace(request.Email)))
 	if err != nil && !errors.Is(err, auth.ErrInvalidLogin) {
 		internalError(w, "load login user", err)
 		return
 	}
-	valid, hashErr := auth.VerifyPassword(passwordHash, request.Password)
+	if errors.Is(err, auth.ErrInvalidLogin) {
+		passwordHash = dummyHash
+	}
+	valid, hashErr := auth.VerifyPasswordContext(r.Context(), passwordHash, request.Password)
 	if err != nil || hashErr != nil || !valid {
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", "Email atau kata sandi tidak valid.")
 		return
@@ -224,8 +251,8 @@ func (a *API) updateMe(w http.ResponseWriter, r *http.Request, user auth.User) {
 		return
 	}
 	request.Name = strings.TrimSpace(request.Name)
-	if request.Name == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "Nama tidak boleh kosong.")
+	if request.Name == "" || utf8.RuneCountInString(request.Name) > maxUserNameLength {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Nama wajib diisi dan maksimal 200 karakter.")
 		return
 	}
 	updated, err := a.store.UpdateName(r.Context(), user.ID, request.Name)
@@ -257,7 +284,7 @@ func (a *API) changePassword(w http.ResponseWriter, r *http.Request, user auth.U
 		internalError(w, "load password for verification", err)
 		return
 	}
-	valid, err := auth.VerifyPassword(passwordHash, request.CurrentPassword)
+	valid, err := auth.VerifyPasswordContext(r.Context(), passwordHash, request.CurrentPassword)
 	if err != nil {
 		internalError(w, "verify current password", err)
 		return
@@ -266,7 +293,7 @@ func (a *API) changePassword(w http.ResponseWriter, r *http.Request, user auth.U
 		writeError(w, http.StatusBadRequest, "invalid_password", "Kata sandi lama tidak sesuai.")
 		return
 	}
-	newHash, err := auth.HashPassword(request.NewPassword)
+	newHash, err := auth.HashPasswordContext(r.Context(), request.NewPassword)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "Kata sandi baru tidak valid.")
 		return
@@ -325,7 +352,15 @@ func (a *API) listUsers(w http.ResponseWriter, r *http.Request, _ auth.User) {
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (a *API) updateRole(w http.ResponseWriter, r *http.Request, _ auth.User) {
+func (a *API) updateRole(w http.ResponseWriter, r *http.Request, actor auth.User) {
+	if actor.Role != auth.RoleAdmin {
+		if err := a.store.RecordDeniedRoleChange(r.Context(), actor.ID, r.PathValue("id")); err != nil {
+			internalError(w, "record denied role change", err)
+			return
+		}
+		writeError(w, http.StatusForbidden, "forbidden", "Akses hanya untuk administrator.")
+		return
+	}
 	userID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || userID <= 0 {
 		writeError(w, http.StatusBadRequest, "invalid_request", "ID pengguna tidak valid.")
@@ -341,16 +376,39 @@ func (a *API) updateRole(w http.ResponseWriter, r *http.Request, _ auth.User) {
 		writeError(w, http.StatusBadRequest, "invalid_role", "Peran pengguna tidak valid.")
 		return
 	}
-	user, err := a.store.SetRole(r.Context(), userID, request.Role)
+	user, err := a.store.SetRole(r.Context(), actor.ID, userID, request.Role)
 	if errors.Is(err, auth.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "Pengguna tidak ditemukan.")
 		return
 	}
+
 	if err != nil {
 		internalError(w, "update user role", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, user)
+}
+
+func getDummyPasswordHash(ctx context.Context) (string, error) {
+	dummyPasswordHashMu.Lock()
+	if dummyPasswordHash != "" {
+		hash := dummyPasswordHash
+		dummyPasswordHashMu.Unlock()
+		return hash, nil
+	}
+	dummyPasswordHashMu.Unlock()
+
+	hash, err := auth.HashPasswordContext(ctx, "fixed dummy password for unknown login")
+	if err != nil {
+		return "", err
+	}
+	dummyPasswordHashMu.Lock()
+	if dummyPasswordHash == "" {
+		dummyPasswordHash = hash
+	}
+	hash = dummyPasswordHash
+	dummyPasswordHashMu.Unlock()
+	return hash, nil
 }
 
 func (a *API) issueSession(r *http.Request, user auth.User) (string, string, error) {
