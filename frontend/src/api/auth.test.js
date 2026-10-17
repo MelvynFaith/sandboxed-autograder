@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { login } from './auth.js'
+import { login, register } from './auth.js'
 import { apiRequest } from './client.js'
 
 beforeEach(() => {
@@ -25,6 +25,7 @@ describe('login API', () => {
       ok: true,
       json: async () => ({ access_token: 'jwt-token', refresh_token: 'refresh-token', user }),
     })
+
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(login('user@example.test', 'secret')).resolves.toEqual({
@@ -58,6 +59,43 @@ describe('login API', () => {
 
     await expect(login('user@example.test', 'secret')).resolves.toMatchObject({
       user: { id: '42', role: 'mahasiswa' },
+    })
+  })
+
+  describe('registration API', () => {
+    it('posts the assumed registration body and reads the resulting student user', async () => {
+      const user = {
+        id: 'user-2',
+        name: 'Siswa Baru',
+        email: 'baru@example.test',
+        role: 'STUDENT',
+      }
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ user }),
+      })
+      vi.stubGlobal('fetch', fetchMock)
+
+      await expect(register('Siswa Baru', 'baru@example.test', 'secret')).resolves.toEqual(user)
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/auth/register',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ name: 'Siswa Baru', email: 'baru@example.test', password: 'secret' }),
+        }),
+      )
+    })
+
+    it('displays the API message when registration rejects a duplicate email', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: async () => ({ error: { code: 'EMAIL_EXISTS', message: 'Email sudah terdaftar.' } }),
+      }))
+
+      await expect(register('Siswa', 'duplikat@example.test', 'secret')).rejects.toThrow(
+        'Email sudah terdaftar.',
+      )
     })
   })
 
