@@ -42,6 +42,8 @@ jobs:
     needs: detect
     if: needs.detect.outputs.sandbox == 'true'
     runs-on: ubuntu-24.04
+    # A hung sandbox test (the supervisor deadlock of #23 was one) must fail the job, not hold it for hours.
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: sandbox
