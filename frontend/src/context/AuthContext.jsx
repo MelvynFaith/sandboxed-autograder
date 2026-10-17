@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { login as requestLogin, logout as requestLogout } from '../api/auth.js'
+import { updatePassword as requestPasswordChange, updateProfileName as requestProfileName } from '../api/profile.js'
 import { AUTH_SESSION_INVALIDATED } from '../api/client.js'
 import { AuthContext } from './AuthContext.js'
 
@@ -83,12 +84,32 @@ function AuthProvider({ children }) {
     }
   }
 
+  async function updateName(name) {
+    const profile = await requestProfileName(name, auth.user)
+    const user = { ...auth.user, nama: profile.name }
+    const nextAuth = { ...auth, user }
+    localStorage.setItem(USER_KEY, JSON.stringify(user))
+    setAuth(nextAuth)
+    return profile
+  }
+
+  async function changePassword(currentPassword, newPassword) {
+    await requestPasswordChange(currentPassword, newPassword, auth.user)
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(REFRESH_TOKEN_KEY)
+    localStorage.removeItem(USER_KEY)
+    setAuth(null)
+    setSessionNotice('Silakan masuk kembali')
+  }
+
   const value = {
     token: auth?.token ?? null,
     user: auth?.user ?? null,
     sessionNotice,
     login,
     logout,
+    updateName,
+    changePassword,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

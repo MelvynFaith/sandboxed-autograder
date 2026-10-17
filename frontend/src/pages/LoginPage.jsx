@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/useAuth.js'
 
 function LoginPage() {
@@ -94,6 +95,9 @@ function LoginPage() {
           {isSubmitting ? 'Memproses...' : 'Masuk'}
         </button>
       </form>
+      <p className="mt-4 text-sm text-slate-700">
+        Belum punya akun? <Link className="font-medium text-blue-700 underline" to="/register">Register</Link>
+      </p>
     </main>
   )
 }

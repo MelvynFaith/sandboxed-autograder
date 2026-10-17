@@ -14,6 +14,8 @@ import HistoryPage from './pages/HistoryPage.jsx'
 import LecturerAssignmentsPage from './pages/LecturerAssignmentsPage.jsx'
 import AdminPage from './pages/AdminPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
+import RegisterPage from './pages/RegisterPage.jsx'
+import ProfilePage from './pages/ProfilePage.jsx'
 
 const roleMenus = {
   mahasiswa: [
@@ -50,6 +52,9 @@ function ProtectedLayout() {
             {label}
           </NavLink>
         ))}
+        <NavLink className="font-medium text-slate-700 hover:text-blue-700" to="/profile">
+          Profil
+        </NavLink>
         <button
           className="rounded border border-slate-300 px-3 py-1.5 font-medium hover:bg-slate-100"
           onClick={async () => {
@@ -109,12 +114,14 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           <Route element={<ProtectedLayout />}>
             <Route path="/" element={<Navigate replace to="/assignments" />} />
             <Route path="/assignments" element={<AssignmentsPage />} />
             <Route path="/history" element={<StudentHistoryRoute />} />
             <Route path="/lecturer/assignments" element={<LecturerAssignmentsRoute />} />
             <Route path="/admin" element={<AdminRoute />} />
+            <Route path="/profile" element={<ProfilePage />} />
           </Route>
           <Route path="*" element={<Navigate replace to="/assignments" />} />
         </Routes>

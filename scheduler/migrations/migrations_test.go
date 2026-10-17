@@ -40,7 +40,7 @@ func matches(got, want string) bool {
 }
 
 // tables is every table created by the migrations, which the round trip counts.
-const tables = 10
+const tables = 11
 
 // newMigrator creates an empty schema for the test and returns a migrator and a connection that both
 // use it.
@@ -237,6 +237,21 @@ func TestConstraints(t *testing.T) {
 		{"an audit entry names its user",
 			`INSERT INTO audit_logs (user_id, event_type) VALUES (NULL, 'SANDBOX_VIOLATION')`,
 			notNullViolation},
+		{"settings holds one row",
+			`INSERT INTO settings (id) VALUES (2)`,
+			checkViolation},
+		{"the settings row exists once",
+			`INSERT INTO settings (id) VALUES (1)`,
+			uniqueViolation},
+		{"a rate limit cannot be negative",
+			`UPDATE settings SET min_submission_interval_s = -1`,
+			checkViolation},
+		{"a rate limit has an upper bound",
+			`UPDATE settings SET max_submissions_per_assignment = 10001`,
+			checkViolation},
+		{"attempts cannot be negative",
+			`UPDATE submissions SET attempts = -1 WHERE id = 1`,
+			checkViolation},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
