@@ -4,17 +4,21 @@
  *
  * One poll() loop on one timer enforces the wall-clock timeout, the CPU-time
  * budget (cpu.stat), memory sampling and the combined output cap, serves the
- * seccomp notifications and feeds stdin. The exit status, signal and rusage
- * come from wait4(2); nothing the program prints can change them.
+ * seccomp notifications (or, in the ptrace fallback, the stops of the traced
+ * tree) and feeds stdin. The exit status, signal and rusage come from
+ * wait4(2); nothing the program prints can change them.
  */
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/ptrace.h>
 #include <poll.h>
 #include <seccomp.h>
 #include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/resource.h>
+#include <sys/signalfd.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -32,6 +36,15 @@
 
 #define TICK_MS		5
 #define KILL_GRACE_NS	(5ULL * 1000000000ULL)
+
+/*
+ * What the tracer asks for in trace mode: stops at denied syscalls, and
+ * automatic attachment of every thread and process the program creates (they
+ * would otherwise run unobserved). EXITKILL makes the kernel kill the whole
+ * tree if this process dies.
+ */
+#define TRACE_OPTIONS	(PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | \
+			 PTRACE_O_TRACEVFORK | PTRACE_O_EXITKILL)
 
 static volatile sig_atomic_t stop_signal;
 
@@ -54,6 +67,8 @@ void supervisor_signals(void)
 struct watch {
 	struct run *r;
 	struct result *res;
+	int sfd;		/* signalfd for SIGCHLD: wakes the loop on a ptrace stop */
+	int fault_signal;	/* trace mode: the fault that ended PID 1 (see in_init_group) */
 	bool killed;
 	uint64_t killed_at;
 	int64_t peak_sampled;	/* bytes; only used when memory.peak is unavailable */
@@ -72,6 +87,23 @@ static void kill_sandbox(struct watch *w, enum term_reason why)
 	/* SIGKILL to PID 1 of the PID namespace takes every descendant with it. */
 	syscall(SYS_pidfd_send_signal, w->r->pidfd, SIGKILL, NULL, 0);
 	cgroup_kill(&w->r->cg);
+}
+
+/* ptrace(2) through syscall(2): glibc's <sys/ptrace.h> clashes with <linux/ptrace.h>. */
+static long sbx_ptrace(long req, pid_t pid, long addr, long data)
+{
+	return syscall(SYS_ptrace, req, (long)pid, addr, data);
+}
+
+/* Lets the child proceed to execve(). */
+static void ack_child(struct watch *w)
+{
+	struct msg m = { .type = MSG_ACK };
+
+	if (send(w->r->sock[0], &m, sizeof(m), MSG_NOSIGNAL) != (ssize_t)sizeof(m)) {
+		sbx_fail("ack to child: %m");
+		kill_sandbox(w, TR_INTERNAL_ERROR);
+	}
 }
 
 static void on_setup_msg(struct watch *w)
@@ -104,12 +136,163 @@ static void on_setup_msg(struct watch *w)
 			return;
 		}
 		r->notify_fd = fd;
-		m = (struct msg){ .type = MSG_ACK };
-		if (send(r->sock[0], &m, sizeof(m), MSG_NOSIGNAL) != (ssize_t)sizeof(m)) {
-			sbx_fail("ack to child: %m");
+		ack_child(w);
+	} else if (m.type == MSG_TRACE_READY) {
+		/*
+		 * Fallback for kernels without seccomp user notification. SEIZE
+		 * does not stop the child, and it has to be in place before
+		 * execve(): a traced syscall without a tracer fails with ENOSYS.
+		 * Needs the same ptrace rights over the child as pidfd_getfd.
+		 */
+		r->traced = true;
+		if (sbx_ptrace(PTRACE_SEIZE, r->pid, 0, TRACE_OPTIONS)) {
+			sbx_fail("PTRACE_SEIZE: %m");
 			kill_sandbox(w, TR_INTERNAL_ERROR);
+			return;
+		}
+		ack_child(w);
+	}
+}
+
+/* The syscall number of a PTRACE_EVENT_SECCOMP stop, or -1. */
+static long traced_syscall_nr(pid_t pid)
+{
+	struct ptrace_syscall_info info;
+
+	if (sbx_ptrace(PTRACE_GET_SYSCALL_INFO, pid, sizeof(info), (long)&info) <= 0 ||
+	    info.op != PTRACE_SYSCALL_INFO_SECCOMP)
+		return -1;
+	return (long)info.seccomp.nr;
+}
+
+static bool stop_signal_is_group_stop(int sig)
+{
+	return sig == SIGSTOP || sig == SIGTSTP || sig == SIGTTIN || sig == SIGTTOU;
+}
+
+/*
+ * The program is PID 1 of its namespace, and the kernel treats PID 1
+ * specially: it ignores a signal for which it has no handler, unless the CPU
+ * raised it (a fault), in which case it dies of it. Both rules lapse while a
+ * tracer is attached: a signal the tracer passes on is dropped even if it is
+ * a fault, and a stop signal does stop PID 1. The helpers below put the
+ * kernel's rules back, so that tracing changes nothing the program can see.
+ */
+
+/*
+ * True if pid is PID 1 of the namespace or one of its threads:
+ * /proc/<init>/task/<tid> exists only then.
+ */
+static bool in_init_group(const struct watch *w, pid_t pid)
+{
+	char path[64];
+	struct stat st;
+
+	snprintf(path, sizeof(path), "/proc/%d/task/%d", (int)w->r->pid, (int)pid);
+	return !stat(path, &st);
+}
+
+/* True if the thread has a handler for sig (SigCgt in its /proc status); unknown counts as yes. */
+static bool has_handler(const struct watch *w, pid_t pid, int sig)
+{
+	char path[64], line[128];
+	bool caught = true;
+	FILE *f;
+
+	snprintf(path, sizeof(path), "/proc/%d/task/%d/status", (int)w->r->pid, (int)pid);
+	f = fopen(path, "re");
+	if (!f)
+		return true;
+	while (fgets(line, sizeof(line), f)) {
+		if (!strncmp(line, "SigCgt:", 7)) {
+			caught = (strtoull(line + 7, NULL, 16) >> (sig - 1)) & 1;
+			break;
 		}
 	}
+	fclose(f);
+	return caught;
+}
+
+/* True for a signal the CPU raised in the program, not one sent with kill(). */
+static bool is_fault(pid_t pid, int sig)
+{
+	siginfo_t si;
+
+	if (sig != SIGSEGV && sig != SIGBUS && sig != SIGILL && sig != SIGFPE)
+		return false;
+	return sbx_ptrace(PTRACE_GETSIGINFO, pid, 0, (long)&si) == 0 && si.si_code > 0;
+}
+
+/*
+ * One ptrace stop of the program or of a thread or process it created. A
+ * denied syscall is recorded and ends the run: SIGKILL reaches a task that is
+ * stopped, so the syscall never executes. Every other stop is resumed,
+ * passing on the signal that caused it, so the program behaves as untraced.
+ */
+static void on_trace_stop(struct watch *w, pid_t pid, int status)
+{
+	int sig = WSTOPSIG(status), event = status >> 16;
+
+	if (event == PTRACE_EVENT_SECCOMP) {
+		if (!w->res->has_violation) {
+			w->res->has_violation = true;
+			w->res->syscall_nr = traced_syscall_nr(pid);
+		}
+		kill_sandbox(w, TR_SECURITY_VIOLATION);
+	} else if (event == PTRACE_EVENT_STOP) {
+		/* A group-stop stays stopped (LISTEN); a new tracee's first stop goes on. */
+		sbx_ptrace(stop_signal_is_group_stop(sig) ? PTRACE_LISTEN : PTRACE_CONT, pid, 0, 0);
+	} else if (event) {
+		sbx_ptrace(PTRACE_CONT, pid, 0, 0);	/* clone, fork, vfork */
+	} else {
+		/* Signal-delivery-stop: pass the signal on as the kernel would. */
+		if (in_init_group(w, pid) && !has_handler(w, pid, sig)) {
+			if (is_fault(pid, sig)) {
+				w->fault_signal = sig;
+				kill_sandbox(w, TR_SIGNALED);
+				return;
+			}
+			sig = 0;	/* PID 1 ignores it */
+		}
+		sbx_ptrace(PTRACE_CONT, pid, 0, sig);
+	}
+}
+
+/*
+ * Serves every pending wait event of the traced tree. The exit of the program itself is only peeked
+ * at (WNOWAIT) and left for supervise() to collect with its rusage; the exits of other tasks, which
+ * are our ptrace children too, are reaped here.
+ */
+static void trace_events(struct watch *w)
+{
+	for (;;) {
+		const int peek = WEXITED | WSTOPPED | WNOHANG | WNOWAIT | __WALL;
+		siginfo_t si = { 0 };
+		int status;
+
+		if (waitid(P_ALL, 0, &si, peek) < 0 || !si.si_pid)
+			return;
+		if (si.si_code == CLD_EXITED || si.si_code == CLD_KILLED ||
+		    si.si_code == CLD_DUMPED) {
+			if (si.si_pid == w->r->pid)
+				return;
+			if (waitpid(si.si_pid, &status, WNOHANG | __WALL) != si.si_pid)
+				return;	/* not consumed: try again on the next tick */
+			continue;
+		}
+		if (waitpid(si.si_pid, &status, WNOHANG | __WALL) != si.si_pid)
+			return;
+		if (WIFSTOPPED(status))
+			on_trace_stop(w, si.si_pid, status);
+	}
+}
+
+static void drain_sigchld(int sfd)
+{
+	struct signalfd_siginfo si;
+
+	while (read(sfd, &si, sizeof(si)) == (ssize_t)sizeof(si))
+		;
 }
 
 /*
@@ -258,6 +441,10 @@ static void collect(struct watch *w, int status, const struct rusage *ru, uint64
 		res->exit_code = WEXITSTATUS(status);
 	if (WIFSIGNALED(status))
 		res->term_signal = WTERMSIG(status);
+	if (w->fault_signal) {	/* the supervisor sent SIGKILL, but the program died of its fault */
+		res->exit_code = -1;
+		res->term_signal = w->fault_signal;
+	}
 
 	/* Peak memory: memory.peak (5.19+), else sampled memory.current, else ru_maxrss. */
 	if (peak >= 0) {
@@ -289,17 +476,29 @@ static void collect(struct watch *w, int status, const struct rusage *ru, uint64
 int supervise(struct run *r, struct result *res)
 {
 	const struct limits *l = &r->opts->limits;
-	struct watch w = { .r = r, .res = res };
+	struct watch w = { .r = r, .res = res, .sfd = -1 };
 	const uint64_t start = now_ns();
 	const uint64_t deadline = start + l->timeout_s * 1000000000ULL;
 	struct rusage ru;
-	int status;
+	sigset_t chld;
+	int status, ret = 0;
 
 	res->exit_code = -1;
 	if (fcntl(r->in_w, F_SETFL, fcntl(r->in_w, F_GETFL) | O_NONBLOCK))
 		return sbx_fail("fcntl stdin pipe: %m");
 	if (!r->input_len)
 		close_fd(&r->in_w);
+
+	/*
+	 * In trace mode every stop of the program is a wait event, and pidfd does not report those.
+	 * SIGCHLD through a signalfd wakes the loop at once; the tick below is only the safety net.
+	 */
+	sigemptyset(&chld);
+	sigaddset(&chld, SIGCHLD);
+	sigprocmask(SIG_BLOCK, &chld, NULL);
+	w.sfd = signalfd(-1, &chld, SFD_NONBLOCK | SFD_CLOEXEC);
+	if (w.sfd < 0)
+		return sbx_fail("signalfd: %m");
 
 	for (;;) {
 		/* poll() ignores negative descriptors, so absent ones need no special case. */
@@ -308,6 +507,7 @@ int supervise(struct run *r, struct result *res)
 			{ .fd = r->notify_fd, .events = POLLIN },
 			{ .fd = r->in_w, .events = POLLOUT },
 			{ .fd = r->sock[0], .events = POLLIN },
+			{ .fd = w.sfd, .events = POLLIN },
 		};
 		uint64_t now;
 
@@ -320,21 +520,32 @@ int supervise(struct run *r, struct result *res)
 			on_setup_msg(&w);
 		if (pfd[1].revents & POLLIN)
 			on_notify(&w);
+		if (pfd[4].revents & POLLIN)
+			drain_sigchld(w.sfd);
+		if (r->traced)
+			trace_events(&w);
 		if (pfd[2].revents & (POLLOUT | POLLERR | POLLHUP))
 			pump_stdin(&w);
 		if (pfd[0].revents & POLLIN)
 			break;
 
 		now = now_ns();
-		if (!w.killed)
+		if (!w.killed) {
 			check_limits(&w, now, deadline);
-		else if (now - w.killed_at > KILL_GRACE_NS)
-			return sbx_fail("sandbox survived SIGKILL");
+		} else if (now - w.killed_at > KILL_GRACE_NS) {
+			ret = sbx_fail("sandbox survived SIGKILL");
+			goto out;
+		}
 	}
 
-	if (wait4(r->pid, &status, 0, &ru) < 0)
-		return sbx_fail("wait4: %m");
+	if (wait4(r->pid, &status, 0, &ru) < 0) {
+		ret = sbx_fail("wait4: %m");
+		goto out;
+	}
 	r->pid = 0;
 	collect(&w, status, &ru, start);
-	return res->reason == TR_INTERNAL_ERROR ? -1 : 0;
+	ret = res->reason == TR_INTERNAL_ERROR ? -1 : 0;
+out:
+	close_fd(&w.sfd);
+	return ret;
 }
