@@ -44,6 +44,29 @@ describe('authentication routes', () => {
     expect(localStorage.getItem('token')).toBeNull()
   })
 
+  it('registers a student and redirects to login', async () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('link', { name: 'Register' }))
+    fireEvent.change(screen.getByLabelText('Nama'), { target: { value: 'Siswa Baru' } })
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'baru@example.test' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Daftar' }))
+
+    expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument()
+    expect(localStorage.getItem('token')).toBeNull()
+  })
+
+  it('shows a clear message when registration email is already used', async () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('link', { name: 'Register' }))
+    fireEvent.change(screen.getByLabelText('Nama'), { target: { value: 'Siswa Baru' } })
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'mahasiswa@example.test' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Daftar' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Email sudah terdaftar.')
+  })
+
   it('redirects unauthenticated users to login', async () => {
     window.history.pushState({}, '', '/history')
     render(<App />)
@@ -69,6 +92,7 @@ describe('authentication routes', () => {
 
     expect(await screen.findByRole('heading', { name: 'Daftar Assignment' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Riwayat' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Profil' })).toHaveAttribute('href', '/profile')
     expect(screen.getByRole('link', { name: 'Kelola Assignment' })).toHaveAttribute(
       'href',
       '/lecturer/assignments',
@@ -82,6 +106,7 @@ describe('authentication routes', () => {
 
     expect(await screen.findByRole('heading', { name: 'Administrasi' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Riwayat' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Profil' })).toHaveAttribute('href', '/profile')
     expect(screen.getByRole('link', { name: 'Kelola Assignment' })).toHaveAttribute(
       'href',
       '/lecturer/assignments',
@@ -98,5 +123,101 @@ describe('authentication routes', () => {
 
     expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument()
     expect(localStorage.getItem('token')).toBeNull()
+  })
+
+  it('updates the current user name on the profile page', async () => {
+    render(<App />)
+    submitLogin('mahasiswa@example.test', 'password123')
+    await screen.findByRole('heading', { name: 'Daftar Assignment' })
+    fireEvent.click(screen.getByRole('link', { name: 'Profil' }))
+
+    const nameInput = await screen.findByLabelText('Nama tampilan')
+    expect(screen.getByText('Mahasiswa Demo')).toBeInTheDocument()
+    fireEvent.change(nameInput, { target: { value: 'Nama Baru' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan nama' }))
+
+    expect(await screen.findByText('Nama berhasil diperbarui.')).toBeInTheDocument()
+    expect(screen.getByText('Nama Baru')).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('user')).nama).toBe('Nama Baru')
+  })
+
+  it('clears the session after a password change and redirects to login', async () => {
+    render(<App />)
+    submitLogin('mahasiswa@example.test', 'password123')
+    await screen.findByRole('heading', { name: 'Daftar Assignment' })
+    fireEvent.click(screen.getByRole('link', { name: 'Profil' }))
+    await screen.findByRole('heading', { name: 'Profil' })
+    fireEvent.change(screen.getByLabelText('Kata sandi lama'), { target: { value: 'password123' } })
+    fireEvent.change(screen.getByLabelText('Kata sandi baru'), { target: { value: 'new-password' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Ganti kata sandi' }))
+
+    expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Silakan masuk kembali')
+    expect(localStorage.getItem('token')).toBeNull()
+    expect(localStorage.getItem('refresh_token')).toBeNull()
+    expect(localStorage.getItem('user')).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'mahasiswa@example.test' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'new-password' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Masuk' }))
+    expect(await screen.findByRole('heading', { name: 'Daftar Assignment' })).toBeInTheDocument()
+  })
+
+  it('keeps the authenticated profile session when the server rejects a password change', async () => {
+    vi.stubEnv('VITE_USE_MOCK', 'false')
+    localStorage.setItem('token', 'access-token')
+    localStorage.setItem('refresh_token', 'refresh-token')
+    localStorage.setItem(
+      'user',
+      JSON.stringify({
+        id: 'user-1',
+        nama: 'Mahasiswa Demo',
+        email: 'mahasiswa@example.test',
+        role: 'mahasiswa',
+      }),
+    )
+    window.history.pushState({}, '', '/profile')
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 'user-1',
+          name: 'Mahasiswa Demo',
+          email: 'mahasiswa@example.test',
+          role: 'STUDENT',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error: { code: 'INVALID_PASSWORD', message: 'Kata sandi lama tidak sesuai.' },
+        }),
+      }))
+
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Profil' })
+    fireEvent.change(screen.getByLabelText('Kata sandi lama'), { target: { value: 'wrong-password' } })
+    fireEvent.change(screen.getByLabelText('Kata sandi baru'), { target: { value: 'new-password' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Ganti kata sandi' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Kata sandi lama tidak sesuai.')
+    expect(window.location.pathname).toBe('/profile')
+    expect(screen.getByRole('heading', { name: 'Profil' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Profil' })).toBeInTheDocument()
+    expect(localStorage.getItem('token')).toBe('access-token')
+    expect(localStorage.getItem('refresh_token')).toBe('refresh-token')
+    expect(JSON.parse(localStorage.getItem('user'))).toMatchObject({
+      id: 'user-1',
+      email: 'mahasiswa@example.test',
+    })
+  })
+
+  it('redirects an unauthenticated profile route to login', () => {
+    window.history.pushState({}, '', '/profile')
+    render(<App />)
+
+    expect(screen.getByRole('heading', { name: 'Login' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/login')
   })
 })
