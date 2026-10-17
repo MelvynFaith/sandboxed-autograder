@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: MIT
+#
+# Backend: API gateway, scheduler and worker pool in one process. Each submission spawns the
+# grading harness, which runs sandbox-exec once per test case. Install steps: infra/README.md.
+#
+# Delegate=yes (SRS Bagian 3.2.1.1, risk R11) hands this unit's cgroup subtree to User=, so
+# sandbox-exec can write memory.max, pids.max and the other limit files without root. At start-up
+# the worker must still move itself into a leaf cgroup and enable the memory, pids and cpu
+# controllers on the unit cgroup (sandbox/README.md, "cgroup delegation").
+#
+# Do not add these hardening options without rerunning the delegation check in infra/README.md:
+#   ProtectControlGroups=yes  makes /sys/fs/cgroup read-only, so no limit file can be written.
+#   RestrictNamespaces=       blocks the namespaces sandbox-exec creates.
+#   NoNewPrivileges=yes       untested together with the AppArmor profile.
+#
+# ExecStart names a binary that does not exist yet; change it when the scheduler build lands.
+
+[Unit]
+Description=Auto-grading platform backend
+Documentation=https://github.com/MelvynFaith/sandboxed-autograder
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=grader
+Group=grader
+Delegate=yes
+EnvironmentFile=/etc/autograder/autograder.env
+ExecStart=/usr/local/bin/autograder
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
