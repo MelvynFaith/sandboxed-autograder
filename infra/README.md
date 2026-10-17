@@ -67,10 +67,25 @@ sudo systemd-run --wait --pipe --collect -p User="$USER" -p Delegate=yes \
     "$PWD/sandbox/tests/run.sh" /usr/local/bin/sandbox-exec
 ```
 
-Expected: `Ran 57 tests ... OK`. `run.sh` creates the leaf cgroup, moves itself into it and enables
-the `memory`, `pids` and `cpu` controllers, which is what the worker has to do at start-up
-(`sandbox/README.md`, "cgroup delegation"). Rerun this after any change to the unit's hardening
-options.
+Expected: `Ran N tests ... OK`, where N is the size of the suite (64 at the time of writing).
+`run.sh` creates the leaf cgroup, moves itself into it and enables the `memory`, `pids` and `cpu`
+controllers, which is what the worker has to do at start-up (`sandbox/README.md`, "cgroup delegation").
+Rerun this after any change to the unit's hardening options.
+
+`make test`, `make asan` and `make trace` fail on Ubuntu 24.04 when run from the build directory, with
+`write /proc/self/setgroups: Permission denied`: the AppArmor profile (`infra/apparmor/sandbox-exec`)
+attaches only to `/usr/local/bin/sandbox-exec`, so a binary at any other path is still subject to
+`kernel.apparmor_restrict_unprivileged_userns` (SRS risk R9). To run another build on the host, install it
+at that path, run the suite from there, and put the normal binary back:
+
+```sh
+sudo install -m 0755 sandbox/sandbox-exec-trace /usr/local/bin/sandbox-exec    # or sandbox-exec-asan
+sandbox/tests/run.sh /usr/local/bin/sandbox-exec
+sudo make -C sandbox install
+```
+
+Build the variant first with `make -C sandbox CFLAGS=-DSBX_FORCE_TRACE BUILD_DIR=build/trace BIN=sandbox-exec-trace`
+or `make -C sandbox SANITIZE=1 BUILD_DIR=build/asan BIN=sandbox-exec-asan`.
 
 ## Not started
 

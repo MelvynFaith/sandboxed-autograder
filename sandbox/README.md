@@ -111,8 +111,11 @@ make test
 bash tests/run.sh "$PWD/sandbox-exec" -k fork_bomb     # one test, unittest syntax
 ```
 
-CI only builds this component: the suite needs user namespaces and cgroup v2, which GitHub-hosted
-Ubuntu 24.04 runners restrict (SRS R9). Run it on a self-hosted runner.
+CI builds this component and runs the whole suite on three builds: the normal one, the ptrace fallback
+(`make trace`) and the sanitizer build (`make asan`). The hosted Ubuntu 24.04 runner restricts user
+namespaces through AppArmor (SRS R9), so the job switches that off with `sysctl` (the runner is a
+throwaway VM) and runs each suite as a transient system service with `Delegate=yes`, the way
+`infra/README.md` verifies a host. A hung test fails the job after 15 minutes.
 
 ### Extending the allowlist
 
