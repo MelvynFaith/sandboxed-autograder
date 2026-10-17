@@ -5,7 +5,8 @@ persists results. It is **the only component that writes to PostgreSQL.**
 
 **Owner:** Evan William
 **Status:** authentication/session endpoints and the in-process `JobQueue` are implemented. The
-assignment, submission, grading, and WebSocket upgrade APIs are not implemented.
+Harness runner, grading store, and worker pool are implemented. Assignment, submission, grading,
+and WebSocket upgrade APIs are not implemented.
 
 ## Responsibilities
 
@@ -25,13 +26,21 @@ assignment, submission, grading, and WebSocket upgrade APIs are not implemented.
 go.mod
 cmd/autograder/    API process entry point
 migrations/        schema, one NNNNNN_name.up.sql / .down.sql pair per change, embedded as migrations.FS
-internal/api/      HTTP routes and handlers
+internal/api/      authentication HTTP routes and handlers
 internal/auth/     authentication, password/token helpers, PostgreSQL user/session store, WS tickets
-internal/queue/    JobQueue interface and in-process Memory implementation
+internal/queue/    JobQueue interface between the handlers and worker pool; in-process Memory implementation
+internal/harness/  starts the Grading Harness for one submission and checks its report
+internal/store/    grading database operations: claim, complete, fail, and reconcile
+internal/worker/   worker pool joining the queue, store, and Harness
+internal/testdb/   isolated migrated schema for each database test
 ```
 
 The API/authentication packages are separate from grading work in `internal/queue`. The current
 auth/session endpoints do not enqueue grading jobs.
+The grading pipeline includes the schema, in-process queue, Harness runner, grading store, and
+worker pool. Request-handling code and grading work meet at `JobQueue`: a handler stores a
+submission as `QUEUED` and calls `Enqueue`; a worker calls `Dequeue`. The authentication endpoints
+are implemented; assignment, submission, grading, and WebSocket upgrade APIs are not.
 
 ## Authentication API
 
@@ -136,6 +145,22 @@ lock per student and assignment until the transaction ends, so two simultaneous 
 a limit of one. The counts come from the database, not memory, so they survive a restart. The thresholds
 are admin-configurable (FR-14) but the SRS has no entity to store them, so for now the caller passes a
 `Limits` value.
+
+## Worker pool
+
+`internal/worker.Pool` runs `Workers` goroutines, each of which dequeues a job, claims the submission,
+runs the Harness and stores the report (SRS 3.3, steps 3 to 8). It is built from three interfaces
+(`queue.JobQueue`, `worker.Store`, `worker.Grader`), so it is tested with fakes.
+
+- A job runs under `recover()`. A panic, a failed Harness or an invalid report marks that submission
+  `FAILED`, and the worker takes the next job.
+- A job has a backstop deadline computed from its definition: each test case may use its `timeout_s`
+  plus a small overhead, plus a margin, and never more than half the lease.
+- At start-up, and every minute after, `RUNNING` submissions that have not changed for the lease (30
+  minutes) go back to `QUEUED`, and `QUEUED` submissions the queue does not hold are added to it
+  (NFR-04).
+- On shutdown a job in progress is interrupted and left `RUNNING`, not failed: the next start-up
+  requeues it, so a restart does not cost anyone a grade.
 
 ## Build and test
 
