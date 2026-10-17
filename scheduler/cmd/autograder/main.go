@@ -13,6 +13,7 @@ import (
 
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/api"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/auth"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/courses"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/harness"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/health"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/progress"
@@ -92,7 +93,7 @@ func run() error {
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", checker)
 	mux.Handle("GET /ws/v1/submissions/{id}", stream.New(ticketStore, pipeline, hub))
-	mux.Handle("/", api.NewHandler(auth.NewStore(pool), tokens, ticketStore))
+	mux.Handle("/", api.NewHandler(auth.NewStore(pool), tokens, ticketStore, courses.NewStore(pool)))
 	server := &http.Server{
 		Addr:              cfg.httpAddr,
 		Handler:           mux,
