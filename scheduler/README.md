@@ -69,6 +69,20 @@ the `QUEUED` ones, which is how the in-memory queue is rebuilt after a restart. 
 conditional `UPDATE`, so a cancel, a requeue and a worker cannot push a submission into a state the
 diagram in SRS 3.3 does not allow.
 
+## Rate limits
+
+`internal/ratelimit.Limits.Check` enforces FR-14 per student and assignment: at most `MaxActive` (1)
+submissions `QUEUED` or `RUNNING`, at least `MinInterval` (30 s) between submissions, and at most
+`MaxPerAssignment` (30) in total. A rule set to zero is off. A refusal is an `*ratelimit.Error` naming
+the rule (and, for the interval, how long to wait), which the upload handler maps to `429` with a clear
+message. Cancelled submissions do not use up the quota (US-14).
+
+The upload handler must call `Check` inside the transaction that inserts the submission: `Check` takes a
+lock per student and assignment until the transaction ends, so two simultaneous uploads cannot both pass
+a limit of one. The counts come from the database, not memory, so they survive a restart. The thresholds
+are admin-configurable (FR-14) but the SRS has no entity to store them, so for now the caller passes a
+`Limits` value.
+
 ## Build and test
 
 Needs Go 1.27 or newer. Tests that touch the database (the migrations and `internal/store`) need a
