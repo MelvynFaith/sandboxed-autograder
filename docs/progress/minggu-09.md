@@ -17,15 +17,15 @@
   - [PR #32](https://github.com/MelvynFaith/sandboxed-autograder/pull/32) — frontend registration and profile flows. Owner: Benedictus Erlangga.
   - [PR #33](https://github.com/MelvynFaith/sandboxed-autograder/pull/33) — output comparison. Owner: whosblub.
   - [PR #36](https://github.com/MelvynFaith/sandboxed-autograder/pull/36) — submission rate limits. Owner: Melvyn Faith.
+  - [PR #37](https://github.com/MelvynFaith/sandboxed-autograder/pull/37), [PR #38](https://github.com/MelvynFaith/sandboxed-autograder/pull/38), and [PR #39](https://github.com/MelvynFaith/sandboxed-autograder/pull/39) — scheduler settings, startup sweep, and lost-submission attempt limit. Owner: Melvyn Faith.
 - B0 local backend preparation: Go 1.27.2 and PostgreSQL 18.6 are available, initial migrations were applied, and `gofmt`, `go vet`, and `go test -race` passed. Local development credentials remain in the ignored `scheduler/.env`.
 - The CRUD/pipeline boundary is documented in the scheduler layout: scheduler owns HTTP/API orchestration and is the only PostgreSQL writer; grader and sandbox own submitted-code execution. The `JobQueue` boundary carries `SubmissionID` and `UserID`.
 
 ## In progress / carried over
 
-- B1 auth/session API (WBS 3.4; FR-01, FR-15, FR-19) is on [PR #35](https://github.com/MelvynFaith/sandboxed-autograder/pull/35). The conflicts are resolved and CI is green; Melvyn's re-review is pending. Coverage with `-coverpkg=./...`: `internal/api` 70.7%, `internal/auth` 76.4%, total 76.7%. B1 is not merged.
-- Open scheduler work: [PR #37](https://github.com/MelvynFaith/sandboxed-autograder/pull/37) (settings table), [PR #38](https://github.com/MelvynFaith/sandboxed-autograder/pull/38) (sweep dead sandbox runs at start-up), and [PR #39](https://github.com/MelvynFaith/sandboxed-autograder/pull/39) (give up on repeatedly lost submissions). Owners: Melvyn Faith.
+- B1 auth/session API (WBS 3.4; FR-01, FR-15, FR-19) was merged to `develop` through [PR #35](https://github.com/MelvynFaith/sandboxed-autograder/pull/35), squash commit `2e4cb82`. All five CI checks passed before merge. Coverage with `-coverpkg=./...`: `internal/api` 70.7%, `internal/auth` 76.4%, total 76.7%.
 - Implement the FR-11 grade-summary/CSV frontend UI; confirm its backend endpoint contract and backend owner.
-- B2 Course and enrollment (FR-18) depends on the auth middleware/helpers in B1. Start it from updated `develop` after PR #35 merges, not from the B1 branch.
+- B2 Course and enrollment (FR-18) depends on the auth middleware/helpers now merged in B1. Start it from updated `develop`.
 
 ## Blockers and risks
 
@@ -35,7 +35,7 @@
 
 ## Next week
 
-- Obtain Melvyn's re-review before merging B1; then start B2 (FR-18) from updated `develop`.
+- Start B2 (FR-18) from updated `develop`.
 - Confirm replacement sandbox backup and Module C reviewer coverage (R4, R7).
 - Have the PM decide whether to use the SRS UAT fallback (R6); document a confirmed schedule only after confirmation.
 - Agree Should/Could scope cuts before the 26 Oct feature freeze, and confirm the backend owner/API contract for FR-11.
