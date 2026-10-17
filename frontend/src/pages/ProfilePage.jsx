@@ -77,9 +77,9 @@ function ProfilePage() {
       {profile && (
         <>
           <dl className="mt-6 grid gap-3 rounded border border-slate-200 bg-white p-4 sm:grid-cols-2">
-            <div><dt className="font-medium">Nama</dt><dd>{profile.name}</dd></div>
-            <div><dt className="font-medium">Email</dt><dd>{profile.email}</dd></div>
-            <div><dt className="font-medium">Peran</dt><dd>{roleNames[profile.role]}</dd></div>
+            <div className="min-w-0"><dt className="font-medium">Nama</dt><dd className="break-all">{profile.name}</dd></div>
+            <div className="min-w-0"><dt className="font-medium">Email</dt><dd className="break-all">{profile.email}</dd></div>
+            <div className="min-w-0"><dt className="font-medium">Peran</dt><dd>{roleNames[profile.role]}</dd></div>
           </dl>
           <form className="mt-6 space-y-4 rounded border border-slate-200 bg-white p-4" onSubmit={handleNameSubmit}>
             <h2 className="text-lg font-semibold">Ubah nama</h2>

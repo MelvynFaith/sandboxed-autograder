@@ -163,6 +163,56 @@ describe('authentication routes', () => {
     expect(await screen.findByRole('heading', { name: 'Daftar Assignment' })).toBeInTheDocument()
   })
 
+  it('keeps the authenticated profile session when the server rejects a password change', async () => {
+    vi.stubEnv('VITE_USE_MOCK', 'false')
+    localStorage.setItem('token', 'access-token')
+    localStorage.setItem('refresh_token', 'refresh-token')
+    localStorage.setItem(
+      'user',
+      JSON.stringify({
+        id: 'user-1',
+        nama: 'Mahasiswa Demo',
+        email: 'mahasiswa@example.test',
+        role: 'mahasiswa',
+      }),
+    )
+    window.history.pushState({}, '', '/profile')
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 'user-1',
+          name: 'Mahasiswa Demo',
+          email: 'mahasiswa@example.test',
+          role: 'STUDENT',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error: { code: 'INVALID_PASSWORD', message: 'Kata sandi lama tidak sesuai.' },
+        }),
+      }))
+
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Profil' })
+    fireEvent.change(screen.getByLabelText('Kata sandi lama'), { target: { value: 'wrong-password' } })
+    fireEvent.change(screen.getByLabelText('Kata sandi baru'), { target: { value: 'new-password' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Ganti kata sandi' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Kata sandi lama tidak sesuai.')
+    expect(window.location.pathname).toBe('/profile')
+    expect(screen.getByRole('heading', { name: 'Profil' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Profil' })).toBeInTheDocument()
+    expect(localStorage.getItem('token')).toBe('access-token')
+    expect(localStorage.getItem('refresh_token')).toBe('refresh-token')
+    expect(JSON.parse(localStorage.getItem('user'))).toMatchObject({
+      id: 'user-1',
+      email: 'mahasiswa@example.test',
+    })
+  })
+
   it('redirects an unauthenticated profile route to login', () => {
     window.history.pushState({}, '', '/profile')
     render(<App />)
