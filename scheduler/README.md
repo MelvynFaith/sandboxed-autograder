@@ -23,7 +23,7 @@ assignment, submission, grading, and WebSocket upgrade APIs are not implemented.
 
 ```
 go.mod
-cmd/api/           API process entry point
+cmd/autograder/    API process entry point
 migrations/        schema, one NNNNNN_name.up.sql / .down.sql pair per change, embedded as migrations.FS
 internal/api/      HTTP routes and handlers
 internal/auth/     authentication, password/token helpers, PostgreSQL user/session store, WS tickets
@@ -41,13 +41,15 @@ Run the API with Go 1.27.2 or newer. Configuration is supplied through environme
 export DATABASE_URL='postgres://USER:PASSWORD@localhost:5432/DATABASE?sslmode=disable'
 export JWT_SECRET='at-least-32-random-bytes-from-a-local-secret-manager'
 export HTTP_ADDR=':8080'
-go run ./cmd/api
+go run ./cmd/autograder
 ```
 
 Do not commit credentials or a `.env` file. Register/login, self-profile, password change, one-time
 WebSocket ticket issuance, and administrator user management are implemented under `/api/v1`.
 Refresh tokens are opaque random values; only their SHA-256 hashes are stored. Access JWTs use
 HS256 and expire after 15 minutes. Password hashes use Argon2id (`m=65536,t=3,p=2`).
+At most three password hash or verification operations run concurrently; requests waiting for a slot
+can be cancelled with their request context.
 
 The client contract is:
 
@@ -67,7 +69,9 @@ The client contract is:
   The WebSocket upgrade endpoint that consumes tickets is outside this API increment.
 - `GET /admin/users?page=N&page_size=N` returns `items`, `page`, `page_size`, and `has_next`.
   `PUT /admin/users/{id}/role` accepts `{ "role" }`. Only `ADMIN` can use these routes; role changes
-  revoke every refresh token for the target user.
+  revoke every refresh token for the target user and write a `ROLE_CHANGED` audit row in the same
+  transaction. A non-admin role-change attempt returns 403 and writes `ROLE_CHANGE_DENIED`.
+  Registration and profile updates limit display names to 200 Unicode characters.
 
 The SRS does not define the request body fields for registration, password change, or WebSocket
 ticket issuance. They follow the current frontend assumptions: register `{name,email,password}`,

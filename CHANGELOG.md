@@ -28,3 +28,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Scheduler authentication and sessions (`scheduler/`): Argon2id registration/login, JWT access
   tokens, hashed and revocable refresh tokens, self-profile and password management, single-use
   WebSocket tickets, and paginated administrator user management (FR-01, FR-15, FR-19).
+- Scheduler auth review updates (`scheduler/`): audit administrator role changes and denied
+  attempts; bound Argon2id concurrency; serialize refresh rotation/revocation against user
+  credential changes; enforce 200-character display names and equalize unknown-email login work.
