@@ -485,3 +485,48 @@ func TestPeriodicReconcileUsesTheLeaseAndToleratesDuplicates(t *testing.T) {
 		t.Fatalf("%d jobs queued, want 1: the duplicate listing must be ignored", len(q.jobs))
 	}
 }
+
+func TestSweepRunsOnceBeforeAnythingIsRequeued(t *testing.T) {
+	var mu sync.Mutex
+	var events []string
+	record := func(e string) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, e)
+	}
+	q, s, g := newFakeQueue(), &fakeStore{}, &fakeGrader{}
+	s.reconcile = func(call int, _ time.Duration) ([]queue.Job, error) {
+		if call == 1 {
+			record("reconcile")
+			return []queue.Job{{SubmissionID: 5, UserID: 7}}, nil
+		}
+		return nil, nil
+	}
+	g.run = func(_ context.Context, def *harness.Definition) (*harness.Report, error) {
+		record("grade")
+		return &harness.Report{SubmissionID: def.SubmissionID}, nil
+	}
+	r := &rig{t: t, dir: t.TempDir(), q: q, s: s, g: g}
+	r.run(worker.Config{
+		Workers: 1, CodeDir: r.dir, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Sweep: func(context.Context) error { record("sweep"); return nil },
+	})
+	r.waitCompleted(5)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if want := []string{"sweep", "reconcile", "grade"}; !slices.Equal(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestAFailedSweepDoesNotStopThePool(t *testing.T) {
+	q, s, g := newFakeQueue(), &fakeStore{}, &fakeGrader{}
+	r := &rig{t: t, dir: t.TempDir(), q: q, s: s, g: g}
+	r.run(worker.Config{
+		Workers: 1, CodeDir: r.dir, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Sweep: func(context.Context) error { return errors.New("cgroup root is not writable") },
+	})
+	r.enqueue(1)
+	r.waitCompleted(1)
+}

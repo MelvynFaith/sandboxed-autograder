@@ -169,6 +169,9 @@ runs the Harness and stores the report (SRS 3.3, steps 3 to 8). It is built from
 - At start-up, and every minute after, `RUNNING` submissions that have not changed for the lease (30
   minutes) go back to `QUEUED`, and `QUEUED` submissions the queue does not hold are added to it
   (NFR-04).
+- Before it requeues anything, `Run` calls `Config.Sweep` once. `internal/sandbox.Sweeper` is the
+  implementation: it runs `sandbox-exec --sweep` to remove the empty cgroups and run directories that
+  a crashed run left behind. A sweep that fails is logged and does not stop the pool.
 - On shutdown a job in progress is interrupted and left `RUNNING`, not failed: the next start-up
   requeues it, so a restart does not cost anyone a grade.
 
