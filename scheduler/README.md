@@ -4,8 +4,8 @@ A Go service that exposes the REST and WebSocket API, queues grading jobs, runs 
 persists results. It is **the only component that writes to PostgreSQL.**
 
 **Owner:** Evan William
-**Status:** foundation only. The schema migrations and the `JobQueue` interface exist; the queue
-implementation, worker pool and HTTP API do not.
+**Status:** foundation only. The schema migrations and the in-process `JobQueue` exist; the worker
+pool and HTTP API do not.
 
 ## Responsibilities
 
@@ -24,7 +24,8 @@ implementation, worker pool and HTTP API do not.
 ```
 go.mod
 migrations/        schema, one NNNNNN_name.up.sql / .down.sql pair per change, embedded as migrations.FS
-internal/queue/    the JobQueue interface between the HTTP handlers and the worker pool
+internal/queue/    the JobQueue interface between the HTTP handlers and the worker pool, and Memory,
+                   its in-process implementation (round-robin per student, FIFO within a student)
 ```
 
 Code that accepts requests (an `internal/api` package, not written yet) and code that grades
@@ -38,10 +39,25 @@ applies both. Rules for a new migration:
 
 - Number it after the last one and write both files; never edit a migration that has been merged.
 - Enumerations are `text` with a `CHECK`, so adding a value is a constraint change.
-- PostgreSQL `text` cannot hold a NUL byte. Strip it from program output before inserting.
+- PostgreSQL `text` cannot hold a NUL byte, and a program can print one. `harness.Parse` replaces it
+  in the Harness report, so anything that stores output from another source must do the same.
 - Deleting a row that an `ON DELETE RESTRICT` key protects raises SQLSTATE `23503`
   (`foreign_key_violation`) on PostgreSQL 16 and `23001` (`restrict_violation`) on 18. Map both
   when turning database errors into API errors.
+
+## Harness
+
+`internal/harness` runs the Grading Harness for one submission and checks what comes back. Its package
+comment is the contract between the worker and the Harness, and the Harness owner should read it:
+
+- The worker starts `<command...> --definition PATH --code PATH`. The definition file (test cases with
+  their hidden expected output, resource limits, match modes) is written with mode `0600` inside a
+  `0700` directory, is never on the command line, and is deleted afterwards.
+- The Harness gets an environment of exactly what the deployment configures, not the scheduler's.
+- It writes one JSON report (SRS Appendix C) to standard output and exits 0. Any other exit status, or a
+  report that does not match the definition (wrong submission, missing or extra test case, a score above
+  the weight, totals that do not add up), makes the submission `FAILED` and nothing is stored.
+- On a deadline the Harness and the processes it started are killed.
 
 ## Build and test
 
