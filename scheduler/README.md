@@ -4,8 +4,8 @@ A Go service that exposes the REST and WebSocket API, queues grading jobs, runs 
 persists results. It is **the only component that writes to PostgreSQL.**
 
 **Owner:** Evan William
-**Status:** foundation only. The schema migrations and the in-process `JobQueue` exist; the worker
-pool and HTTP API do not.
+**Status:** authentication/session endpoints and the in-process `JobQueue` are implemented. The
+assignment, submission, grading, and WebSocket upgrade APIs are not implemented.
 
 ## Responsibilities
 
@@ -23,14 +23,64 @@ pool and HTTP API do not.
 
 ```
 go.mod
+cmd/api/           API process entry point
 migrations/        schema, one NNNNNN_name.up.sql / .down.sql pair per change, embedded as migrations.FS
-internal/queue/    the JobQueue interface between the HTTP handlers and the worker pool, and Memory,
-                   its in-process implementation (round-robin per student, FIFO within a student)
+internal/api/      HTTP routes and handlers
+internal/auth/     authentication, password/token helpers, PostgreSQL user/session store, WS tickets
+internal/queue/    JobQueue interface and in-process Memory implementation
 ```
 
-Code that accepts requests (an `internal/api` package, not written yet) and code that grades
-(`internal/queue` and the worker) stay in separate packages. They meet at `JobQueue`: a handler stores the submission as `QUEUED` and calls
-`Enqueue`; a worker calls `Dequeue`.
+The API/authentication packages are separate from grading work in `internal/queue`. The current
+auth/session endpoints do not enqueue grading jobs.
+
+## Authentication API
+
+Run the API with Go 1.27.2 or newer. Configuration is supplied through environment variables:
+
+```sh
+export DATABASE_URL='postgres://USER:PASSWORD@localhost:5432/DATABASE?sslmode=disable'
+export JWT_SECRET='at-least-32-random-bytes-from-a-local-secret-manager'
+export HTTP_ADDR=':8080'
+go run ./cmd/api
+```
+
+Do not commit credentials or a `.env` file. Register/login, self-profile, password change, one-time
+WebSocket ticket issuance, and administrator user management are implemented under `/api/v1`.
+Refresh tokens are opaque random values; only their SHA-256 hashes are stored. Access JWTs use
+HS256 and expire after 15 minutes. Password hashes use Argon2id (`m=65536,t=3,p=2`).
+
+The client contract is:
+
+- `POST /auth/register` accepts `{ "name", "email", "password" }`, always creates a `STUDENT`, and
+  returns the created user with status 201. A duplicate email returns 409.
+- `POST /auth/login` returns `access_token`, `refresh_token`, and `user`.
+- `POST /auth/refresh` accepts `{ "refresh_token" }`, revokes it, and returns new access and refresh
+  tokens. `POST /auth/logout` accepts `{ "refresh_token" }` and revokes all active refresh tokens
+  belonging to that user.
+- `GET /users/me` and `PUT /users/me` return the user; the latter accepts `{ "name" }`.
+- `PUT /users/me/password` accepts `{ "current_password", "new_password" }`, verifies the old
+  password, then revokes every refresh token for the user.
+- `POST /ws-tickets` accepts `{ "submission_id" }` and returns `{ "ticket" }`. The request field
+  follows `frontend/src/api/submissionStatus.js`; the frontend sends the ID as JSON. Issued tickets
+  are held in process memory, bound to the authenticated user and submission, and expire within 60
+  seconds. `TicketStore.Consume` atomically removes a ticket; a second or expired use is rejected.
+  The WebSocket upgrade endpoint that consumes tickets is outside this API increment.
+- `GET /admin/users?page=N&page_size=N` returns `items`, `page`, `page_size`, and `has_next`.
+  `PUT /admin/users/{id}/role` accepts `{ "role" }`. Only `ADMIN` can use these routes; role changes
+  revoke every refresh token for the target user.
+
+The SRS does not define the request body fields for registration, password change, or WebSocket
+ticket issuance. They follow the current frontend assumptions: register `{name,email,password}`,
+password `{current_password,new_password}` (documented in `frontend/README.md`), and ticket
+`{submission_id}`. Login/refresh/logout use `email`, `password`, and `refresh_token`, respectively.
+If the frontend contract changes, update the adapters and this note together.
+
+Errors use `{"error":{"code":"...","message":"..."}}`. Authentication failures return 401,
+authenticated non-admin access returns 403, and a missing or another user's submission returns 404.
+Admin user lists accept `page` and `page_size` (maximum 100).
+
+Dependencies added for B1 via `go get`: `github.com/golang-jwt/jwt/v5` (JWT) and
+`golang.org/x/crypto` (Argon2id). The existing `pgx/v5` module is used for PostgreSQL access.
 
 ## Migrations
 
@@ -62,3 +112,6 @@ export AUTOGRADER_TEST_DATABASE_URL='postgres://USER:PASSWORD@localhost:5432/DAT
 Each test creates its own schema in that database and drops it afterwards, so a scratch database is
 enough; use a user that may create schemas. CI runs PostgreSQL 16, the version Ubuntu 24.04
 packages, and fails instead of skipping when the variable is missing.
+
+The API process uses `DATABASE_URL`, `JWT_SECRET` (at least 32 bytes), and `HTTP_ADDR`; tests use
+`AUTOGRADER_TEST_DATABASE_URL` and apply migrations in isolated schemas.
