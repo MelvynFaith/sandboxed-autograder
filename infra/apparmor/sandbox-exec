@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: MIT
+#
+# AppArmor profile that lets sandbox-exec create user namespaces (SRS risk R9).
+#
+# Ubuntu 24.04 sets kernel.apparmor_restrict_unprivileged_userns=1: an unprivileged process may
+# create a user namespace, but loses its capabilities inside it, so every mount() fails with EPERM.
+# A profile with `userns,` lifts that for this one binary. The profile is unconfined apart from
+# that rule; it adds no restriction and no other permission.
+#
+# The profile attaches by path. Install sandbox-exec at the path below (the `make install`
+# default) and run the installed binary, not a copy elsewhere. Install steps: infra/README.md.
+
+abi <abi/4.0>,
+include <tunables/global>
+
+profile sandbox-exec /usr/local/bin/sandbox-exec flags=(unconfined) {
+  userns,
+
+  include if exists <local/sandbox-exec>
+}

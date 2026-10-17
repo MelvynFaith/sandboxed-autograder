@@ -103,7 +103,6 @@ static void on_setup_msg(struct watch *w)
 			kill_sandbox(w, TR_INTERNAL_ERROR);
 			return;
 		}
-		fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
 		r->notify_fd = fd;
 		m = (struct msg){ .type = MSG_ACK };
 		if (send(r->sock[0], &m, sizeof(m), MSG_NOSIGNAL) != (ssize_t)sizeof(m)) {
@@ -113,20 +112,25 @@ static void on_setup_msg(struct watch *w)
 	}
 }
 
-/* A syscall outside the allowlist: record its number, refuse it, end the run. */
+/*
+ * A syscall outside the allowlist: record its number, refuse it, end the run.
+ *
+ * Called when poll() reports a pending notification, and receives exactly one.
+ * SECCOMP_IOCTL_NOTIF_RECV sleeps in the kernel when nothing is pending, even
+ * on an O_NONBLOCK descriptor, so a second call "to drain the queue" blocks
+ * until the filter is released, which only happens once this process has
+ * reaped the sandbox. Poll is level triggered: anything still pending is
+ * served on the next iteration.
+ */
 static void on_notify(struct watch *w)
 {
 	struct seccomp_notif *req;
 	struct seccomp_notif_resp *resp;
 
-	for (;;) {
-		if (seccomp_notify_alloc(&req, &resp))
-			return;
-		/* -EAGAIN: drained; -ENOENT: the caller died meanwhile. */
-		if (seccomp_notify_receive(w->r->notify_fd, req)) {
-			seccomp_notify_free(req, resp);
-			return;
-		}
+	if (seccomp_notify_alloc(&req, &resp))
+		return;
+	/* -ENOENT: the caller was killed between poll() and here. */
+	if (seccomp_notify_receive(w->r->notify_fd, req) == 0) {
 		if (!w->res->has_violation) {
 			w->res->has_violation = true;
 			w->res->syscall_nr = req->data.nr;
@@ -135,9 +139,9 @@ static void on_notify(struct watch *w)
 		resp->id = req->id;
 		resp->error = -EPERM;
 		seccomp_notify_respond(w->r->notify_fd, resp);
-		seccomp_notify_free(req, resp);
 		kill_sandbox(w, TR_SECURITY_VIOLATION);
 	}
+	seccomp_notify_free(req, resp);
 }
 
 static void pump_stdin(struct watch *w)
