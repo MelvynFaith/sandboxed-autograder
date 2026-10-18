@@ -27,6 +27,7 @@ go.mod
 cmd/autograder/    API process entry point
 migrations/        schema, one NNNNNN_name.up.sql / .down.sql pair per change, embedded as migrations.FS
 internal/api/      authentication HTTP routes and handlers
+internal/health/   the /healthz handler: database, live workers, queue depth
 internal/auth/     authentication, password/token helpers, PostgreSQL user/session store, WS tickets
 internal/queue/    JobQueue interface between the handlers and worker pool; in-process Memory implementation
 internal/harness/  starts the Grading Harness for one submission and checks its report
@@ -180,6 +181,23 @@ runs the Harness and stores the report (SRS 3.3, steps 3 to 8). It is built from
   a crashed run left behind. A sweep that fails is logged and does not stop the pool.
 - On shutdown a job in progress is interrupted and left `RUNNING`, not failed: the next start-up
   requeues it, so a restart does not cost anyone a grade.
+
+## Health check
+
+`internal/health.Checker` serves `GET /healthz` (NFR-09, SRS 6.3.1), outside `/api/v1` and without
+authentication, for systemd and Nginx:
+
+```json
+{"status":"ok","database":"ok","workers":{"alive":4,"configured":4},"queue_depth":0}
+```
+
+It answers `200` with `"status":"ok"` when the database answers a ping within 2 seconds and every
+configured worker runs, and `503` with `"status":"unhealthy"` otherwise, for example while the
+database is down (`"database":"unreachable"`) or before the pool has finished its start-up
+reconciliation. A process started with `WORKERS=0` reports `0` of `0` workers and depends on the
+database alone. The body holds these aggregate values only, never an error message; the cause goes
+to the log. One check answers every request for a second, so polling cannot take database
+connections away from the API. `worker.Pool.Workers` and `queue.Memory.Len` supply the numbers.
 
 ## Build and test
 

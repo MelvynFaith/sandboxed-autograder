@@ -530,3 +530,43 @@ func TestAFailedSweepDoesNotStopThePool(t *testing.T) {
 	r.enqueue(1)
 	r.waitCompleted(1)
 }
+
+func TestWorkersCountsRunningGoroutines(t *testing.T) {
+	q, s, g := newFakeQueue(), &fakeStore{}, &fakeGrader{}
+	reconciling := make(chan struct{})
+	proceed := make(chan struct{})
+	s.reconcile = func(call int, _ time.Duration) ([]queue.Job, error) {
+		if call == 1 {
+			close(reconciling)
+			<-proceed
+		}
+		return nil, nil
+	}
+	pool, err := worker.New(worker.Config{Workers: 3, CodeDir: t.TempDir(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}, q, s, g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alive, configured := pool.Workers(); alive != 0 || configured != 3 {
+		t.Fatalf("before Run: %d alive of %d, want 0 of 3", alive, configured)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- pool.Run(ctx) }()
+	<-reconciling
+	if alive, _ := pool.Workers(); alive != 0 {
+		t.Errorf("during the start-up reconcile: %d alive, want 0", alive)
+	}
+	close(proceed)
+	eventually(t, "three workers alive", func() bool { alive, _ := pool.Workers(); return alive == 3 })
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(patience):
+		t.Fatal("Run did not return after shutdown")
+	}
+	if alive, _ := pool.Workers(); alive != 0 {
+		t.Errorf("after Run: %d alive, want 0", alive)
+	}
+}

@@ -34,6 +34,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Scheduler auth review updates (`scheduler/`): audit administrator role changes and denied
   attempts; bound Argon2id concurrency; serialize refresh rotation/revocation against user
   credential changes; enforce 200-character display names and equalize unknown-email login work.
+- Scheduler health check (`scheduler/internal/health`): the `/healthz` handler reports database
+  reachability, live workers and queue depth, and answers `503` when the database is down or the
+  worker pool is not at full strength (NFR-09).
 - Grading pipeline (`scheduler/`): the Grading Harness runner, which keeps the assignment definition
   off the command line and checks the report; the grading store, which moves a submission through
   `QUEUED`, `RUNNING` and `COMPLETED` or `FAILED` and writes results and audit rows in one

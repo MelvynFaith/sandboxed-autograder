@@ -105,6 +105,14 @@ func (q *Memory) Dequeue(ctx context.Context) (Job, error) {
 	return <-w, nil
 }
 
+// Len returns the number of jobs waiting for a worker, the queue depth that /healthz reports
+// (NFR-09). A job handed straight to an idle worker never counts.
+func (q *Memory) Len() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return len(q.queued)
+}
+
 // Remove implements JobQueue.
 func (q *Memory) Remove(ctx context.Context, submissionID int64) (bool, error) {
 	if err := ctx.Err(); err != nil {
