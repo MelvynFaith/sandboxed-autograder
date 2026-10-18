@@ -6,7 +6,8 @@ persists results. It is **the only component that writes to PostgreSQL.**
 **Owner:** Evan William
 **Status:** authentication/session endpoints and the in-process `JobQueue` are implemented. The
 Harness runner, grading store, and worker pool are implemented, and `cmd/autograder` runs them in
-the API process. Assignment, submission, grading, and WebSocket upgrade APIs are not implemented.
+the API process, with `/healthz` and the WebSocket progress stream. Assignment, submission and
+grading APIs are not implemented.
 
 ## Responsibilities
 
@@ -43,8 +44,9 @@ internal/testdb/   isolated migrated schema for each database test
 
 `cmd/autograder` is the whole backend in one process (SRS 3.3). At start-up it applies the
 migrations the database does not have yet, prepares the delegated cgroup, starts the worker pool,
-and serves the API. On `SIGTERM` it stops taking requests, interrupts the jobs in progress, which stay
-`RUNNING` for the next start-up, and exits. `infra/README.md` lists the environment variables and the
+and serves the API, `/healthz` and `/ws/v1/submissions/{id}`. On `SIGTERM` it closes the WebSocket
+streams with 1001, stops taking requests, interrupts the jobs in progress, which stay `RUNNING` for the
+next start-up, and exits. `infra/README.md` lists the environment variables and the
 install steps.
 
 The worker pool needs a cgroup delegated to the service user: the binary creates the leaf
@@ -70,7 +72,7 @@ auth/session endpoints do not enqueue grading jobs.
 The grading pipeline includes the schema, in-process queue, Harness runner, grading store, and
 worker pool. Request-handling code and grading work meet at `JobQueue`: a handler stores a
 submission as `QUEUED` and calls `Enqueue`; a worker calls `Dequeue`. The authentication endpoints
-are implemented; assignment, submission, grading, and WebSocket upgrade APIs are not.
+are implemented; assignment, submission and grading APIs are not.
 
 ## Authentication API
 
@@ -106,7 +108,7 @@ The client contract is:
   follows `frontend/src/api/submissionStatus.js`; the frontend sends the ID as JSON. Issued tickets
   are held in process memory, bound to the authenticated user and submission, and expire within 60
   seconds. `TicketStore.Consume` atomically removes a ticket; a second or expired use is rejected.
-  The WebSocket upgrade endpoint that consumes tickets is outside this API increment.
+  `/ws/v1/submissions/{id}` consumes them (see "Grading progress").
 - `GET /admin/users?page=N&page_size=N` returns `items`, `page`, `page_size`, and `has_next`.
   `PUT /admin/users/{id}/role` accepts `{ "role" }`. Only `ADMIN` can use these routes; role changes
   revoke every refresh token for the target user and write a `ROLE_CHANGED` audit row in the same

@@ -14,9 +14,12 @@ import (
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/api"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/auth"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/harness"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/health"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/progress"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/queue"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/sandbox"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/store"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/stream"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/worker"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/migrations"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -65,13 +68,19 @@ func run() error {
 		return err
 	}
 
-	// grading is nil, and never ready, when the pool is off.
+	// grading is nil, and never ready, when the pool is off. So are the worker count and the queue
+	// depth that /healthz reports.
 	var grading chan error
+	pipeline := store.NewPipeline(pool)
+	hub := progress.NewHub()
+	checker := health.New(pool, nil, nil)
 	if cfg.workers > 0 {
-		workers, err := newWorkers(cfg, pool)
+		jobs := queue.NewMemory()
+		workers, err := newWorkers(cfg, pipeline, jobs, hub)
 		if err != nil {
 			return err
 		}
+		checker = health.New(pool, workers, jobs)
 		grading = make(chan error, 1)
 		go func() { grading <- workers.Run(ctx) }()
 		slog.Info("grading worker pool started", "workers", cfg.workers)
@@ -79,9 +88,14 @@ func run() error {
 		slog.Warn("WORKERS=0: no submission will be graded by this process")
 	}
 
+	// /healthz is outside /api/v1 and unauthenticated (SRS 6.3.1); everything else is the API.
+	mux := http.NewServeMux()
+	mux.Handle("GET /healthz", checker)
+	mux.Handle("GET /ws/v1/submissions/{id}", stream.New(ticketStore, pipeline, hub))
+	mux.Handle("/", api.NewHandler(auth.NewStore(pool), tokens, ticketStore))
 	server := &http.Server{
 		Addr:              cfg.httpAddr,
-		Handler:           api.NewHandler(auth.NewStore(pool), tokens, ticketStore),
+		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
@@ -103,6 +117,7 @@ func run() error {
 	case <-ctx.Done():
 	}
 	cancel()
+	hub.Close() // WebSocket clients are told the server is going away; Shutdown does not see them
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
 	errs = append(errs, server.Shutdown(shutdownCtx))
@@ -116,7 +131,7 @@ func run() error {
 // newWorkers prepares the delegated cgroup and builds the worker pool that grades submissions through
 // the Harness (SRS 3.3). The queue is the in-process one; Reconcile fills it from the database at
 // start-up and every minute after.
-func newWorkers(cfg config, pool *pgxpool.Pool) (*worker.Pool, error) {
+func newWorkers(cfg config, pipeline *store.Pipeline, jobs *queue.Memory, hub *progress.Hub) (*worker.Pool, error) {
 	cgroupRoot, err := sandbox.Delegate()
 	if err != nil {
 		return nil, err
@@ -134,5 +149,6 @@ func newWorkers(cfg config, pool *pgxpool.Pool) (*worker.Pool, error) {
 		Workers: cfg.workers,
 		CodeDir: cfg.codeDir,
 		Sweep:   sweeper.Sweep,
-	}, queue.NewMemory(), store.NewPipeline(pool), runner)
+		Publish: hub.Publish,
+	}, jobs, pipeline, runner)
 }
