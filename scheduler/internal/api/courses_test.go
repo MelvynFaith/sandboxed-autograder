@@ -181,6 +181,7 @@ func TestCourseEndpointValidationAndNotFoundResponses(t *testing.T) {
 		body map[string]string
 	}{
 		{"missing code", map[string]string{"name": "Course", "term": "2026"}},
+		{"empty code", map[string]string{"name": "Course", "code": "  ", "term": "2026"}},
 		{"missing term", map[string]string{"name": "Course", "code": "CS101"}},
 		{"empty name", map[string]string{"name": " ", "code": "CS101", "term": "2026"}},
 		{"long name", map[string]string{"name": strings.Repeat("n", 201), "code": "CS101", "term": "2026"}},
