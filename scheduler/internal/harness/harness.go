@@ -17,8 +17,9 @@
 // /proc/<pid>/cmdline or by another user (SRS 3.2.3). --code names the student's source file.
 //
 // The Harness environment is exactly Runner.Env. Nothing is inherited from the scheduler, whose own
-// environment holds the database password and the token key. The deployment passes the Harness what it
-// needs to find the sandbox, for example the path of sandbox-exec and the delegated cgroup.
+// environment holds the database password and the token key. The scheduler passes the Harness what it
+// needs to find the sandbox: the path of sandbox-exec in EnvSandboxExec and the delegated cgroup to
+// give sandbox-exec as --cgroup-root in EnvCgroupRoot.
 //
 // The Harness writes one JSON document to standard output (type Report, SRS Appendix C) and exits 0.
 // Standard error is free text for the log; only its last few kilobytes are kept. Any other exit status,
@@ -28,6 +29,13 @@
 // The Harness never opens a database connection, and it is the worker, not the Harness, that writes
 // Result rows.
 package harness
+
+// Environment variables the scheduler sets for the Harness (see the contract above). The Harness reads
+// the same names (grader/harness/runner.py).
+const (
+	EnvSandboxExec = "SANDBOX_EXEC"
+	EnvCgroupRoot  = "SANDBOX_CGROUP_ROOT"
+)
 
 // Result.status values (SRS 7.1).
 const (

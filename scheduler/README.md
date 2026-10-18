@@ -5,8 +5,8 @@ persists results. It is **the only component that writes to PostgreSQL.**
 
 **Owner:** Evan William
 **Status:** authentication/session endpoints and the in-process `JobQueue` are implemented. The
-Harness runner, grading store, and worker pool are implemented. Assignment, submission, grading,
-and WebSocket upgrade APIs are not implemented.
+Harness runner, grading store, and worker pool are implemented, and `cmd/autograder` runs them in
+the API process. Assignment, submission, grading, and WebSocket upgrade APIs are not implemented.
 
 ## Responsibilities
 
@@ -24,7 +24,7 @@ and WebSocket upgrade APIs are not implemented.
 
 ```
 go.mod
-cmd/autograder/    API process entry point
+cmd/autograder/    the process: migrations, API server and worker pool
 migrations/        schema, one NNNNNN_name.up.sql / .down.sql pair per change, embedded as migrations.FS
 internal/api/      authentication HTTP routes and handlers
 internal/health/   the /healthz handler: database, live workers, queue depth
@@ -33,8 +33,35 @@ internal/queue/    JobQueue interface between the handlers and worker pool; in-p
 internal/harness/  starts the Grading Harness for one submission and checks its report
 internal/store/    grading database operations: claim, complete, fail, and reconcile
 internal/worker/   worker pool joining the queue, store, and Harness
+internal/sandbox/  delegated cgroup set-up and the start-up sweep of dead sandbox runs
 internal/testdb/   isolated migrated schema for each database test
 ```
+
+## Running
+
+`cmd/autograder` is the whole backend in one process (SRS 3.3). At start-up it applies the
+migrations the database does not have yet, prepares the delegated cgroup, starts the worker pool,
+and serves the API. On `SIGTERM` it stops taking requests, interrupts the jobs in progress, which stay
+`RUNNING` for the next start-up, and exits. `infra/README.md` lists the environment variables and the
+install steps.
+
+The worker pool needs a cgroup delegated to the service user: the binary creates the leaf
+`<own cgroup>/worker`, moves itself into it, enables the `memory`, `pids` and `cpu` controllers on its
+own cgroup and hands that cgroup to the Harness as `SANDBOX_CGROUP_ROOT`, with the `sandbox-exec` path
+as `SANDBOX_EXEC` and nothing else in the Harness environment. The systemd unit delegates with
+`Delegate=yes`. For a local run on Linux use a scope of your own:
+
+```sh
+systemd-run --user --scope -p Delegate=yes ./autograder
+```
+
+Without delegation it exits with an error that names `Delegate=yes`. `WORKERS=0` runs the API alone,
+needs no cgroup, Harness or code directory, and grades nothing; use it for frontend work on a machine
+without the sandbox.
+
+The queue is in memory and is filled from the database: at start-up and every minute after, every
+`QUEUED` submission is added to it. Until a submission handler enqueues directly, a new submission
+therefore waits up to a minute before a worker takes it.
 
 The API/authentication packages are separate from grading work in `internal/queue`. The current
 auth/session endpoints do not enqueue grading jobs.
@@ -51,6 +78,7 @@ Run the API with Go 1.27.2 or newer. Configuration is supplied through environme
 export DATABASE_URL='postgres://USER:PASSWORD@localhost:5432/DATABASE?sslmode=disable'
 export JWT_SECRET='at-least-32-random-bytes-from-a-local-secret-manager'
 export HTTP_ADDR=':8080'
+export WORKERS=0          # API only; grading needs the settings in "Running"
 go run ./cmd/autograder
 ```
 
@@ -220,5 +248,6 @@ Each test creates its own schema in that database and drops it afterwards, so a 
 enough; use a user that may create schemas. CI runs PostgreSQL 16, the version Ubuntu 24.04
 packages, and fails instead of skipping when the variable is missing.
 
-The API process uses `DATABASE_URL`, `JWT_SECRET` (at least 32 bytes), and `HTTP_ADDR`; tests use
-`AUTOGRADER_TEST_DATABASE_URL` and apply migrations in isolated schemas.
+The process uses `DATABASE_URL`, `JWT_SECRET` (at least 32 bytes), and `HTTP_ADDR`, plus the grading
+variables in `infra/README.md` unless `WORKERS=0`; tests use `AUTOGRADER_TEST_DATABASE_URL` and apply
+migrations in isolated schemas.
