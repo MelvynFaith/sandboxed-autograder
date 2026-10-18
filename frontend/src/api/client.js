@@ -47,6 +47,14 @@ export async function throwApiError(response, fallbackMessage, statusMessages = 
   throw new Error(fallbackMessage)
 }
 
+export async function throwMockApiError(code, message, status = 400) {
+  await throwApiError({
+    ok: false,
+    status,
+    json: async () => ({ error: { code, message } }),
+  }, message)
+}
+
 function requestHeaders(options, token) {
   const headers = new Headers(options.headers)
   if (token) {

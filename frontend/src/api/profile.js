@@ -1,7 +1,5 @@
-import { apiRequest, throwApiError } from './client.js'
-import { updateMockPassword } from './auth.js'
-
-const mockProfiles = new Map()
+import { apiRequest, throwApiError, throwMockApiError } from './client.js'
+import { getMockUserById, updateMockPassword, updateMockProfileName } from './auth.js'
 
 function readProfile(payload) {
   const user = payload?.user ?? payload
@@ -31,13 +29,10 @@ async function requestProfile(path, options, fallback) {
 
 export async function getProfile(user) {
   if (import.meta.env.VITE_USE_MOCK === 'true') {
-    const profile = mockProfiles.get(String(user.id)) ?? {
-      id: user.id,
-      name: user.nama,
-      email: user.email,
-      role: ({ mahasiswa: 'STUDENT', dosen: 'LECTURER', admin: 'ADMIN' })[user.role],
+    const profile = getMockUserById(user.id)
+    if (!profile) {
+      await throwMockApiError('not_found', 'Pengguna tidak ditemukan.', 404)
     }
-    mockProfiles.set(String(user.id), profile)
     return readProfile(profile)
   }
   return requestProfile('/users/me', {}, 'Gagal memuat profil.')
@@ -45,10 +40,11 @@ export async function getProfile(user) {
 
 export async function updateProfileName(name, user) {
   if (import.meta.env.VITE_USE_MOCK === 'true') {
-    const current = await getProfile(user)
-    const updated = { ...current, name }
-    mockProfiles.set(String(user.id), updated)
-    return updated
+    const updated = updateMockProfileName(user.id, name.trim())
+    if (!updated) {
+      await throwMockApiError('not_found', 'Pengguna tidak ditemukan.', 404)
+    }
+    return readProfile(updated)
   }
   return requestProfile(
     '/users/me',
@@ -63,7 +59,7 @@ export async function updateProfileName(name, user) {
 
 export async function updatePassword(currentPassword, newPassword, user) {
   if (import.meta.env.VITE_USE_MOCK === 'true') {
-    updateMockPassword(user.email, currentPassword, newPassword)
+    await updateMockPassword(user.email, currentPassword, newPassword)
     return
   }
 

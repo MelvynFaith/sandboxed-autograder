@@ -7,12 +7,17 @@ function RegisterPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordConfirmation, setPasswordConfirmation] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   async function handleSubmit(event) {
     event.preventDefault()
     setError('')
+    if (password !== passwordConfirmation) {
+      setError('Konfirmasi kata sandi tidak cocok.')
+      return
+    }
     setIsSubmitting(true)
     try {
       await register(name, email, password)
@@ -66,6 +71,19 @@ function RegisterPage() {
             required
             type="password"
             value={password}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium" htmlFor="register-password-confirmation">Konfirmasi password</label>
+          <input
+            autoComplete="new-password"
+            className="w-full rounded border border-slate-300 bg-white px-3 py-2"
+            id="register-password-confirmation"
+            name="password-confirmation"
+            onChange={(event) => setPasswordConfirmation(event.target.value)}
+            required
+            type="password"
+            value={passwordConfirmation}
           />
         </div>
         {error && <p className="text-sm text-red-700" role="alert">{error}</p>}
