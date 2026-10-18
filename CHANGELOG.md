@@ -49,3 +49,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   delegated cgroup, and runs the worker pool next to the API, with one shutdown for both. Grading is
   configured through `WORKERS`, `CODE_DIR`, `HARNESS_COMMAND` and `SANDBOX_EXEC`; `WORKERS=0` runs the
   API alone. Logs are JSON lines.
+- Backend install steps (`infra/README.md`): PostgreSQL with peer authentication, the Harness in its
+  own virtual environment, the environment file and the unit, as run on the campus server; and
+  `infra/smoke-test.sh`, which pushes three submissions through the installed pipeline and checks
+  their scores, the audit rows, `/healthz` and the leftover cgroups.
