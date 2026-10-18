@@ -42,6 +42,8 @@ jobs:
     needs: detect
     if: needs.detect.outputs.sandbox == 'true'
     runs-on: ubuntu-24.04
+    # A hung sandbox test (the supervisor deadlock of #23 was one) must fail the job, not hold it for hours.
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: sandbox
@@ -52,10 +54,27 @@ jobs:
       # The Makefile owns the compiler flags; it must build with -Wall -Wextra -Werror (NFR-07).
       - name: Build
         run: make
-      # Tests that create namespaces need unprivileged user namespaces. GitHub-hosted
-      # Ubuntu 24.04 runners restrict them through AppArmor (SRS risk R9). Relax it with
-      # `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` before running
-      # them here, or run them on a self-hosted runner.
+      # The adversarial suite (SRS 11.3, NFR-07) runs on the three builds that matter: the normal
+      # one, the ptrace fallback for kernels without seccomp user notification (SRS risk R12), and
+      # AddressSanitizer + UBSan. It builds on the real thing, not a mock: user namespaces, cgroup
+      # v2 and seccomp of the runner's own kernel.
+      - name: Build the ptrace-fallback and sanitizer variants
+        run: |
+          make CFLAGS=-DSBX_FORCE_TRACE BUILD_DIR=build/trace BIN=sandbox-exec-trace
+          make SANITIZE=1 BUILD_DIR=build/asan BIN=sandbox-exec-asan
+      # GitHub-hosted Ubuntu 24.04 runners restrict unprivileged user namespaces through AppArmor
+      # (SRS risk R9). The runner is a throwaway VM, so switch the restriction off for the job.
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # A transient system service with Delegate=yes gives the unprivileged user a cgroup subtree to
+      # write limits in, which is how the production unit works (infra/README.md). stdin is closed
+      # because some tests let sandbox-exec read the caller's.
+      - name: Adversarial suite
+        run: sudo systemd-run --wait --pipe --collect -p User="$USER" -p Delegate=yes "$PWD/tests/run.sh" "$PWD/sandbox-exec" < /dev/null
+      - name: Adversarial suite, ptrace fallback
+        run: sudo systemd-run --wait --pipe --collect -p User="$USER" -p Delegate=yes "$PWD/tests/run.sh" "$PWD/sandbox-exec-trace" < /dev/null
+      - name: Adversarial suite, AddressSanitizer and UBSan
+        run: sudo systemd-run --wait --pipe --collect -p User="$USER" -p Delegate=yes "$PWD/tests/run.sh" "$PWD/sandbox-exec-asan" < /dev/null
 
   scheduler:
     name: scheduler (Go)

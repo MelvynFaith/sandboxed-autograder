@@ -146,6 +146,45 @@ class Functional(unittest.TestCase):
         self.assertEqual(r["signal"], signal.SIGSEGV)
         self.assertIsNone(r["exit_code"])
 
+    def test_segfault_in_a_thread_of_the_program_is_signaled(self):
+        r = sandbox("import ctypes, threading\nt = threading.Thread(target=lambda: ctypes.string_at(0))\n"
+                    "t.start()\nt.join()")
+        self.assertEqual(r["termination_reason"], "SIGNALED")
+        self.assertEqual(r["signal"], signal.SIGSEGV)
+
+    def test_segfault_in_a_child_process_does_not_end_the_program(self):
+        r = sandbox(
+            """
+            import ctypes, os
+            pid = os.fork()
+            if pid == 0:
+                ctypes.string_at(0)
+            _, status = os.waitpid(pid, 0)
+            print("child signal", os.WTERMSIG(status))
+            """
+        )
+        self.assertEqual(r["termination_reason"], "EXITED", r)
+        self.assertEqual(r["stdout"], f"child signal {signal.SIGSEGV}\n")
+
+    def test_pid_1_ignores_the_signals_it_sends_itself(self):
+        # The kernel drops a signal without a handler for PID 1, stop signals included. Tracing the
+        # program (the R12 fallback) must not change that: a stopped program would only hit the wall clock.
+        r = sandbox("import os, signal\nos.kill(os.getpid(), signal.SIGSTOP)\nos.kill(os.getpid(), signal.SIGTERM)\n"
+                    "print('after')", timeout_s=2)
+        self.assertEqual(r["termination_reason"], "EXITED", r)
+        self.assertEqual(r["stdout"], "after\n")
+
+    def test_a_signal_handler_still_runs_in_pid_1(self):
+        r = sandbox(
+            """
+            import os, signal
+            signal.signal(signal.SIGUSR1, lambda *a: print("handled"))
+            os.kill(os.getpid(), signal.SIGUSR1)
+            """
+        )
+        self.assertEqual(r["termination_reason"], "EXITED", r)
+        self.assertEqual(r["stdout"], "handled\n")
+
     def test_invalid_utf8_output_keeps_the_report_valid(self):
         r = sandbox("import sys\nsys.stdout.buffer.write(b'a\\xff\\xfeb')")
         self.assertEqual(r["stdout"], "a��b")
@@ -532,6 +571,40 @@ class Syscalls(unittest.TestCase):
             """
         )
         self.assertEqual(r["termination_reason"], "SECURITY_VIOLATION", r)
+
+    def test_denied_syscall_in_a_forked_child_is_caught(self):
+        # The violation must be seen however the program arranges to make it: here by a child process.
+        r = self.violation(
+            """
+            import os, socket
+            if os.fork() == 0:
+                socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                os._exit(0)
+            os.wait()
+            """,
+            nr=41,
+        )
+        self.assertEqual(r["stdout"], "")
+
+    def test_denied_syscall_in_a_thread_is_caught(self):
+        self.violation(
+            """
+            import socket, threading
+            t = threading.Thread(target=lambda: socket.socket(socket.AF_INET, socket.SOCK_STREAM))
+            t.start()
+            t.join()
+            """,
+            nr=41,
+        )
+
+    @unittest.skipUnless(X86_64, "clone is syscall 56 on x86-64")
+    def test_clone_untraced_is_denied(self):
+        # CLONE_UNTRACED would hide a child from a ptrace-based supervisor (the R12 fallback).
+        CLONE_UNTRACED, SIGCHLD = 0x00800000, 17
+        self.violation(
+            f"import ctypes\nctypes.CDLL(None).syscall(56, {CLONE_UNTRACED | SIGCHLD}, 0, 0, 0, 0)",
+            nr=56,
+        )
 
     def test_soft_denied_clone3_does_not_break_threads(self):
         r = sandbox("import threading\nt = threading.Thread(target=print, args=('ok',)); t.start(); t.join()")

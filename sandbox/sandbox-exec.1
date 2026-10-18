@@ -297,11 +297,17 @@ printf '5\\n' | sandbox-exec \\
 .RE
 .fi
 .SH BUGS
-There is no
+On a kernel or libseccomp without seccomp user notification the filter uses
 .B SCMP_ACT_TRACE
-fallback: on a kernel without seccomp user notification
+and
 .B sandbox-exec
-refuses to run.
+traces the program with
+.BR ptrace (2)
+(PTRACE_SEIZE); this needs the same ptrace rights as
+.BR pidfd_getfd (2).
+The results are the same.
+A denied syscall made by a task that escaped the tracer is refused with ENOSYS
+and not recorded.
 .PP
 The program is PID 1 of its namespace, so a signal it sends to itself with
 .BR kill (2)
