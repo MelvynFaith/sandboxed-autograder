@@ -5,15 +5,17 @@
 #
 # Delegate=yes (SRS Bagian 3.2.1.1, risk R11) hands this unit's cgroup subtree to User=, so
 # sandbox-exec can write memory.max, pids.max and the other limit files without root. At start-up
-# the worker must still move itself into a leaf cgroup and enable the memory, pids and cpu
-# controllers on the unit cgroup (sandbox/README.md, "cgroup delegation").
+# the binary moves itself into the leaf <unit cgroup>/worker and enables the memory, pids and cpu
+# controllers on the unit cgroup (sandbox/README.md, "cgroup delegation"); without Delegate=yes it
+# exits with an error that says so.
 #
 # Do not add these hardening options without rerunning the delegation check in infra/README.md:
 #   ProtectControlGroups=yes  makes /sys/fs/cgroup read-only, so no limit file can be written.
 #   RestrictNamespaces=       blocks the namespaces sandbox-exec creates.
 #   NoNewPrivileges=yes       untested together with the AppArmor profile.
 #
-# ExecStart names a binary that does not exist yet; change it when the scheduler build lands.
+# ExecStart is the scheduler build, `go build -o autograder ./cmd/autograder` in scheduler/. It
+# applies the database migrations at start-up.
 
 [Unit]
 Description=Auto-grading platform backend

@@ -39,3 +39,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `QUEUED`, `RUNNING` and `COMPLETED` or `FAILED` and writes results and audit rows in one
   transaction; and the worker pool, with panic recovery, a backstop deadline, reconciliation of
   lost submissions, and a sweep of what dead sandbox runs left behind.
+- Scheduler process (`scheduler/cmd/autograder`): applies the migrations at start-up, prepares the
+  delegated cgroup, and runs the worker pool next to the API, with one shutdown for both. Grading is
+  configured through `WORKERS`, `CODE_DIR`, `HARNESS_COMMAND` and `SANDBOX_EXEC`; `WORKERS=0` runs the
+  API alone. Logs are JSON lines.

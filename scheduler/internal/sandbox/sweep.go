@@ -1,5 +1,6 @@
-// Package sandbox holds the scheduler's one direct use of sandbox-exec: cleaning up after dead runs.
-// Student code is run by the Grading Harness, never from here (SRS 3.3).
+// Package sandbox holds what the scheduler itself does for sandbox-exec: preparing the delegated cgroup
+// the sandboxes are created under, and cleaning up after dead runs. Student code is run by the Grading
+// Harness, never from here (SRS 3.3).
 package sandbox
 
 import (

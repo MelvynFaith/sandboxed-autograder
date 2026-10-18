@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,6 +47,31 @@ const tables = 11
 // use it.
 func newMigrator(t *testing.T) (*migrate.Migrate, *pgx.Conn) {
 	t.Helper()
+	u, conn := newSchema(t)
+	return migrator(t, u), conn
+}
+
+// migrator returns a golang-migrate instance for the database at u.
+func migrator(t *testing.T, u *url.URL) *migrate.Migrate {
+	t.Helper()
+	src, err := iofs.New(migrations.FS, ".")
+	if err != nil {
+		t.Fatalf("open migrations: %v", err)
+	}
+	mu := *u
+	mu.Scheme = "pgx5" // the scheme golang-migrate's pgx v5 driver registers
+	m, err := migrate.NewWithSourceInstance("iofs", src, mu.String())
+	if err != nil {
+		t.Fatalf("new migrator: %v", err)
+	}
+	t.Cleanup(func() { _, _ = m.Close() })
+	return m
+}
+
+// newSchema creates an empty schema for the test and returns a URL whose connections use it, and one
+// such connection.
+func newSchema(t *testing.T) (*url.URL, *pgx.Conn) {
+	t.Helper()
 	base := os.Getenv(databaseURLEnv)
 	if base == "" {
 		if os.Getenv("CI") != "" {
@@ -81,18 +107,7 @@ func newMigrator(t *testing.T) (*migrate.Migrate, *pgx.Conn) {
 		t.Fatalf("connect to schema: %v", err)
 	}
 	t.Cleanup(func() { _ = conn.Close(ctx) })
-
-	src, err := iofs.New(migrations.FS, ".")
-	if err != nil {
-		t.Fatalf("open migrations: %v", err)
-	}
-	u.Scheme = "pgx5" // the scheme golang-migrate's pgx v5 driver registers
-	m, err := migrate.NewWithSourceInstance("iofs", src, u.String())
-	if err != nil {
-		t.Fatalf("new migrator: %v", err)
-	}
-	t.Cleanup(func() { _, _ = m.Close() })
-	return m, conn
+	return u, conn
 }
 
 func count(t *testing.T, conn *pgx.Conn, query string) int {
@@ -134,6 +149,49 @@ func TestUpDownUp(t *testing.T) {
 
 	if err := m.Up(); err != nil {
 		t.Fatalf("second up: %v", err)
+	}
+}
+
+// TestUp checks what the scheduler runs at start-up: Up brings an empty schema to the latest version,
+// and running it again on the migrated schema changes nothing.
+func TestUp(t *testing.T) {
+	u, conn := newSchema(t)
+
+	version, err := migrations.Up(u.String())
+	if err != nil {
+		t.Fatalf("up: %v", err)
+	}
+	if again, err := migrations.Up(u.String()); err != nil || again != version {
+		t.Fatalf("second up: version %d, %v; want %d, nil", again, err, version)
+	}
+	if tc, _ := objects(t, conn); tc != tables {
+		t.Fatalf("after up: %d tables; want %d", tc, tables)
+	}
+
+	m := migrator(t, u)
+	if err := m.Up(); !errors.Is(err, migrate.ErrNoChange) {
+		t.Fatalf("golang-migrate after Up: %v; want ErrNoChange", err)
+	}
+	if v, dirty, err := m.Version(); err != nil || dirty || v != version {
+		t.Fatalf("golang-migrate version %d, dirty %t, %v; want %d", v, dirty, err, version)
+	}
+}
+
+// TestUpRejectsOtherAddresses checks that an address that is not a postgres:// URL is refused before
+// any connection is made, and that the error does not repeat the password.
+func TestUpRejectsOtherAddresses(t *testing.T) {
+	for _, addr := range []string{
+		"host=localhost password=hunter2",
+		"mysql://u:hunter2@localhost/db",
+		"postgres://u:hunter2@localhost:bad port/db",
+	} {
+		_, err := migrations.Up(addr)
+		if err == nil {
+			t.Fatalf("Up(%q) succeeded", addr)
+		}
+		if strings.Contains(err.Error(), "hunter2") {
+			t.Fatalf("Up(%q) error repeats the password: %v", addr, err)
+		}
 	}
 }
 
