@@ -1,10 +1,12 @@
 package harness
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +19,10 @@ import (
 // standard error. A deadline or cancellation is reported as the context's own error instead.
 var ErrHarness = errors.New("harness: run failed")
 
+// EnvProgressFD is the variable that tells the Harness which file descriptor takes its progress lines
+// (see the contract in the package comment).
+const EnvProgressFD = "HARNESS_PROGRESS_FD"
+
 const (
 	// DefaultMaxReportBytes bounds the report. One result carries at most max_output_bytes of program
 	// output (1 MiB in the SRS example), so this allows dozens of full-size results.
@@ -27,6 +33,16 @@ const (
 
 	// killGrace is how long to wait, after killing the Harness on a deadline, for its pipes to close.
 	killGrace = 5 * time.Second
+
+	// progressFD is the Harness's file descriptor for the progress pipe: the first of ExtraFiles.
+	progressFD = 3
+
+	// maxProgressLine bounds one progress line; a longer one is skipped.
+	maxProgressLine = 256
+
+	// progressDrain is how long to wait, after the Harness has exited, for the progress lines it wrote
+	// last to be read. A grandchild that kept the pipe open could otherwise hold Run.
+	progressDrain = 100 * time.Millisecond
 )
 
 // Runner starts the Harness. The zero value is not usable: Command is required. A Runner may be shared
@@ -52,10 +68,13 @@ type Runner struct {
 // Run grades one submission. It writes def to a private file, starts the Harness with that file's path
 // and codePath, waits for it, and returns the checked report. The file is removed on every path out.
 //
+// progress, if not nil, is called with the 1-based number of each test case the Harness reports it is
+// starting (see the contract), from another goroutine, never after Run has returned.
+//
 // If ctx ends first, the Harness and the processes it started are killed and Run returns an error that
 // wraps ctx.Err(). Errors that wrap ErrHarness or ErrReport mean the pipeline failed for this
 // submission; other errors mean the worker could not prepare the run.
-func (r *Runner) Run(ctx context.Context, def *Definition, codePath string) (*Report, error) {
+func (r *Runner) Run(ctx context.Context, def *Definition, codePath string, progress func(currentTest int)) (*Report, error) {
 	if len(r.Command) == 0 {
 		return nil, errors.New("harness: no command configured")
 	}
@@ -77,10 +96,18 @@ func (r *Runner) Run(ctx context.Context, def *Definition, codePath string) (*Re
 		return nil, fmt.Errorf("harness: write definition: %w", err)
 	}
 
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return nil, fmt.Errorf("harness: progress pipe: %w", err)
+	}
+	defer pr.Close()
+
 	args := append(slices.Clone(r.Command[1:]), "--definition", defPath, "--code", codePath)
 	cmd := exec.CommandContext(ctx, r.Command[0], args...)
 	cmd.Dir = dir
-	cmd.Env = append([]string{}, r.Env...) // non-nil: an empty environment, not the scheduler's
+	// Non-nil: an empty environment plus the progress descriptor, never the scheduler's.
+	cmd.Env = append(slices.Clone(r.Env), fmt.Sprintf("%s=%d", EnvProgressFD, progressFD))
+	cmd.ExtraFiles = []*os.File{pw}
 	cmd.WaitDelay = killGrace
 	configureKill(cmd)
 
@@ -89,7 +116,23 @@ func (r *Runner) Run(ctx context.Context, def *Definition, codePath string) (*Re
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 
-	if err := cmd.Run(); err != nil {
+	err = cmd.Start()
+	pw.Close() // the Harness holds the write end now; EOF comes when it exits
+	if err == nil {
+		read := make(chan struct{})
+		go func() {
+			defer close(read)
+			readProgress(pr, len(def.TestCases), progress)
+		}()
+		err = cmd.Wait()
+		select {
+		case <-read:
+		case <-time.After(progressDrain):
+			pr.Close() // unblocks readProgress
+			<-read
+		}
+	}
+	if err != nil {
 		switch {
 		case ctx.Err() != nil:
 			return nil, fmt.Errorf("harness: %w", ctx.Err())
@@ -107,6 +150,40 @@ func (r *Runner) Run(ctx context.Context, def *Definition, codePath string) (*Re
 		return nil, err
 	}
 	return report, nil
+}
+
+// readProgress reads the progress pipe until it closes. Each line {"current_test": n} with n from 1
+// to total, larger than the one before, is passed to progress; anything else, including a line longer
+// than maxProgressLine, is skipped. Progress is for display only, the report decides the grade, so a
+// bad line is not an error. The pipe is read to the end, so a Harness that writes a lot never blocks.
+func readProgress(r io.Reader, total int, progress func(int)) {
+	br := bufio.NewReaderSize(r, maxProgressLine)
+	last := 0
+	long := false // inside a line that did not fit
+	for {
+		line, err := br.ReadSlice('\n')
+		if errors.Is(err, bufio.ErrBufferFull) {
+			long = true
+			continue
+		}
+		if err != nil {
+			return // EOF or closed; an unterminated last line is dropped
+		}
+		if long {
+			long = false
+			continue
+		}
+		var msg struct {
+			CurrentTest int `json:"current_test"`
+		}
+		if json.Unmarshal(line, &msg) != nil || msg.CurrentTest <= last || msg.CurrentTest > total {
+			continue
+		}
+		last = msg.CurrentTest
+		if progress != nil {
+			progress(last)
+		}
+	}
 }
 
 // writePrivate creates path with mode 0600, failing if it exists, and writes v as JSON.

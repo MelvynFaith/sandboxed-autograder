@@ -31,6 +31,8 @@ internal/health/   the /healthz handler: database, live workers, queue depth
 internal/auth/     authentication, password/token helpers, PostgreSQL user/session store, WS tickets
 internal/queue/    JobQueue interface between the handlers and worker pool; in-process Memory implementation
 internal/harness/  starts the Grading Harness for one submission and checks its report
+internal/progress/ in-process hub that carries grading progress from the workers to the WebSocket
+internal/stream/   the /ws/v1/submissions/{id} WebSocket handler
 internal/store/    grading database operations: claim, complete, fail, and reconcile
 internal/worker/   worker pool joining the queue, store, and Harness
 internal/sandbox/  delegated cgroup set-up and the start-up sweep of dead sandbox runs
@@ -150,6 +152,10 @@ comment is the contract between the worker and the Harness, and the Harness owne
   report that does not match the definition (wrong submission, missing or extra test case, a score above
   the weight, totals that do not add up), makes the submission `FAILED` and nothing is stored.
 - On a deadline the Harness and the processes it started are killed.
+- For the dashboard's progress bar the Harness may write `{"current_test": n}` lines, one before each
+  test case, to the file descriptor named in `HARNESS_PROGRESS_FD`. Lines that are malformed or do
+  not count up are ignored, and a Harness that writes none still works. `sandbox-exec` marks every
+  descriptor above 2 close-on-exec, so student code cannot write to it.
 
 ## Settings
 
@@ -176,6 +182,31 @@ A submission that is lost mid-grading, because the scheduler died while it ran, 
 Once a lost submission has been started `Pipeline.MaxAttempts` times (3 by default) `Reconcile` marks it
 `FAILED` and logs it instead, so a submission that crashes the scheduler every time cannot loop across
 restarts. A regrade starts with a clean count.
+
+## Grading progress (WebSocket)
+
+`GET /ws/v1/submissions/{id}?ticket=TICKET` streams a submission's grading to the dashboard (FR-08,
+SRS 6.3). The ticket comes from `POST /api/v1/ws-tickets`, which checks that the submission is the
+caller's; it is consumed by the handshake. A bad, expired or reused ticket is refused with `401`, a
+ticket for another submission or an unknown submission with `404` (NFR-10). Each frame is the whole
+state, in the shape `frontend/src/api/submissionStatus.js` reads:
+
+```json
+{"status":"RUNNING","current_test":1,"total_tests":2}
+```
+
+- The first frame is the state on connection: the database's (`store.Pipeline.Progress`), or, while
+  the submission is being graded, the latest event, which knows the test case.
+- The worker pool publishes `RUNNING` test 0 of n when it claims a submission, test k of n as the
+  Harness starts each test case, and `COMPLETED` n of n or `FAILED`, each after the database has
+  recorded it (`worker.Config.Publish`).
+- After a `COMPLETED`, `FAILED` or `CANCELLED` frame the server closes with 1000. On shutdown it closes
+  with 1001, and the dashboard falls back to polling. The client sends nothing; the server pings
+  every 54 seconds and drops a client silent for 60.
+- `progress.Hub` keeps one pending event per connection and replaces it with a newer one, so a slow
+  client never holds up a worker; it skips intermediate states, never the last.
+
+Any origin may connect: cross-site WebSocket hijacking rides on cookies, and this endpoint uses none.
 
 ## Rate limits
 

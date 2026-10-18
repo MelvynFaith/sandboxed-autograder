@@ -41,7 +41,7 @@ func TestRunKillsTheProcessesTheHarnessStarted(t *testing.T) {
 		}
 	}()
 
-	if _, err := r.Run(ctx, definition(), "/work/main.py"); !errors.Is(err, context.Canceled) {
+	if _, err := r.Run(ctx, definition(), "/work/main.py", nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 	raw, err := os.ReadFile(pidFile)

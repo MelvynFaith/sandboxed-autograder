@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/harness"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/progress"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/queue"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/store"
 )
@@ -36,9 +37,10 @@ type Store interface {
 	Reconcile(ctx context.Context, staleAfter time.Duration) ([]queue.Job, error)
 }
 
-// Grader runs the Harness for one submission. *harness.Runner implements it.
+// Grader runs the Harness for one submission. *harness.Runner implements it. progress is called with
+// the number of each test case as the Harness starts it, never after Run returns.
 type Grader interface {
-	Run(ctx context.Context, def *harness.Definition, codePath string) (*harness.Report, error)
+	Run(ctx context.Context, def *harness.Definition, codePath string, progress func(currentTest int)) (*harness.Report, error)
 }
 
 // Defaults for the zero fields of Config.
@@ -84,6 +86,12 @@ type Config struct {
 	// once, before it requeues anything, when no sandbox of this process can be alive. A failure is
 	// logged and does not stop the pool. Nil means no sweep; sandbox.Sweeper.Sweep fits.
 	Sweep func(ctx context.Context) error
+
+	// Publish receives the progress of each job for the dashboard (FR-08): RUNNING with test 0 of n
+	// once the submission is claimed, RUNNING with test k of n as the Harness starts each test case,
+	// then COMPLETED with n of n or FAILED, each sent after the database says so. It must not block;
+	// progress.Hub.Publish fits. Nil means no events.
+	Publish func(progress.Event)
 
 	// Logger receives one line per job. Nil means slog.Default().
 	Logger *slog.Logger
@@ -227,10 +235,14 @@ func (p *Pool) reconcile(ctx context.Context, staleAfter time.Duration) error {
 // and, if the pipeline broke, recorded as FAILED.
 func (p *Pool) process(ctx context.Context, job queue.Job) {
 	log := p.log.With("submission", job.SubmissionID, "user", job.UserID)
+	// total is the number of test cases once the submission is claimed; current is the last one the
+	// Harness started, written by its progress callback. Both are for the progress events.
+	var current atomic.Int32
+	total := 0
 	defer func() {
 		if r := recover(); r != nil {
 			log.Error("grading panicked", "panic", r, "stack", string(debug.Stack()))
-			p.fail(ctx, log, job.SubmissionID)
+			p.fail(ctx, log, job.SubmissionID, int(current.Load()), total)
 		}
 	}()
 
@@ -242,20 +254,25 @@ func (p *Pool) process(ctx context.Context, job queue.Job) {
 	case err != nil:
 		if ctx.Err() == nil {
 			log.Error("claim failed", "err", err)
-			p.fail(ctx, log, job.SubmissionID)
+			p.fail(ctx, log, job.SubmissionID, 0, 0)
 		}
 		return
 	}
+	total = len(claim.Definition.TestCases)
+	p.publish(job.SubmissionID, progress.StatusRunning, 0, total)
 
 	if !filepath.IsLocal(claim.CodePath) {
 		log.Error("stored code path escapes the code directory", "code_path", claim.CodePath)
-		p.fail(ctx, log, job.SubmissionID)
+		p.fail(ctx, log, job.SubmissionID, 0, total)
 		return
 	}
 
 	start := time.Now()
 	jobCtx, cancel := context.WithTimeout(ctx, p.backstop(claim.Definition))
-	report, err := p.grade.Run(jobCtx, claim.Definition, filepath.Join(p.cfg.CodeDir, claim.CodePath))
+	report, err := p.grade.Run(jobCtx, claim.Definition, filepath.Join(p.cfg.CodeDir, claim.CodePath), func(n int) {
+		current.Store(int32(n))
+		p.publish(job.SubmissionID, progress.StatusRunning, n, total)
+	})
 	cancel()
 	if err != nil {
 		if ctx.Err() != nil {
@@ -263,20 +280,21 @@ func (p *Pool) process(ctx context.Context, job queue.Job) {
 			return
 		}
 		log.Error("grading failed", "err", err, "elapsed", time.Since(start))
-		p.fail(ctx, log, job.SubmissionID)
+		p.fail(ctx, log, job.SubmissionID, int(current.Load()), total)
 		return
 	}
 
 	switch err := p.store.Complete(ctx, claim, report); {
 	case err == nil:
 		log.Info("graded", "score", report.TotalScore, "max", report.MaxScore, "elapsed", time.Since(start))
+		p.publish(job.SubmissionID, progress.StatusCompleted, total, total)
 	case errors.Is(err, store.ErrNotRunning):
 		log.Warn("report discarded: the submission was requeued while it was being graded")
 	case ctx.Err() != nil:
 		log.Warn("interrupted by shutdown before the report was stored; left RUNNING", "err", err)
 	default:
 		log.Error("storing the report failed", "err", err)
-		p.fail(ctx, log, job.SubmissionID)
+		p.fail(ctx, log, job.SubmissionID, int(current.Load()), total)
 	}
 }
 
@@ -289,17 +307,26 @@ func (p *Pool) backstop(def *harness.Definition) time.Duration {
 	return min(d, p.cfg.Lease/2)
 }
 
-// fail marks the submission FAILED. It does not use ctx's cancellation: a worker that decides to fail
-// a submission just as the pool shuts down should still write it.
-func (p *Pool) fail(ctx context.Context, log *slog.Logger, submissionID int64) {
+// fail marks the submission FAILED and, once that is stored, publishes it with the last test case
+// started of total. It does not use ctx's cancellation: a worker that decides to fail a submission just
+// as the pool shuts down should still write it.
+func (p *Pool) fail(ctx context.Context, log *slog.Logger, submissionID int64, current, total int) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), failTimeout)
 	defer cancel()
 	switch err := p.store.Fail(ctx, submissionID); {
 	case err == nil:
 		log.Info("marked FAILED")
+		p.publish(submissionID, progress.StatusFailed, current, total)
 	case errors.Is(err, store.ErrNotRunning):
 		// It never reached RUNNING, or something else changed it first; there is nothing to fail.
 	default:
 		log.Error("could not mark FAILED; reconciliation will pick the submission up again", "err", err)
+	}
+}
+
+// publish sends a progress event if the pool has somewhere to send it.
+func (p *Pool) publish(submissionID int64, status string, current, total int) {
+	if p.cfg.Publish != nil {
+		p.cfg.Publish(progress.Event{SubmissionID: submissionID, Status: status, CurrentTest: current, TotalTests: total})
 	}
 }

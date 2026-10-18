@@ -8,7 +8,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -114,6 +117,30 @@ func helper(mode string) {
 	}
 	switch mode {
 	case "ok":
+	case "progress", "progress-flood":
+		fd, err := strconv.Atoi(os.Getenv(harness.EnvProgressFD))
+		if err != nil {
+			helperFail("%s: %v", harness.EnvProgressFD, err)
+		}
+		f := os.NewFile(uintptr(fd), "progress")
+		lines := []string{
+			`{"current_test": 1}`,
+			`not json`,
+			`{"current_test": 1}`, // does not count up
+			`{"current_test": 3}`, // more than there are
+			`{"current_test": ` + strings.Repeat("9", 300) + `}`, // longer than a line may be
+			`{"current_test": 2}`,
+		}
+		if mode == "progress-flood" {
+			// Far more than a pipe holds; the Harness must not block on it.
+			lines = append(lines, strings.Repeat(`{"current_test": 0}`+"\n", 1<<16))
+		}
+		for _, l := range lines {
+			if _, err := f.WriteString(l + "\n"); err != nil {
+				helperFail("write progress: %v", err)
+			}
+		}
+		f.Close()
 	case "wrong-total":
 		rep.TotalScore++
 	case "nul":
@@ -166,7 +193,7 @@ func assertEmpty(t *testing.T, dir string) {
 
 func TestRunReturnsTheCheckedReport(t *testing.T) {
 	r, tmp := runner(t, "ok")
-	rep, err := r.Run(context.Background(), definition(), "/work/main.py")
+	rep, err := r.Run(context.Background(), definition(), "/work/main.py", nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -179,9 +206,34 @@ func TestRunReturnsTheCheckedReport(t *testing.T) {
 	assertEmpty(t, tmp)
 }
 
+func TestRunReportsProgress(t *testing.T) {
+	for _, mode := range []string{"progress", "progress-flood"} {
+		t.Run(mode, func(t *testing.T) {
+			r, _ := runner(t, mode)
+			var mu sync.Mutex
+			var got []int
+			rep, err := r.Run(context.Background(), definition(), "/work/main.py", func(n int) {
+				mu.Lock()
+				got = append(got, n)
+				mu.Unlock()
+			})
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if rep.TotalScore != 50 {
+				t.Fatalf("report = %+v", rep)
+			}
+			// Run has returned, so no call can still be in flight.
+			if !slices.Equal(got, []int{1, 2}) {
+				t.Fatalf("progress %v, want [1 2]: the valid, increasing lines only", got)
+			}
+		})
+	}
+}
+
 func TestRunStripsNULFromOutput(t *testing.T) {
 	r, _ := runner(t, "nul")
-	rep, err := r.Run(context.Background(), definition(), "/work/main.py")
+	rep, err := r.Run(context.Background(), definition(), "/work/main.py", nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -207,7 +259,7 @@ func TestRunFailures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r, tmp := runner(t, tc.mode)
 			r.MaxReportBytes = tc.max
-			_, err := r.Run(context.Background(), definition(), "/work/main.py")
+			_, err := r.Run(context.Background(), definition(), "/work/main.py", nil)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tc.wantErr)
 			}
@@ -221,7 +273,7 @@ func TestRunFailures(t *testing.T) {
 
 func TestRunKeepsOnlyTheTailOfStderr(t *testing.T) {
 	r, _ := runner(t, "flood")
-	_, err := r.Run(context.Background(), definition(), "/work/main.py")
+	_, err := r.Run(context.Background(), definition(), "/work/main.py", nil)
 	if !errors.Is(err, harness.ErrHarness) {
 		t.Fatalf("err = %v, want ErrHarness", err)
 	}
@@ -233,7 +285,7 @@ func TestRunKeepsOnlyTheTailOfStderr(t *testing.T) {
 }
 
 func TestRunWithoutCommand(t *testing.T) {
-	if _, err := (&harness.Runner{}).Run(context.Background(), definition(), "x"); err == nil {
+	if _, err := (&harness.Runner{}).Run(context.Background(), definition(), "x", nil); err == nil {
 		t.Fatal("Run without a command succeeded")
 	}
 }
@@ -244,7 +296,7 @@ func TestRunKillsAHangingHarnessAtTheDeadline(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, err := r.Run(ctx, definition(), "/work/main.py")
+	_, err := r.Run(ctx, definition(), "/work/main.py", nil)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
