@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/harness"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/progress"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/queue"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/store"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/worker"
@@ -132,18 +133,23 @@ func defaultClaim(id int64) *store.Claim {
 	}
 }
 
-// fakeGrader answers from a hook, or with an empty report.
+// fakeGrader reports the test cases in steps as started, then answers from a hook, or with an empty
+// report.
 type fakeGrader struct {
 	mu    sync.Mutex
 	paths []string
+	steps []int
 	run   func(ctx context.Context, def *harness.Definition) (*harness.Report, error)
 }
 
-func (g *fakeGrader) Run(ctx context.Context, def *harness.Definition, codePath string) (*harness.Report, error) {
+func (g *fakeGrader) Run(ctx context.Context, def *harness.Definition, codePath string, progress func(int)) (*harness.Report, error) {
 	g.mu.Lock()
 	g.paths = append(g.paths, codePath)
-	hook := g.run
+	hook, steps := g.run, g.steps
 	g.mu.Unlock()
+	for _, n := range steps {
+		progress(n)
+	}
 	if hook != nil {
 		return hook(ctx, def)
 	}
@@ -248,6 +254,91 @@ func TestGradesAQueuedJob(t *testing.T) {
 	}
 	if len(stale) == 0 || stale[0] != 0 {
 		t.Errorf("start-up reconcile was called with %v, want 0 first", stale)
+	}
+}
+
+// events records what the pool publishes.
+type events struct {
+	mu   sync.Mutex
+	list []progress.Event
+}
+
+func (e *events) publish(ev progress.Event) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.list = append(e.list, ev)
+}
+
+func (e *events) get() []progress.Event {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return slices.Clone(e.list)
+}
+
+func ev(id int64, status string, current, total int) progress.Event {
+	return progress.Event{SubmissionID: id, Status: status, CurrentTest: current, TotalTests: total}
+}
+
+func TestPublishesProgress(t *testing.T) {
+	var got events
+	r := start(t, worker.Config{Publish: got.publish})
+	r.g.mu.Lock()
+	r.g.steps = []int{1, 2}
+	r.g.mu.Unlock()
+	r.enqueue(1)
+	r.waitCompleted(1)
+
+	want := []progress.Event{
+		ev(1, progress.StatusRunning, 0, 2),
+		ev(1, progress.StatusRunning, 1, 2),
+		ev(1, progress.StatusRunning, 2, 2),
+		ev(1, progress.StatusCompleted, 2, 2),
+	}
+	eventually(t, "the COMPLETED event", func() bool { return len(got.get()) == len(want) })
+	if !slices.Equal(got.get(), want) {
+		t.Fatalf("events %+v, want %+v", got.get(), want)
+	}
+}
+
+func TestPublishesFailedWithTheLastTestStarted(t *testing.T) {
+	var got events
+	r := start(t, worker.Config{Publish: got.publish})
+	r.g.mu.Lock()
+	r.g.steps = []int{1}
+	r.g.run = func(context.Context, *harness.Definition) (*harness.Report, error) {
+		return nil, harness.ErrHarness
+	}
+	r.g.mu.Unlock()
+	r.enqueue(1)
+
+	want := []progress.Event{ev(1, progress.StatusRunning, 0, 2), ev(1, progress.StatusRunning, 1, 2), ev(1, progress.StatusFailed, 1, 2)}
+	eventually(t, "the FAILED event", func() bool { return len(got.get()) == len(want) })
+	if !slices.Equal(got.get(), want) {
+		t.Fatalf("events %+v, want %+v", got.get(), want)
+	}
+}
+
+// Nothing is published for a job that is dropped, and no COMPLETED for a report that is discarded:
+// an event follows the database, never runs ahead of it.
+func TestPublishesNothingTheDatabaseDidNotRecord(t *testing.T) {
+	var got events
+	r := start(t, worker.Config{Publish: got.publish})
+	r.s.mu.Lock()
+	r.s.claim = func(id int64) (*store.Claim, error) {
+		if id == 1 {
+			return nil, store.ErrNotQueued
+		}
+		return defaultClaim(id), nil
+	}
+	r.s.complete = func(*store.Claim) error { return store.ErrNotRunning }
+	r.s.mu.Unlock()
+	r.enqueue(1)
+	r.enqueue(2)
+	eventually(t, "both jobs to be handled", func() bool { claims, _, _, _ := r.s.snapshot(); return len(claims) == 2 })
+	r.stop()
+
+	if want := []progress.Event{ev(2, progress.StatusRunning, 0, 2)}; !slices.Equal(got.get(), want) {
+		t.Fatalf("events %+v, want %+v", got.get(), want)
 	}
 }
 

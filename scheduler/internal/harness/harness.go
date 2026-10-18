@@ -21,6 +21,13 @@
 // needs to find the sandbox: the path of sandbox-exec in EnvSandboxExec and the delegated cgroup to
 // give sandbox-exec as --cgroup-root in EnvCgroupRoot.
 //
+// The Harness may report progress for the dashboard (FR-08). EnvProgressFD names an open file
+// descriptor, a pipe; before it starts each test case the Harness writes one line to it,
+// {"current_test": n}, where n counts from 1 in the order of Definition.TestCases. Lines that are not
+// of that form, or that do not count up, are ignored, and a Harness that writes nothing still works:
+// progress is for display only. The descriptor must not be passed on to sandbox-exec (Python's
+// subprocess closes it by default).
+//
 // The Harness writes one JSON document to standard output (type Report, SRS Appendix C) and exits 0.
 // Standard error is free text for the log; only its last few kilobytes are kept. Any other exit status,
 // no output, output that is not valid, or output that contradicts the definition makes the submission

@@ -28,6 +28,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   migration pair with a test that applies, reverses and checks its constraints, and the `JobQueue`
   interface with its in-process implementation, which serves students round-robin (FR-13). The
   scheduler CI job now starts a PostgreSQL service.
+- Grading progress over WebSocket (`scheduler/`): `/ws/v1/submissions/{id}` streams queued, running
+  test n of total and the final status to the dashboard, authenticated by the one-time ticket
+  (FR-08). The Harness may report each test case it starts on `HARNESS_PROGRESS_FD`.
 - Scheduler authentication and sessions (`scheduler/`): Argon2id registration/login, JWT access
   tokens, hashed and revocable refresh tokens, self-profile and password management, single-use
   WebSocket tickets, and paginated administrator user management (FR-01, FR-15, FR-19).

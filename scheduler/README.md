@@ -6,7 +6,8 @@ persists results. It is **the only component that writes to PostgreSQL.**
 **Owner:** Evan William
 **Status:** authentication/session endpoints and the in-process `JobQueue` are implemented. The
 Harness runner, grading store, and worker pool are implemented, and `cmd/autograder` runs them in
-the API process. Assignment, submission, grading, and WebSocket upgrade APIs are not implemented.
+the API process, with `/healthz` and the WebSocket progress stream. Assignment, submission and
+grading APIs are not implemented.
 
 ## Responsibilities
 
@@ -31,6 +32,8 @@ internal/health/   the /healthz handler: database, live workers, queue depth
 internal/auth/     authentication, password/token helpers, PostgreSQL user/session store, WS tickets
 internal/queue/    JobQueue interface between the handlers and worker pool; in-process Memory implementation
 internal/harness/  starts the Grading Harness for one submission and checks its report
+internal/progress/ in-process hub that carries grading progress from the workers to the WebSocket
+internal/stream/   the /ws/v1/submissions/{id} WebSocket handler
 internal/store/    grading database operations: claim, complete, fail, and reconcile
 internal/worker/   worker pool joining the queue, store, and Harness
 internal/sandbox/  delegated cgroup set-up and the start-up sweep of dead sandbox runs
@@ -41,8 +44,9 @@ internal/testdb/   isolated migrated schema for each database test
 
 `cmd/autograder` is the whole backend in one process (SRS 3.3). At start-up it applies the
 migrations the database does not have yet, prepares the delegated cgroup, starts the worker pool,
-and serves the API. On `SIGTERM` it stops taking requests, interrupts the jobs in progress, which stay
-`RUNNING` for the next start-up, and exits. `infra/README.md` lists the environment variables and the
+and serves the API, `/healthz` and `/ws/v1/submissions/{id}`. On `SIGTERM` it closes the WebSocket
+streams with 1001, stops taking requests, interrupts the jobs in progress, which stay `RUNNING` for the
+next start-up, and exits. `infra/README.md` lists the environment variables and the
 install steps.
 
 The worker pool needs a cgroup delegated to the service user: the binary creates the leaf
@@ -68,7 +72,7 @@ auth/session endpoints do not enqueue grading jobs.
 The grading pipeline includes the schema, in-process queue, Harness runner, grading store, and
 worker pool. Request-handling code and grading work meet at `JobQueue`: a handler stores a
 submission as `QUEUED` and calls `Enqueue`; a worker calls `Dequeue`. The authentication endpoints
-are implemented; assignment, submission, grading, and WebSocket upgrade APIs are not.
+are implemented; assignment, submission and grading APIs are not.
 
 ## Authentication API
 
@@ -104,7 +108,7 @@ The client contract is:
   follows `frontend/src/api/submissionStatus.js`; the frontend sends the ID as JSON. Issued tickets
   are held in process memory, bound to the authenticated user and submission, and expire within 60
   seconds. `TicketStore.Consume` atomically removes a ticket; a second or expired use is rejected.
-  The WebSocket upgrade endpoint that consumes tickets is outside this API increment.
+  `/ws/v1/submissions/{id}` consumes them (see "Grading progress").
 - `GET /admin/users?page=N&page_size=N` returns `items`, `page`, `page_size`, and `has_next`.
   `PUT /admin/users/{id}/role` accepts `{ "role" }`. Only `ADMIN` can use these routes; role changes
   revoke every refresh token for the target user and write a `ROLE_CHANGED` audit row in the same
@@ -150,6 +154,10 @@ comment is the contract between the worker and the Harness, and the Harness owne
   report that does not match the definition (wrong submission, missing or extra test case, a score above
   the weight, totals that do not add up), makes the submission `FAILED` and nothing is stored.
 - On a deadline the Harness and the processes it started are killed.
+- For the dashboard's progress bar the Harness may write `{"current_test": n}` lines, one before each
+  test case, to the file descriptor named in `HARNESS_PROGRESS_FD`. Lines that are malformed or do
+  not count up are ignored, and a Harness that writes none still works. `sandbox-exec` marks every
+  descriptor above 2 close-on-exec, so student code cannot write to it.
 
 ## Settings
 
@@ -176,6 +184,31 @@ A submission that is lost mid-grading, because the scheduler died while it ran, 
 Once a lost submission has been started `Pipeline.MaxAttempts` times (3 by default) `Reconcile` marks it
 `FAILED` and logs it instead, so a submission that crashes the scheduler every time cannot loop across
 restarts. A regrade starts with a clean count.
+
+## Grading progress (WebSocket)
+
+`GET /ws/v1/submissions/{id}?ticket=TICKET` streams a submission's grading to the dashboard (FR-08,
+SRS 6.3). The ticket comes from `POST /api/v1/ws-tickets`, which checks that the submission is the
+caller's; it is consumed by the handshake. A bad, expired or reused ticket is refused with `401`, a
+ticket for another submission or an unknown submission with `404` (NFR-10). Each frame is the whole
+state, in the shape `frontend/src/api/submissionStatus.js` reads:
+
+```json
+{"status":"RUNNING","current_test":1,"total_tests":2}
+```
+
+- The first frame is the state on connection: the database's (`store.Pipeline.Progress`), or, while
+  the submission is being graded, the latest event, which knows the test case.
+- The worker pool publishes `RUNNING` test 0 of n when it claims a submission, test k of n as the
+  Harness starts each test case, and `COMPLETED` n of n or `FAILED`, each after the database has
+  recorded it (`worker.Config.Publish`).
+- After a `COMPLETED`, `FAILED` or `CANCELLED` frame the server closes with 1000. On shutdown it closes
+  with 1001, and the dashboard falls back to polling. The client sends nothing; the server pings
+  every 54 seconds and drops a client silent for 60.
+- `progress.Hub` keeps one pending event per connection and replaces it with a newer one, so a slow
+  client never holds up a worker; it skips intermediate states, never the last.
+
+Any origin may connect: cross-site WebSocket hijacking rides on cookies, and this endpoint uses none.
 
 ## Rate limits
 
