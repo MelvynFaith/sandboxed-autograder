@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -32,7 +33,16 @@ const shutdownTimeout = 10 * time.Second
 func main() {
 	// One JSON object per line (NFR-09); the log package's output goes through the same handler.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
-	if err := run(); err != nil {
+	var err error
+	switch {
+	case len(os.Args) == 1:
+		err = run()
+	case os.Args[1] == "seed-admin":
+		err = seedAdmin(os.Args[2:], os.Getenv)
+	default:
+		err = fmt.Errorf("unknown command %q: run autograder without arguments to serve; %s", os.Args[1], seedAdminUsage)
+	}
+	if err != nil {
 		slog.Error(err.Error())
 		os.Exit(1)
 	}

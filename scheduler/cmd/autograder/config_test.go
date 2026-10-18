@@ -75,3 +75,33 @@ func TestLoadConfigRejects(t *testing.T) {
 		})
 	}
 }
+
+func TestSeedAdminUsage(t *testing.T) {
+	full := map[string]string{"DATABASE_URL": "postgres://u@localhost/db", adminPasswordEnv: "a long enough password"}
+	without := func(k string) func(string) string {
+		return func(key string) string {
+			if key == k {
+				return ""
+			}
+			return full[key]
+		}
+	}
+	for name, c := range map[string]struct {
+		args   []string
+		getenv func(string) string
+	}{
+		"no flags":         {nil, without("")},
+		"no email":         {[]string{"--name", "Admin"}, without("")},
+		"stray argument":   {[]string{"--name", "Admin", "--email", "a@example.test", "extra"}, without("")},
+		"password as flag": {[]string{"--name", "Admin", "--email", "a@example.test", "--password", "x"}, without("")},
+		"no password":      {[]string{"--name", "Admin", "--email", "a@example.test"}, without(adminPasswordEnv)},
+		"no database":      {[]string{"--name", "Admin", "--email", "a@example.test"}, without("DATABASE_URL")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := seedAdmin(c.args, c.getenv)
+			if err == nil || !strings.Contains(err.Error(), "usage: autograder seed-admin") {
+				t.Fatalf("got %v, want the usage message", err)
+			}
+		})
+	}
+}
