@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -11,8 +12,11 @@ import (
 )
 
 var (
-	ErrUserNotFound = errors.New("user not found")
-	ErrNotStudent   = errors.New("user is not a student")
+	ErrUserNotFound           = errors.New("user not found")
+	ErrNotStudent             = errors.New("user is not a student")
+	ErrNotLecturer            = errors.New("user is not a lecturer")
+	ErrLecturerRequired       = errors.New("course lecturer is required")
+	ErrCourseLecturerMismatch = errors.New("lecturer cannot assign a course to another user")
 )
 
 type Store struct {
@@ -70,9 +74,52 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
-func (s *Store) CreateCourse(ctx context.Context, name, code, term string, lecturerID int64) (Course, error) {
+func (s *Store) CreateCourse(ctx context.Context, name, code, term, role string, actorID int64, lecturerEmail string) (Course, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Course{}, fmt.Errorf("begin create course: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var lecturerID int64
+	switch role {
+	case "LECTURER":
+		var actorEmail string
+		err = tx.QueryRow(ctx, `
+			SELECT id, email FROM users WHERE id = $1 AND role = 'LECTURER' FOR SHARE
+		`, actorID).Scan(&lecturerID, &actorEmail)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Course{}, ErrNotLecturer
+		}
+		if err != nil {
+			return Course{}, fmt.Errorf("verify course lecturer: %w", err)
+		}
+		if lecturerEmail != "" && !strings.EqualFold(lecturerEmail, actorEmail) {
+			return Course{}, ErrCourseLecturerMismatch
+		}
+	case "ADMIN":
+		if lecturerEmail == "" {
+			return Course{}, ErrLecturerRequired
+		}
+		var lecturerRole string
+		err = tx.QueryRow(ctx, `
+			SELECT id, role FROM users WHERE email = $1 FOR SHARE
+		`, lecturerEmail).Scan(&lecturerID, &lecturerRole)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Course{}, ErrUserNotFound
+		}
+		if err != nil {
+			return Course{}, fmt.Errorf("find course lecturer: %w", err)
+		}
+		if lecturerRole != "LECTURER" {
+			return Course{}, ErrNotLecturer
+		}
+	default:
+		return Course{}, fmt.Errorf("create course: unsupported creator role %q", role)
+	}
+
 	var course Course
-	err := s.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO courses (name, code, lecturer_id, term)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id, name, code, term, lecturer_id
@@ -81,6 +128,9 @@ func (s *Store) CreateCourse(ctx context.Context, name, code, term string, lectu
 	)
 	if err != nil {
 		return Course{}, fmt.Errorf("create course: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Course{}, fmt.Errorf("commit create course: %w", err)
 	}
 	return course, nil
 }
@@ -102,10 +152,11 @@ func (s *Store) ListCourses(ctx context.Context, role string, userID int64, page
 		args = []any{userID, pageSize + 1, (page - 1) * pageSize}
 	case "LECTURER":
 		query = `
-			SELECT id, name, code, term, lecturer_id
-			FROM courses
-			WHERE lecturer_id = $1
-			ORDER BY id
+			SELECT c.id, c.name, c.code, c.term, c.lecturer_id
+			FROM courses c
+			JOIN users u ON u.id = c.lecturer_id AND u.role = 'LECTURER'
+			WHERE c.lecturer_id = $1
+			ORDER BY c.id
 			LIMIT $2 OFFSET $3
 		`
 		args = []any{userID, pageSize + 1, (page - 1) * pageSize}
@@ -149,8 +200,8 @@ func (s *Store) CanManageCourse(ctx context.Context, courseID, userID int64, rol
 	var allowed bool
 	err := s.pool.QueryRow(ctx, `
 		SELECT EXISTS (
-			SELECT 1 FROM courses
-			WHERE id = $1 AND ($2 = 'ADMIN' OR lecturer_id = $3)
+			SELECT 1 FROM courses c
+			WHERE c.id = $1 AND ($2 = 'ADMIN' OR ($2 = 'LECTURER' AND c.lecturer_id = $3))
 		)
 	`, courseID, role, userID).Scan(&allowed)
 	if err != nil {

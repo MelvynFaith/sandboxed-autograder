@@ -38,9 +38,10 @@ func (a *API) createCourse(w http.ResponseWriter, r *http.Request, user auth.Use
 		return
 	}
 	var request struct {
-		Name string `json:"name"`
-		Code string `json:"code"`
-		Term string `json:"term"`
+		Name          string `json:"name"`
+		Code          string `json:"code"`
+		Term          string `json:"term"`
+		LecturerEmail string `json:"lecturer_email"`
 	}
 	if !decodeJSON(w, r, &request) {
 		return
@@ -48,6 +49,7 @@ func (a *API) createCourse(w http.ResponseWriter, r *http.Request, user auth.Use
 	request.Name = strings.TrimSpace(request.Name)
 	request.Code = strings.TrimSpace(request.Code)
 	request.Term = strings.TrimSpace(request.Term)
+	request.LecturerEmail = strings.ToLower(strings.TrimSpace(request.LecturerEmail))
 	if utf8.RuneCountInString(request.Name) == 0 ||
 		utf8.RuneCountInString(request.Name) > maxCourseNameLength ||
 		strings.ContainsRune(request.Name, '\x00') ||
@@ -60,8 +62,34 @@ func (a *API) createCourse(w http.ResponseWriter, r *http.Request, user auth.Use
 		writeError(w, http.StatusBadRequest, "invalid_request", "Nama wajib diisi (maksimal 200 karakter), kode wajib diisi (maksimal 32 karakter), dan term wajib diisi (maksimal 20 karakter).")
 		return
 	}
-	course, err := a.courses.CreateCourse(r.Context(), request.Name, request.Code, request.Term, user.ID)
+	if request.LecturerEmail != "" && !validEmail(request.LecturerEmail) {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Alamat email dosen tidak valid.")
+		return
+	}
+	if user.Role == auth.RoleAdmin && request.LecturerEmail == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Admin wajib menentukan email dosen pengampu.")
+		return
+	}
+	course, err := a.courses.CreateCourse(
+		r.Context(), request.Name, request.Code, request.Term, user.Role, user.ID, request.LecturerEmail,
+	)
 	if err != nil {
+		if errors.Is(err, courses.ErrUserNotFound) {
+			writeError(w, http.StatusNotFound, "user_not_found", "Dosen dengan email tersebut tidak ditemukan.")
+			return
+		}
+		if errors.Is(err, courses.ErrLecturerRequired) {
+			writeError(w, http.StatusBadRequest, "invalid_request", "Admin wajib menentukan email dosen pengampu.")
+			return
+		}
+		if errors.Is(err, courses.ErrNotLecturer) {
+			writeError(w, http.StatusBadRequest, "invalid_request", "Pengguna yang dipilih bukan dosen dengan peran LECTURER.")
+			return
+		}
+		if errors.Is(err, courses.ErrCourseLecturerMismatch) {
+			writeError(w, http.StatusBadRequest, "invalid_request", "Dosen hanya dapat membuat Course untuk dirinya sendiri.")
+			return
+		}
 		if isUniqueViolation(err) {
 			writeError(w, http.StatusConflict, "course_code_exists", "Kode Course sudah digunakan.")
 			return
@@ -116,7 +144,7 @@ func (a *API) createEnrollment(w http.ResponseWriter, r *http.Request, user auth
 	}
 	err := a.courses.CreateEnrollmentByEmail(r.Context(), courseID, request.Email)
 	if errors.Is(err, courses.ErrUserNotFound) {
-		writeError(w, http.StatusNotFound, "not_found", "Pengguna dengan email tersebut tidak ditemukan.")
+		writeError(w, http.StatusNotFound, "user_not_found", "Pengguna dengan email tersebut tidak ditemukan.")
 		return
 	}
 	if errors.Is(err, courses.ErrNotStudent) {

@@ -16,7 +16,7 @@ func TestCourseAndEnrollmentEndpoints(t *testing.T) {
 	lecturer, lecturerAccess := createCourseTestUser(t, env, "Lecturer", "lecturer@example.test", auth.RoleLecturer)
 	_, otherLecturerAccess := createCourseTestUser(t, env, "Other lecturer", "other@example.test", auth.RoleLecturer)
 	student, studentAccess := createCourseTestUser(t, env, "Student", "student@example.test", auth.RoleStudent)
-	_, otherStudentAccess := createCourseTestUser(t, env, "Other student", "other-student@example.test", auth.RoleStudent)
+	otherStudent, otherStudentAccess := createCourseTestUser(t, env, "Other student", "other-student@example.test", auth.RoleStudent)
 	_, adminAccess := createCourseTestUser(t, env, "Admin", "admin@example.test", auth.RoleAdmin)
 
 	created, coursePayload := env.request(t, http.MethodPost, "/api/v1/courses", map[string]string{
@@ -32,9 +32,9 @@ func TestCourseAndEnrollmentEndpoints(t *testing.T) {
 	}
 
 	adminCreated, adminCourse := env.request(t, http.MethodPost, "/api/v1/courses", map[string]string{
-		"name": "Admin course", "code": "ADMIN101", "term": "2026",
+		"name": "Admin course", "code": "ADMIN101", "term": "2026", "lecturer_email": lecturer.Email,
 	}, adminAccess)
-	if adminCreated.StatusCode != http.StatusCreated {
+	if adminCreated.StatusCode != http.StatusCreated || int64Field(t, adminCourse, "lecturer_id") != lecturer.ID {
 		t.Fatalf("admin create course status = %d, body = %#v", adminCreated.StatusCode, adminCourse)
 	}
 
@@ -43,7 +43,7 @@ func TestCourseAndEnrollmentEndpoints(t *testing.T) {
 		t.Fatalf("unenrolled student courses = %d, %#v", studentCourses.StatusCode, studentCoursesPayload)
 	}
 	lecturerCourses, lecturerCoursesPayload := env.request(t, http.MethodGet, "/api/v1/courses", nil, lecturerAccess)
-	if lecturerCourses.StatusCode != http.StatusOK || len(pageItems(t, lecturerCoursesPayload)) != 1 {
+	if lecturerCourses.StatusCode != http.StatusOK || len(pageItems(t, lecturerCoursesPayload)) != 2 {
 		t.Fatalf("lecturer course list = %d, %#v", lecturerCourses.StatusCode, lecturerCoursesPayload)
 	}
 	otherLecturerCourses, otherLecturerCoursesPayload := env.request(t, http.MethodGet, "/api/v1/courses", nil, otherLecturerAccess)
@@ -70,7 +70,7 @@ func TestCourseAndEnrollmentEndpoints(t *testing.T) {
 	if unknownEmail.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown enrollment email status = %d, body = %#v", unknownEmail.StatusCode, unknownEmailPayload)
 	}
-	assertError(t, unknownEmailPayload, "not_found")
+	assertError(t, unknownEmailPayload, "user_not_found")
 
 	enrollLecturer, enrollLecturerPayload := env.request(t, http.MethodPost, enrollmentPath, map[string]string{
 		"email": lecturer.Email,
@@ -83,6 +83,26 @@ func TestCourseAndEnrollmentEndpoints(t *testing.T) {
 	added, _ := env.request(t, http.MethodPost, enrollmentPath, map[string]string{"email": student.Email}, lecturerAccess)
 	if added.StatusCode != http.StatusNoContent {
 		t.Fatalf("add enrollment status = %d; want 204", added.StatusCode)
+	}
+	for _, request := range []struct {
+		name   string
+		method string
+		path   string
+		body   any
+		token  string
+	}{
+		{"other lecturer GET", http.MethodGet, enrollmentPath, nil, otherLecturerAccess},
+		{"other lecturer POST", http.MethodPost, enrollmentPath, map[string]string{"email": otherStudent.Email}, otherLecturerAccess},
+		{"other lecturer DELETE", http.MethodDelete, enrollmentPath + "/" + strconv.FormatInt(student.ID, 10), nil, otherLecturerAccess},
+		{"student GET", http.MethodGet, enrollmentPath, nil, studentAccess},
+		{"student POST", http.MethodPost, enrollmentPath, map[string]string{"email": otherStudent.Email}, studentAccess},
+		{"student DELETE", http.MethodDelete, enrollmentPath + "/" + strconv.FormatInt(student.ID, 10), nil, studentAccess},
+	} {
+		response, payload := env.request(t, request.method, request.path, request.body, request.token)
+		if response.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s enrollment access = %d, %#v; want 404", request.name, response.StatusCode, payload)
+		}
+		assertError(t, payload, "not_found")
 	}
 	duplicate, duplicatePayload := env.request(t, http.MethodPost, enrollmentPath, map[string]string{
 		"email": student.Email,
@@ -169,12 +189,42 @@ func TestCourseAndEnrollmentEndpoints(t *testing.T) {
 	if adminDeleted.StatusCode != http.StatusNoContent {
 		t.Fatalf("admin delete enrollment status = %d; want 204", adminDeleted.StatusCode)
 	}
+
+	demoted, demotedPayload := env.request(t, http.MethodPut,
+		"/api/v1/admin/users/"+strconv.FormatInt(lecturer.ID, 10)+"/role",
+		map[string]string{"role": auth.RoleStudent}, adminAccess)
+	if demoted.StatusCode != http.StatusOK || demotedPayload["role"] != auth.RoleStudent {
+		t.Fatalf("demote course owner = %d, %#v", demoted.StatusCode, demotedPayload)
+	}
+	demotedCourses, demotedCoursesPayload := env.request(t, http.MethodGet, "/api/v1/courses", nil, lecturerAccess)
+	if demotedCourses.StatusCode != http.StatusOK || len(pageItems(t, demotedCoursesPayload)) != 0 {
+		t.Fatalf("demoted owner course list = %d, %#v; want empty", demotedCourses.StatusCode, demotedCoursesPayload)
+	}
+	for _, request := range []struct {
+		name   string
+		method string
+		path   string
+		body   any
+	}{
+		{"demoted owner list", http.MethodGet, enrollmentPath, nil},
+		{"demoted owner add", http.MethodPost, enrollmentPath, map[string]string{"email": student.Email}},
+		{"demoted owner remove", http.MethodDelete, enrollmentPath + "/" + strconv.FormatInt(student.ID, 10), nil},
+		{"demoted owner assignments", http.MethodGet, assignmentsPath, nil},
+	} {
+		response, payload := env.request(t, request.method, request.path, request.body, lecturerAccess)
+		if response.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s = %d, %#v; want 404", request.name, response.StatusCode, payload)
+		}
+		assertError(t, payload, "not_found")
+	}
 }
 
 func TestCourseEndpointValidationAndNotFoundResponses(t *testing.T) {
 	env := newTestEnvironment(t)
-	_, lecturerAccess := createCourseTestUser(t, env, "Lecturer", "lecturer@example.test", auth.RoleLecturer)
-	_, studentAccess := createCourseTestUser(t, env, "Student", "student@example.test", auth.RoleStudent)
+	lecturer, lecturerAccess := createCourseTestUser(t, env, "Lecturer", "lecturer@example.test", auth.RoleLecturer)
+	otherLecturer, _ := createCourseTestUser(t, env, "Other lecturer", "other@example.test", auth.RoleLecturer)
+	student, studentAccess := createCourseTestUser(t, env, "Student", "student@example.test", auth.RoleStudent)
+	_, adminAccess := createCourseTestUser(t, env, "Admin", "admin@example.test", auth.RoleAdmin)
 
 	for _, request := range []struct {
 		name string
@@ -198,6 +248,44 @@ func TestCourseEndpointValidationAndNotFoundResponses(t *testing.T) {
 			if message == "" || strings.Contains(message, "required") {
 				t.Fatalf("validation message must be non-empty Indonesian text, got %q", message)
 			}
+		})
+	}
+	lecturerAssignOther, lecturerAssignOtherPayload := env.request(t, http.MethodPost, "/api/v1/courses", map[string]string{
+		"name": "Course", "code": "CS102", "term": "2026", "lecturer_email": otherLecturer.Email,
+	}, lecturerAccess)
+	if lecturerAssignOther.StatusCode != http.StatusBadRequest {
+		t.Fatalf("lecturer creating for another user = %d, %#v; want 400", lecturerAssignOther.StatusCode, lecturerAssignOtherPayload)
+	}
+	assertError(t, lecturerAssignOtherPayload, "invalid_request")
+	ownEmailAccepted, ownEmailPayload := env.request(t, http.MethodPost, "/api/v1/courses", map[string]string{
+		"name": "Course", "code": "CS103", "term": "2026", "lecturer_email": lecturer.Email,
+	}, lecturerAccess)
+	if ownEmailAccepted.StatusCode != http.StatusCreated || int64Field(t, ownEmailPayload, "lecturer_id") != lecturer.ID {
+		t.Fatalf("lecturer creating for self = %d, %#v; want own lecturer_id", ownEmailAccepted.StatusCode, ownEmailPayload)
+	}
+
+	for _, request := range []struct {
+		name string
+		body map[string]string
+		want int
+		code string
+	}{
+		{"admin missing lecturer_email", map[string]string{
+			"name": "Admin course", "code": "ADMIN101", "term": "2026",
+		}, http.StatusBadRequest, "invalid_request"},
+		{"admin lecturer_email is student", map[string]string{
+			"name": "Admin course", "code": "ADMIN102", "term": "2026", "lecturer_email": student.Email,
+		}, http.StatusBadRequest, "invalid_request"},
+		{"admin lecturer_email unknown", map[string]string{
+			"name": "Admin course", "code": "ADMIN103", "term": "2026", "lecturer_email": "missing@example.test",
+		}, http.StatusNotFound, "user_not_found"},
+	} {
+		t.Run(request.name, func(t *testing.T) {
+			response, payload := env.request(t, http.MethodPost, "/api/v1/courses", request.body, adminAccess)
+			if response.StatusCode != request.want {
+				t.Fatalf("admin create status = %d, %#v; want %d", response.StatusCode, payload, request.want)
+			}
+			assertError(t, payload, request.code)
 		})
 	}
 
