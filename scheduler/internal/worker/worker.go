@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/harness"
@@ -95,6 +96,7 @@ type Pool struct {
 	store Store
 	grade Grader
 	log   *slog.Logger
+	alive atomic.Int32 // worker goroutines running
 }
 
 // New returns a Pool. It does not start any goroutine; Run does.
@@ -143,8 +145,10 @@ func (p *Pool) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 	for range p.cfg.Workers {
 		wg.Add(1)
+		p.alive.Add(1)
 		go func() {
 			defer wg.Done()
+			defer p.alive.Add(-1)
 			p.work(ctx)
 		}()
 	}
@@ -155,6 +159,13 @@ func (p *Pool) Run(ctx context.Context) error {
 	}()
 	wg.Wait()
 	return nil
+}
+
+// Workers reports how many worker goroutines are running and how many the pool was configured with,
+// for /healthz (NFR-09). None run until Run has finished the start-up reconciliation, and none after
+// Run returns, so fewer than configured means the pool is not grading at full strength.
+func (p *Pool) Workers() (alive, configured int) {
+	return int(p.alive.Load()), p.cfg.Workers
 }
 
 // work takes jobs until ctx is done.

@@ -217,6 +217,37 @@ func TestRemove(t *testing.T) {
 	}
 }
 
+func TestLen(t *testing.T) {
+	q := queue.NewMemory()
+	if n := q.Len(); n != 0 {
+		t.Fatalf("empty queue has Len %d", n)
+	}
+	enqueue(t, q, 11, 1)
+	enqueue(t, q, 12, 1)
+	enqueue(t, q, 21, 2)
+	if n := q.Len(); n != 3 {
+		t.Fatalf("Len %d after three jobs, want 3", n)
+	}
+	dequeue(t, q)
+	if _, err := q.Remove(ctx(t), 21); err != nil {
+		t.Fatal(err)
+	}
+	if n := q.Len(); n != 1 {
+		t.Fatalf("Len %d after one Dequeue and one Remove, want 1", n)
+	}
+	dequeue(t, q)
+
+	// A job handed to a waiting worker never sits in the queue.
+	got := make(chan queue.Job, 1)
+	go func() { got <- dequeue(t, q) }()
+	waitForWaiters(t, q, 1)
+	enqueue(t, q, 31, 3)
+	<-got
+	if n := q.Len(); n != 0 {
+		t.Fatalf("Len %d after a hand-off, want 0", n)
+	}
+}
+
 // Exactly-once delivery under contention. The consumers use timeouts of a few microseconds so that
 // cancellation keeps racing with hand-off, which is where a job could be lost or delivered twice.
 func TestConcurrentDeliveryIsExactlyOnce(t *testing.T) {
