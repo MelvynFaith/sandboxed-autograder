@@ -43,6 +43,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Scheduler courses and enrollment (`scheduler/`): add paginated, role-scoped course lists, course
   creation, enrollment management, and course-scoped assignment listing with object-level access
   checks (FR-18, NFR-10).
+- Scheduler course ownership review: require an active lecturer owner for every new course, verify
+  administrator-selected lecturer emails transactionally, deny demoted owners access, and distinguish
+  unknown-user errors from unavailable-course errors.
 - Grading pipeline (`scheduler/`): the Grading Harness runner, which keeps the assignment definition
   off the command line and checks the report; the grading store, which moves a submission through
   `QUEUED`, `RUNNING` and `COMPLETED` or `FAILED` and writes results and audit rows in one

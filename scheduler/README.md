@@ -122,14 +122,19 @@ The client contract is:
   the course owner or an administrator. `GET /courses/{id}/assignments?page=N&page_size=N` lists
   existing assignments without providing assignment CRUD; students must be enrolled, while the course
   owner and administrators may list them.
-- `POST /courses` accepts `{ "name", "code", "term" }` and returns the created course, including
-  `lecturer_id`. FR-18 does not specify this request body; requiring `code` and `term` is an
-  implementation assumption because the existing schema requires both values and the frontend
-  course adapter expects `code` and `term` when reading courses. The API does not generate either
-  field and does not alter the merged migration.
+- `POST /courses` accepts `{ "name", "code", "term" }` for a lecturer; the authenticated lecturer
+  becomes the owner. An optional `lecturer_email` is accepted only when it matches that lecturer's
+  own email. An administrator must supply `{ "lecturer_email" }`; the server verifies in the same
+  transaction that the account exists and has role `LECTURER` before creating the course. An unknown
+  email returns `404 user_not_found`; a non-lecturer target or a lecturer trying to assign another
+  owner returns `400 invalid_request`. FR-18 does not specify these request bodies; `code`, `term`,
+  and `lecturer_email` are implementation assumptions matching the schema and role/ownership
+  requirements. The API does not generate course fields or alter the merged migration.
 - `POST /courses/{id}/enrollments` accepts `{ "email" }`. FR-18 does not specify enrollment body
-  fields, and the current frontend course adapter has no enrollment request, so this payload is an
-  explicit backend assumption awaiting frontend alignment.
+  fields, so this payload is an implementation assumption matching the frontend course adapter.
+  An unknown email returns `404 user_not_found`, distinct from `404 not_found` for an unavailable
+  Course. Only the current owner with role `LECTURER` or an administrator can manage enrollments;
+  demoted owners lose management access.
   Registration and profile updates limit display names to 200 Unicode characters.
 
 The SRS does not define the request body fields for registration, password change, or WebSocket
