@@ -49,6 +49,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Scheduler course ownership review: require an active lecturer owner for every new course, verify
   administrator-selected lecturer emails transactionally, deny demoted owners access, and distinguish
   unknown-user errors from unavailable-course errors.
+- Scheduler assignments (`scheduler/`): add role-scoped assignment CRUD, resource-limit validation,
+  paginated test cases with hidden-case filtering, external-ID generation, stale-grade marking, and
+  result-aware test-case deletion.
 - Grading pipeline (`scheduler/`): the Grading Harness runner, which keeps the assignment definition
   off the command line and checks the report; the grading store, which moves a submission through
   `QUEUED`, `RUNNING` and `COMPLETED` or `FAILED` and writes results and audit rows in one

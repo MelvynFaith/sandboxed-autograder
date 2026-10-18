@@ -4,10 +4,10 @@ A Go service that exposes the REST and WebSocket API, queues grading jobs, runs 
 persists results. It is **the only component that writes to PostgreSQL.**
 
 **Owner:** Evan William
-**Status:** authentication/session and course/enrollment APIs, plus the in-process `JobQueue`, are
-implemented. The Harness runner, grading store, and worker pool run in the `cmd/autograder` process,
-which also serves `/healthz` and the WebSocket progress stream. Course-scoped assignment listing is
-implemented; assignment CRUD, submission, and grading APIs are not implemented.
+**Status:** authentication/session, course/enrollment, assignment, resource-limit, and test-case
+endpoints are implemented, as are the in-process `JobQueue`, Harness runner, grading store, worker
+pool, `/healthz`, and WebSocket progress stream. Submission and grading-report APIs are not
+implemented.
 
 ## Responsibilities
 
@@ -27,7 +27,7 @@ implemented; assignment CRUD, submission, and grading APIs are not implemented.
 go.mod
 cmd/autograder/    the process: migrations, API server and worker pool
 migrations/        schema, one NNNNNN_name.up.sql / .down.sql pair per change, embedded as migrations.FS
-internal/api/      authentication HTTP routes and handlers
+internal/api/      authentication and course/assignment HTTP routes and handlers
 internal/health/   the /healthz handler: database, live workers, queue depth
 internal/auth/     authentication, password/token helpers, PostgreSQL user/session store, WS tickets
 internal/courses/  course, enrollment, and course-scoped assignment listing store
@@ -70,12 +70,12 @@ The queue is in memory and is filled from the database: at start-up and every mi
 therefore waits up to a minute before a worker takes it.
 
 The API and authentication packages are separate from grading work in `internal/queue`. The current
-auth/session and course endpoints do not enqueue grading jobs.
+auth/session, course, and assignment endpoints do not enqueue grading jobs.
 The grading pipeline includes the schema, in-process queue, Harness runner, grading store, and
 worker pool. Request-handling code and grading work meet at `JobQueue`: a handler stores a
-submission as `QUEUED` and calls `Enqueue`; a worker calls `Dequeue`. Authentication, course, and
-enrollment endpoints are implemented. Course-scoped assignment listing is available, but assignment
-CRUD, submission, and grading APIs are not.
+submission as `QUEUED` and calls `Enqueue`; a worker calls `Dequeue`. Authentication, course,
+enrollment, assignment, resource-limit, and test-case endpoints are implemented, but submission and
+grading-report APIs are not. The WebSocket progress stream is implemented.
 
 ## Authentication API
 
@@ -136,7 +136,28 @@ The client contract is:
   An unknown email returns `404 user_not_found`, distinct from `404 not_found` for an unavailable
   Course. Only the current owner with role `LECTURER` or an administrator can manage enrollments;
   demoted owners lose management access.
-  Registration and profile updates limit display names to 200 Unicode characters.
+- `POST /courses/{id}/assignments` and `PUT /assignments/{id}` accept
+  `{ "title", "description", "deadline_at", "late_until_at" }`, with RFC3339 timestamps and
+  `late_until_at >= deadline_at`. The SRS does not define these request bodies; the field shape
+  follows the assignment schema and frontend adapter.
+- `GET /assignments?page=N&page_size=N` lists assignments visible to the caller. Individual
+  assignment reads and writes follow course ownership/enrollment checks. Only a course owner or
+  administrator can create, update, or delete assignments.
+- `GET` and `PUT /assignments/{id}/resource-limit` read or save
+  `{ "cpu_time_ms", "memory_mb", "max_processes", "timeout_s", "max_output_bytes", "tmpfs_size_mb" }`.
+  The API validates both sandbox invariants before saving. An unconfigured resource limit returns
+  404 with the standard error envelope.
+- `GET` and `POST /assignments/{id}/testcases`, and `PUT`/`DELETE /testcases/{id}`, manage test
+  cases. The write body accepts `input`, `expected_output`, positive `weight`, `is_hidden`,
+  `match_mode` (`EXACT` or `WHITESPACE_INSENSITIVE`), and optional `external_id`. An omitted or
+  empty `external_id` is generated as `tc_01`, `tc_02`, etc. per assignment; duplicate IDs return
+  409. The body shape follows `frontend/src/api/testcases.js`; the SRS does not define it.
+- Every test-case create or update marks all submissions for its assignment `stale_grade = true`
+  in the same database transaction. Deleting a case with a result soft-deletes it
+  (`is_deleted = true`); a case without results is physically deleted. Soft-deleted cases are
+  excluded from API lists and future grading.
+
+Registration and profile updates limit display names to 200 Unicode characters.
 
 The SRS does not define the request body fields for registration, password change, or WebSocket
 ticket issuance. They follow the current frontend assumptions: register `{name,email,password}`,
