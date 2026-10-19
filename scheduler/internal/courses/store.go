@@ -70,6 +70,34 @@ type AssignmentPage struct {
 	HasNext  bool         `json:"has_next"`
 }
 
+type ResourceLimit struct {
+	AssignmentID   int64 `json:"assignment_id"`
+	CPUTimeMS      int   `json:"cpu_time_ms"`
+	MemoryMB       int   `json:"memory_mb"`
+	MaxProcesses   int   `json:"max_processes"`
+	TimeoutS       int   `json:"timeout_s"`
+	MaxOutputBytes int   `json:"max_output_bytes"`
+	TmpfsSizeMB    int   `json:"tmpfs_size_mb"`
+}
+
+type TestCase struct {
+	ID             int64  `json:"id"`
+	AssignmentID   int64  `json:"assignment_id"`
+	ExternalID     string `json:"external_id"`
+	Input          string `json:"input"`
+	ExpectedOutput string `json:"expected_output"`
+	Weight         int    `json:"weight"`
+	IsHidden       bool   `json:"is_hidden"`
+	MatchMode      string `json:"match_mode"`
+}
+
+type TestCasePage struct {
+	Items    []TestCase `json:"items"`
+	Page     int        `json:"page"`
+	PageSize int        `json:"page_size"`
+	HasNext  bool       `json:"has_next"`
+}
+
 func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
@@ -340,4 +368,383 @@ func (s *Store) ListAssignments(ctx context.Context, courseID int64, page, pageS
 		items = items[:pageSize]
 	}
 	return AssignmentPage{Items: items, Page: page, PageSize: pageSize, HasNext: hasNext}, nil
+}
+
+func (s *Store) CreateAssignment(ctx context.Context, courseID int64, title, description string, deadlineAt, lateUntilAt time.Time, limit ResourceLimit) (Assignment, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Assignment{}, fmt.Errorf("begin create assignment: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var assignment Assignment
+	err = tx.QueryRow(ctx, `
+		INSERT INTO assignments (course_id, title, description, deadline_at, late_until_at)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, course_id, title, description, deadline_at, late_until_at
+	`, courseID, title, description, deadlineAt, lateUntilAt).Scan(
+		&assignment.ID, &assignment.CourseID, &assignment.Title, &assignment.Description,
+		&assignment.DeadlineAt, &assignment.LateUntilAt,
+	)
+	if err != nil {
+		return Assignment{}, fmt.Errorf("create assignment: %w", err)
+	}
+	limit.AssignmentID = assignment.ID
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO resource_limits (
+			assignment_id, cpu_time_ms, memory_mb, max_processes, timeout_s, max_output_bytes, tmpfs_size_mb
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, limit.AssignmentID, limit.CPUTimeMS, limit.MemoryMB, limit.MaxProcesses, limit.TimeoutS,
+		limit.MaxOutputBytes, limit.TmpfsSizeMB); err != nil {
+		return Assignment{}, fmt.Errorf("create assignment resource limit: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Assignment{}, fmt.Errorf("commit create assignment: %w", err)
+	}
+	return assignment, nil
+}
+
+func (s *Store) AssignmentByID(ctx context.Context, assignmentID int64) (Assignment, error) {
+	var assignment Assignment
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, course_id, title, description, deadline_at, late_until_at
+		FROM assignments WHERE id = $1
+	`, assignmentID).Scan(
+		&assignment.ID, &assignment.CourseID, &assignment.Title, &assignment.Description,
+		&assignment.DeadlineAt, &assignment.LateUntilAt,
+	)
+	if err != nil {
+		return Assignment{}, fmt.Errorf("get assignment: %w", err)
+	}
+	return assignment, nil
+}
+
+func (s *Store) ListVisibleAssignments(ctx context.Context, role string, userID int64, page, pageSize int) (AssignmentPage, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT a.id, a.course_id, a.title, a.description, a.deadline_at, a.late_until_at
+		FROM assignments a
+		JOIN courses c ON c.id = a.course_id
+		WHERE $1 = 'ADMIN'
+			OR ($1 = 'LECTURER' AND c.lecturer_id = $2)
+			OR ($1 = 'STUDENT' AND EXISTS (
+				SELECT 1 FROM enrollments e WHERE e.course_id = c.id AND e.user_id = $2
+			))
+		ORDER BY a.id
+		LIMIT $3 OFFSET $4
+	`, role, userID, pageSize+1, (page-1)*pageSize)
+	if err != nil {
+		return AssignmentPage{}, fmt.Errorf("list visible assignments: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]Assignment, 0, pageSize+1)
+	for rows.Next() {
+		var assignment Assignment
+		if err := rows.Scan(
+			&assignment.ID, &assignment.CourseID, &assignment.Title, &assignment.Description,
+			&assignment.DeadlineAt, &assignment.LateUntilAt,
+		); err != nil {
+			return AssignmentPage{}, fmt.Errorf("scan visible assignment: %w", err)
+		}
+		items = append(items, assignment)
+	}
+	if err := rows.Err(); err != nil {
+		return AssignmentPage{}, fmt.Errorf("list visible assignment rows: %w", err)
+	}
+	hasNext := len(items) > pageSize
+	if hasNext {
+		items = items[:pageSize]
+	}
+	return AssignmentPage{Items: items, Page: page, PageSize: pageSize, HasNext: hasNext}, nil
+}
+
+func (s *Store) UpdateAssignment(ctx context.Context, assignmentID int64, title, description string, deadlineAt, lateUntilAt time.Time) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE assignments
+		SET title = $2, description = $3, deadline_at = $4, late_until_at = $5, updated_at = now()
+		WHERE id = $1
+	`, assignmentID, title, description, deadlineAt, lateUntilAt)
+	if err != nil {
+		return false, fmt.Errorf("update assignment: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+func (s *Store) DeleteAssignment(ctx context.Context, assignmentID int64) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM assignments WHERE id = $1`, assignmentID)
+	if err != nil {
+		return false, fmt.Errorf("delete assignment: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+func (s *Store) CanAccessAssignment(ctx context.Context, assignmentID, userID int64, role string) (bool, error) {
+	var allowed bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM assignments a
+			JOIN courses c ON c.id = a.course_id
+			WHERE a.id = $1 AND (
+				$2 = 'ADMIN'
+				OR ($2 = 'LECTURER' AND c.lecturer_id = $3)
+				OR ($2 = 'STUDENT' AND EXISTS (
+					SELECT 1 FROM enrollments e WHERE e.course_id = c.id AND e.user_id = $3
+				))
+			)
+		)
+	`, assignmentID, role, userID).Scan(&allowed)
+	if err != nil {
+		return false, fmt.Errorf("check assignment access: %w", err)
+	}
+	return allowed, nil
+}
+
+func (s *Store) CanManageAssignment(ctx context.Context, assignmentID, userID int64, role string) (bool, error) {
+	var allowed bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM assignments a
+			JOIN courses c ON c.id = a.course_id
+			WHERE a.id = $1 AND ($2 = 'ADMIN' OR ($2 = 'LECTURER' AND c.lecturer_id = $3))
+		)
+	`, assignmentID, role, userID).Scan(&allowed)
+	if err != nil {
+		return false, fmt.Errorf("check assignment management access: %w", err)
+	}
+	return allowed, nil
+}
+
+func (s *Store) GetResourceLimit(ctx context.Context, assignmentID int64) (ResourceLimit, error) {
+	var limit ResourceLimit
+	err := s.pool.QueryRow(ctx, `
+		SELECT assignment_id, cpu_time_ms, memory_mb, max_processes, timeout_s,
+			max_output_bytes, tmpfs_size_mb
+		FROM resource_limits WHERE assignment_id = $1
+	`, assignmentID).Scan(
+		&limit.AssignmentID, &limit.CPUTimeMS, &limit.MemoryMB, &limit.MaxProcesses,
+		&limit.TimeoutS, &limit.MaxOutputBytes, &limit.TmpfsSizeMB,
+	)
+	if err != nil {
+		return ResourceLimit{}, fmt.Errorf("get resource limit: %w", err)
+	}
+	return limit, nil
+}
+
+func (s *Store) UpdateResourceLimit(ctx context.Context, limit ResourceLimit) (ResourceLimit, error) {
+	err := s.pool.QueryRow(ctx, `
+		UPDATE resource_limits SET
+			cpu_time_ms = $2,
+			memory_mb = $3,
+			max_processes = $4,
+			timeout_s = $5,
+			max_output_bytes = $6,
+			tmpfs_size_mb = $7,
+			updated_at = now()
+		WHERE assignment_id = $1
+		RETURNING assignment_id, cpu_time_ms, memory_mb, max_processes, timeout_s,
+			max_output_bytes, tmpfs_size_mb
+	`, limit.AssignmentID, limit.CPUTimeMS, limit.MemoryMB, limit.MaxProcesses, limit.TimeoutS,
+		limit.MaxOutputBytes, limit.TmpfsSizeMB).Scan(
+		&limit.AssignmentID, &limit.CPUTimeMS, &limit.MemoryMB, &limit.MaxProcesses,
+		&limit.TimeoutS, &limit.MaxOutputBytes, &limit.TmpfsSizeMB,
+	)
+	if err != nil {
+		return ResourceLimit{}, fmt.Errorf("update resource limit: %w", err)
+	}
+	return limit, nil
+}
+
+func (s *Store) ListTestCases(ctx context.Context, assignmentID int64, includeHidden bool, page, pageSize int) (TestCasePage, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, assignment_id, external_id, input, expected_output, weight, is_hidden, match_mode
+		FROM test_cases
+		WHERE assignment_id = $1 AND NOT is_deleted AND ($2 OR NOT is_hidden)
+		ORDER BY id
+		LIMIT $3 OFFSET $4
+	`, assignmentID, includeHidden, pageSize+1, (page-1)*pageSize)
+	if err != nil {
+		return TestCasePage{}, fmt.Errorf("list test cases: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]TestCase, 0, pageSize+1)
+	for rows.Next() {
+		var testCase TestCase
+		if err := rows.Scan(
+			&testCase.ID, &testCase.AssignmentID, &testCase.ExternalID, &testCase.Input,
+			&testCase.ExpectedOutput, &testCase.Weight, &testCase.IsHidden, &testCase.MatchMode,
+		); err != nil {
+			return TestCasePage{}, fmt.Errorf("scan test case: %w", err)
+		}
+		items = append(items, testCase)
+	}
+	if err := rows.Err(); err != nil {
+		return TestCasePage{}, fmt.Errorf("list test case rows: %w", err)
+	}
+	hasNext := len(items) > pageSize
+	if hasNext {
+		items = items[:pageSize]
+	}
+	return TestCasePage{Items: items, Page: page, PageSize: pageSize, HasNext: hasNext}, nil
+}
+
+func (s *Store) CreateTestCase(ctx context.Context, testCase TestCase) (TestCase, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return TestCase{}, fmt.Errorf("begin create test case: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if testCase.ExternalID == "" {
+		var assignmentID int64
+		if err := tx.QueryRow(ctx, `SELECT id FROM assignments WHERE id = $1 FOR UPDATE`, testCase.AssignmentID).Scan(&assignmentID); err != nil {
+			return TestCase{}, fmt.Errorf("lock assignment for test case: %w", err)
+		}
+		for nextID := int64(1); ; nextID++ {
+			candidate := fmt.Sprintf("tc_%02d", nextID)
+			var exists bool
+			if err := tx.QueryRow(ctx, `
+				SELECT EXISTS (
+					SELECT 1 FROM test_cases WHERE assignment_id = $1 AND external_id = $2
+				)
+			`, testCase.AssignmentID, candidate).Scan(&exists); err != nil {
+				return TestCase{}, fmt.Errorf("generate test case external identifier: %w", err)
+			}
+			if !exists {
+				testCase.ExternalID = candidate
+				break
+			}
+			if nextID == int64(1<<63-1) {
+				return TestCase{}, fmt.Errorf("generate test case external identifier: identifier space exhausted")
+			}
+		}
+	}
+
+	err = tx.QueryRow(ctx, `
+		INSERT INTO test_cases (
+			assignment_id, external_id, input, expected_output, weight, is_hidden, match_mode
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id
+	`, testCase.AssignmentID, testCase.ExternalID, testCase.Input, testCase.ExpectedOutput,
+		testCase.Weight, testCase.IsHidden, testCase.MatchMode).Scan(&testCase.ID)
+	if err != nil {
+		return TestCase{}, fmt.Errorf("create test case: %w", err)
+	}
+	if err := markAssignmentSubmissionsStale(ctx, tx, testCase.AssignmentID); err != nil {
+		return TestCase{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return TestCase{}, fmt.Errorf("commit create test case: %w", err)
+	}
+	return testCase, nil
+}
+
+func (s *Store) UpdateTestCase(ctx context.Context, testCase TestCase) (TestCase, bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return TestCase{}, false, fmt.Errorf("begin update test case: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	err = tx.QueryRow(ctx, `
+		SELECT assignment_id FROM test_cases WHERE id = $1 AND NOT is_deleted FOR UPDATE
+	`, testCase.ID).Scan(&testCase.AssignmentID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return TestCase{}, false, nil
+	}
+	if err != nil {
+		return TestCase{}, false, fmt.Errorf("lock test case for update: %w", err)
+	}
+	err = tx.QueryRow(ctx, `
+		UPDATE test_cases
+		SET external_id = COALESCE(NULLIF($2, ''), external_id),
+			input = $3, expected_output = $4, weight = $5, is_hidden = $6,
+			match_mode = $7, updated_at = now()
+		WHERE id = $1 AND NOT is_deleted
+		RETURNING id, assignment_id, external_id, input, expected_output, weight, is_hidden, match_mode
+	`, testCase.ID, testCase.ExternalID, testCase.Input, testCase.ExpectedOutput, testCase.Weight,
+		testCase.IsHidden, testCase.MatchMode).Scan(
+		&testCase.ID, &testCase.AssignmentID, &testCase.ExternalID, &testCase.Input,
+		&testCase.ExpectedOutput, &testCase.Weight, &testCase.IsHidden, &testCase.MatchMode,
+	)
+	if err != nil {
+		return TestCase{}, false, fmt.Errorf("update test case: %w", err)
+	}
+	if err := markAssignmentSubmissionsStale(ctx, tx, testCase.AssignmentID); err != nil {
+		return TestCase{}, false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return TestCase{}, false, fmt.Errorf("commit update test case: %w", err)
+	}
+	return testCase, true, nil
+}
+
+func (s *Store) DeleteTestCase(ctx context.Context, testCaseID int64) (bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin delete test case: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var assignmentID int64
+	err = tx.QueryRow(ctx, `
+		SELECT assignment_id FROM test_cases WHERE id = $1 AND NOT is_deleted FOR UPDATE
+	`, testCaseID).Scan(&assignmentID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("lock test case for deletion: %w", err)
+	}
+	var hasSubmissions bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM submissions WHERE assignment_id = $1)`, assignmentID).Scan(&hasSubmissions); err != nil {
+		return false, fmt.Errorf("check assignment submissions: %w", err)
+	}
+	if hasSubmissions {
+		_, err = tx.Exec(ctx, `
+			UPDATE test_cases SET is_deleted = true, updated_at = now()
+			WHERE id = $1
+		`, testCaseID)
+	} else {
+		_, err = tx.Exec(ctx, `DELETE FROM test_cases WHERE id = $1`, testCaseID)
+	}
+	if err != nil {
+		return false, fmt.Errorf("delete test case: %w", err)
+	}
+	if err := markAssignmentSubmissionsStale(ctx, tx, assignmentID); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("commit delete test case: %w", err)
+	}
+	return true, nil
+}
+
+func markAssignmentSubmissionsStale(ctx context.Context, tx pgx.Tx, assignmentID int64) error {
+	if _, err := tx.Exec(ctx, `
+		UPDATE submissions SET stale_grade = true, updated_at = now()
+		WHERE assignment_id = $1
+	`, assignmentID); err != nil {
+		return fmt.Errorf("mark assignment submissions stale: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) CanManageTestCase(ctx context.Context, testCaseID, userID int64, role string) (bool, error) {
+	var allowed bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM test_cases t
+			JOIN assignments a ON a.id = t.assignment_id
+			JOIN courses c ON c.id = a.course_id
+			WHERE t.id = $1 AND NOT t.is_deleted
+				AND ($2 = 'ADMIN' OR ($2 = 'LECTURER' AND c.lecturer_id = $3))
+		)
+	`, testCaseID, role, userID).Scan(&allowed)
+	if err != nil {
+		return false, fmt.Errorf("check test case management access: %w", err)
+	}
+	return allowed, nil
 }
