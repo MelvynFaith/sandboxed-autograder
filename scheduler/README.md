@@ -136,26 +136,31 @@ The client contract is:
   An unknown email returns `404 user_not_found`, distinct from `404 not_found` for an unavailable
   Course. Only the current owner with role `LECTURER` or an administrator can manage enrollments;
   demoted owners lose management access.
-- `POST /courses/{id}/assignments` and `PUT /assignments/{id}` accept
-  `{ "title", "description", "deadline_at", "late_until_at" }`, with RFC3339 timestamps and
-  `late_until_at >= deadline_at`. The SRS does not define these request bodies; the field shape
-  follows the assignment schema and frontend adapter.
+- `POST /courses/{id}/assignments` accepts
+  `{ "title", "description", "deadline_at", "late_until_at", "resource_limit" }`, with RFC3339
+  timestamps, `late_until_at >= deadline_at`, and all six required resource-limit fields:
+  `cpu_time_ms`, `memory_mb`, `max_processes`, `timeout_s`, `max_output_bytes`, and `tmpfs_size_mb`.
+  Assignment and resource limit are created atomically. The SRS does not define these request
+  bodies; this contract follows the assignment schema and SRS 7.1's one-to-one relationship, and
+  differs from the earlier API version so clients must send `resource_limit` during creation.
+  `PUT /assignments/{id}` accepts `{ "title", "description", "deadline_at", "late_until_at" }`.
 - `GET /assignments?page=N&page_size=N` lists assignments visible to the caller. Individual
   assignment reads and writes follow course ownership/enrollment checks. Only a course owner or
   administrator can create, update, or delete assignments.
 - `GET` and `PUT /assignments/{id}/resource-limit` read or save
   `{ "cpu_time_ms", "memory_mb", "max_processes", "timeout_s", "max_output_bytes", "tmpfs_size_mb" }`.
-  The API validates both sandbox invariants before saving. An unconfigured resource limit returns
-  404 with the standard error envelope.
+  The API validates both sandbox invariants before saving; PUT updates the resource limit created
+  with the assignment and does not create one.
 - `GET` and `POST /assignments/{id}/testcases`, and `PUT`/`DELETE /testcases/{id}`, manage test
   cases. The write body accepts `input`, `expected_output`, positive `weight`, `is_hidden`,
   `match_mode` (`EXACT` or `WHITESPACE_INSENSITIVE`), and optional `external_id`. An omitted or
   empty `external_id` is generated as `tc_01`, `tc_02`, etc. per assignment; duplicate IDs return
   409. The body shape follows `frontend/src/api/testcases.js`; the SRS does not define it.
 - Every test-case create or update marks all submissions for its assignment `stale_grade = true`
-  in the same database transaction. Deleting a case with a result soft-deletes it
-  (`is_deleted = true`); a case without results is physically deleted. Soft-deleted cases are
-  excluded from API lists and future grading.
+  in the same database transaction. Deleting a case soft-deletes it (`is_deleted = true`) whenever
+  its assignment has any submission, including a queued or running one; it is physically deleted
+  only when the assignment has no submissions. Soft-deleted cases are excluded from API lists and
+  future grading.
 
 Registration and profile updates limit display names to 200 Unicode characters.
 

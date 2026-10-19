@@ -51,7 +51,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unknown-user errors from unavailable-course errors.
 - Scheduler assignments (`scheduler/`): add role-scoped assignment CRUD, resource-limit validation,
   paginated test cases with hidden-case filtering, external-ID generation, stale-grade marking, and
-  result-aware test-case deletion.
+  submission-aware test-case deletion.
+- Assignment creation now requires all six resource-limit values in `resource_limit` and creates
+  the assignment and its one-to-one resource limit atomically, as required by SRS 7.1. This changes
+  the earlier API contract: clients must send resource limits when creating an assignment; PUT
+  resource-limit only updates the existing row.
 - Grading pipeline (`scheduler/`): the Grading Harness runner, which keeps the assignment definition
   off the command line and checks the report; the grading store, which moves a submission through
   `QUEUED`, `RUNNING` and `COMPLETED` or `FAILED` and writes results and audit rows in one

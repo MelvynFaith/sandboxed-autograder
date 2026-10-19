@@ -5,7 +5,8 @@
 ## Done
 
 - [Issue #58](https://github.com/MelvynFaith/sandboxed-autograder/issues/58) tracks B3 (FR-02, FR-03, FR-06; Must). The branch was rebased onto the latest `develop`; [PR #59](https://github.com/MelvynFaith/sandboxed-autograder/pull/59) is open with review requested. Owner: Benedictus Erlangga.
-- B3 covers assignment CRUD, resource limits, test-case lifecycle, stale-grade marking, and exclusion of soft-deleted cases from grading. Assignment and test-case write access now returns 404 for a non-owner, including an owner demoted to `STUDENT`.
+- [Issue #60](https://github.com/MelvynFaith/sandboxed-autograder/issues/60) tracks the remaining FR-03 Must work for YAML test-case import/export; it is not included in PR #59.
+- B3 covers assignment CRUD, resource limits, test-case lifecycle, stale-grade marking, and exclusion of soft-deleted cases from grading. Assignment creation now requires and atomically stores all six resource-limit fields. Test cases are soft-deleted whenever their assignment has any submission, including a running submission; assignment/test-case writes return 404 for non-owners, including an owner demoted to `STUDENT`.
 - Local scheduler gates passed: `gofmt -l .`, `go vet ./...`, and `go test -race -count=1 -v ./...` with `scheduler/.env`. Coverage: API 72.1%, auth 72.9%, and courses 77.1%.
 - The demoted-owner test fails when the lecturer-role predicate is removed from either assignment or test-case ownership SQL; both mutations were restored and checked.
 
@@ -14,7 +15,7 @@
 - B3 review and merge of [PR #59](https://github.com/MelvynFaith/sandboxed-autograder/pull/59) are required before starting B4 (submission API, FR-04, FR-08, FR-09, FR-10).
 - Confirm ownership and contracts for FR-14 rate limiting, WebSocket tickets/streaming, regrade, FR-16 submission deletion, and FR-20 before B4 work.
 - Confirm the UAT window of 27 Oct–9 Nov with Pak Peter; no confirmation has been recorded yet.
-- Determine worker behavior for assignments without a configured resource limit; `GET /resource-limit` currently returns 404.
+- Finish the requested changes on PR #59; do not start B4 until B3 is merged.
 
 ## Blockers and risks
 
@@ -24,6 +25,6 @@
 
 ## Next week
 
-- Get B3 reviewed, address feedback, and merge only after approval and green CI.
+- Get B3 reviewed, address feedback, and merge only after approval and green CI. Implement the separate YAML Must issue before declaring FR-03 complete.
 - Start B4 from updated `develop` after B3 merges, using the agreed queue and endpoint contracts.
 - Confirm the UAT schedule and prepare role-based test accounts and assignment scenarios.
