@@ -27,6 +27,7 @@ status mapping, scoring) and WBS 4.2 (integration with the sandbox).
 | `harness/verdict.py` | `Verdict`, `classify()` (sandbox report to verdict), `InternalError` |
 | `harness/runner.py` | Builds the `sandbox-exec` command and runs one test case |
 | `harness/grade.py` | Reads the definition file, runs every test case, builds the report |
+| `harness/progress.py` | Progress lines for the dashboard |
 | `harness/__main__.py` | Command line entry point |
 
 ## Install
@@ -63,6 +64,12 @@ On success the Harness writes one JSON document to standard output (SRS Appendix
 `violation` are present only when there is one. On any failure it writes nothing to standard output,
 prints the reason to standard error, and exits 1, so the worker marks the submission `FAILED`.
 
+The Harness also reports progress for the dashboard (FR-08). If `HARNESS_PROGRESS_FD` names an
+open descriptor above 2, it writes one line `{"current_test": n}` to it before each test case,
+with `n` counting from 1. Progress is for display only: if the variable is missing or invalid, or
+a write fails, the Harness stops writing and grades as usual. The descriptor is never passed on
+to `sandbox-exec`.
+
 ## Verdicts
 
 | `sandbox-exec` outcome | Verdict |
@@ -95,7 +102,8 @@ Run from this directory, with the virtual environment active:
 
 The unit tests mock `subprocess`, so they need no sandbox. To try the Harness against the real
 `sandbox-exec`, build it (`make` in `sandbox/`) and run the command inside a delegated cgroup with
-`sandbox/tests/run.sh`, which exports `SBX_BIN` and `SBX_CGROUP_ROOT`:
+`sandbox/tests/run.sh`, which exports `SBX_BIN` and `SBX_CGROUP_ROOT`. Run this one from the
+repository root, not from `grader/`:
 
     sandbox/tests/run.sh "$PWD/sandbox/sandbox-exec" --exec ./your-script.sh
 

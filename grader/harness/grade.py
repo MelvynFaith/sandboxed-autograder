@@ -1,7 +1,7 @@
 """Grade one submission: run every test case and build the report (SRS Appendix C)."""
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -117,14 +117,22 @@ def _result_dict(case: CaseDefinition, result: TestCaseResult) -> dict[str, Any]
     return item
 
 
-def grade(definition: Definition, code_path: str, config: SandboxConfig) -> dict[str, Any]:
+def grade(
+    definition: Definition,
+    code_path: str,
+    config: SandboxConfig,
+    progress: Callable[[int], None] | None = None,
+) -> dict[str, Any]:
     """Run every test case one after another and return the report.
 
     Test cases run sequentially so resource measurements do not interfere. An InternalError
-    from any test case stops the run: the submission is then not graded at all.
+    from any test case stops the run: the submission is then not graded at all. If progress
+    is given, it is called with 1, 2, ... just before each test case runs (FR-08).
     """
     results = []
-    for case in definition.test_cases:
+    for number, case in enumerate(definition.test_cases, start=1):
+        if progress is not None:
+            progress(number)
         outcome = run_test_case(
             config,
             definition.limits,

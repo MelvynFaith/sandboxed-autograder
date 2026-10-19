@@ -221,3 +221,12 @@ def test_hung_sandbox_raises(monkeypatch):
     install_fake(monkeypatch, raises=subprocess.TimeoutExpired("sandbox-exec", 15))
     with pytest.raises(InternalError):
         run()
+
+
+def test_no_descriptor_is_passed_on_to_sandbox_exec(monkeypatch):
+    # HARNESS_PROGRESS_FD must not reach the sandbox: subprocess closes it by default.
+    calls = install_fake(monkeypatch, make_report())
+    run()
+    kwargs = calls[0][1]
+    assert kwargs.get("close_fds", True) is True
+    assert not kwargs.get("pass_fds")
