@@ -58,8 +58,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   resource-limit only updates the existing row.
 - Scheduler submissions (`scheduler/`): accept enrolled-student Python uploads up to 256 KiB,
   enforce assignment deadlines and configured FR-14 rate limits transactionally, save and enqueue
-  `QUEUED` jobs, provide paginated student history and scoped submission details, and redact hidden
-  test-case data from student reports.
+  `QUEUED` jobs with 202 Accepted, provide paginated/filterable student history and scoped submission
+  details, and reveal hidden test-case data only to administrators and current Course owners.
 - Grading pipeline (`scheduler/`): the Grading Harness runner, which keeps the assignment definition
   off the command line and checks the report; the grading store, which moves a submission through
   `QUEUED`, `RUNNING` and `COMPLETED` or `FAILED` and writes results and audit rows in one

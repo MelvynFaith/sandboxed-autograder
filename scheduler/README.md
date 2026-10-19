@@ -109,20 +109,22 @@ The client contract is:
   are held in process memory, bound to the authenticated user and submission, and expire within 60
   seconds. `TicketStore.Consume` atomically removes a ticket; a second or expired use is rejected.
   `/ws/v1/submissions/{id}` consumes them (see "Grading progress").
-- `POST /submissions` accepts `multipart/form-data` with `assignment_id` and one `file` part. The
-  file must have a `.py` extension and be no larger than 256 KiB. The multipart field names are an
-  implementation contract because the SRS does not define an upload encoding. The server stores
+- `POST /submissions` accepts `multipart/form-data` with `assignment_id` and one `file` part, as
+  specified in SRS Appendix B. It returns 202 Accepted with the queued submission. The file must
+  have a valid UTF-8 `.py` filename without NUL and be no larger than 256 KiB. The server stores
   the file under a generated name in `CODE_DIR`; the client filename is retained as metadata only.
   An enrolled student may submit through `deadline_at` normally; a later submission through
   `late_until_at` is marked late, and one after that returns 409. Submission insertion and FR-14
   rate-limit checks share one database transaction; rate-limit rejection returns 429. Accepted
   submissions are stored as `QUEUED` and immediately enqueued as `{submission_id, user_id}`.
-- `GET /submissions?page=N&page_size=N` returns only the caller's paginated history.
+- `GET /submissions?page=N&page_size=N&assignment_id=ID` returns only the caller's paginated
+  history, optionally filtered to one assignment.
   `GET /submissions/{id}` and `GET /submissions/{id}/report` are visible to the submission owner,
   the current lecturer owner of its Course, and administrators; other callers receive 404.
-  Reports use the seven per-test verdicts in the schema. For students, a hidden test result
-  contains only `status`, `score`, `exec_time_ms`, and `memory_kb`; test identity, input, expected
-  output, actual output, and error message are omitted.
+  Reports use the seven per-test verdicts in the schema. Hidden test data is revealed only to
+  administrators and current lecturers who own the Course, regardless of the submission owner's
+  current role. Other viewers receive only `status`, `score`, `exec_time_ms`, and `memory_kb` for
+  hidden results; test identity, input, expected output, actual output, and error message are omitted.
 - `GET /admin/users?page=N&page_size=N` returns `items`, `page`, `page_size`, and `has_next`.
   `PUT /admin/users/{id}/role` accepts `{ "role" }`. Only `ADMIN` can use these routes; role changes
   revoke every refresh token for the target user and write a `ROLE_CHANGED` audit row in the same
