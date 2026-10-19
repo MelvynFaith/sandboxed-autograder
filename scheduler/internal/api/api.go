@@ -13,8 +13,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/audit"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/auth"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/courses"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/health"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/queue"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/settings"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/submissions"
@@ -37,6 +39,8 @@ type API struct {
 	tickets     *auth.TicketStore
 	submissions *submissions.Store
 	settings    *settings.Store
+	auditLogs   *audit.Store
+	checker     *health.Checker // worker count and queue depth, the same numbers as /healthz
 	queue       queue.JobQueue
 	codeDir     string
 	mux         *http.ServeMux
@@ -49,6 +53,8 @@ func NewHandler(
 	courseStore *courses.Store,
 	submissionStore *submissions.Store,
 	settingsStore *settings.Store,
+	auditStore *audit.Store,
+	checker *health.Checker,
 	jobs queue.JobQueue,
 	codeDir string,
 ) *API {
@@ -58,6 +64,7 @@ func NewHandler(
 	api := &API{
 		store: store, courses: courseStore, tokens: tokens, tickets: tickets,
 		submissions: submissionStore, settings: settingsStore, queue: jobs, codeDir: codeDir,
+		auditLogs: auditStore, checker: checker,
 		mux: http.NewServeMux(),
 	}
 	api.routes()
@@ -99,6 +106,10 @@ func (a *API) routes() {
 	a.mux.HandleFunc("PUT /api/v1/testcases/{id}", a.requireAuth(a.updateTestCase))
 	a.mux.HandleFunc("DELETE /api/v1/testcases/{id}", a.requireAuth(a.deleteTestCase))
 	a.mux.HandleFunc("GET /api/v1/admin/users", a.requireAdmin(a.listUsers))
+	a.mux.HandleFunc("GET /api/v1/admin/audit-logs", a.requireAdmin(a.listAuditLogs))
+	a.mux.HandleFunc("GET /api/v1/admin/queue", a.requireAdmin(a.getQueue))
+	a.mux.HandleFunc("GET /api/v1/admin/rate-limits", a.requireAdmin(a.getRateLimits))
+	a.mux.HandleFunc("PUT /api/v1/admin/rate-limits", a.requireAdmin(a.putRateLimits))
 	a.mux.HandleFunc("PUT /api/v1/admin/users/{id}/role", a.requireAuth(a.updateRole))
 	a.mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "Endpoint tidak ditemukan.")

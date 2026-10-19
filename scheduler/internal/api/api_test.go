@@ -19,8 +19,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/audit"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/auth"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/courses"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/health"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/queue"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/settings"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/submissions"
@@ -159,7 +161,7 @@ func newTestEnvironment(t *testing.T) *testEnvironment {
 	codeDir := t.TempDir()
 	server := httptest.NewServer(NewHandler(
 		store, tokens, tickets, courses.NewStore(pool), submissions.NewStore(pool),
-		settings.NewStore(pool), jobs, codeDir,
+		settings.NewStore(pool), audit.NewStore(pool), health.New(pool, nil, nil), jobs, codeDir,
 	))
 	t.Cleanup(server.Close)
 	return &testEnvironment{server: server, store: store, tickets: tickets, pool: pool, jobs: jobs, codeDir: codeDir}
