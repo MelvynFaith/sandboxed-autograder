@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MIT
+#
+# Starts autograder-expire.service once a day (NFR-13, SRS Bagian 13.4), an hour after the database
+# backup. The time zone is explicit so the schedule does not depend on the host's. Persistent= runs
+# a run missed while the host was down as soon as it is up again.
+
+[Unit]
+Description=Daily auto-grading platform submission file expiry
+Documentation=https://github.com/MelvynFaith/sandboxed-autograder
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Jakarta
+Persistent=true
+
+[Install]
+WantedBy=timers.target

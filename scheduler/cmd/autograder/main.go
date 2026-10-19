@@ -39,8 +39,11 @@ func main() {
 		err = run()
 	case os.Args[1] == "seed-admin":
 		err = seedAdmin(os.Args[2:], os.Getenv)
+	case os.Args[1] == "expire-code":
+		err = expireCode(os.Args[2:], os.Getenv)
 	default:
-		err = fmt.Errorf("unknown command %q: run autograder without arguments to serve; %s", os.Args[1], seedAdminUsage)
+		err = fmt.Errorf("unknown command %q: run autograder without arguments to serve; %s; %s",
+			os.Args[1], seedAdminUsage, expireCodeUsage)
 	}
 	if err != nil {
 		slog.Error(err.Error())

@@ -8,9 +8,9 @@ the same scripts and differ only in their `.env` file, database, and domain.
 | Staging | Free-tier cloud VM | merges to `develop` |
 | Production | Campus server, reachable from outside the campus network | merges to `main` |
 
-**Status:** the AppArmor profile, the systemd unit, the install steps, a smoke test and a daily
-database backup exist, and the backend runs on the campus server from these steps. Everything under
-[Not started](#not-started) does not.
+**Status:** the AppArmor profile, the systemd unit, the install steps, a smoke test, a daily
+database backup and the expiry of old submission files exist, and the backend runs on the campus
+server from these steps. Everything under [Not started](#not-started) does not.
 
 ## Contents
 
@@ -20,6 +20,7 @@ database backup exist, and the backend runs on the campus server from these step
 | `systemd/autograder.service` | Backend unit; delegates a cgroup subtree to the service user | R11, Bagian 13.2 |
 | `smoke-test.sh` | Three submissions through the installed pipeline, checked against their scores | Bagian 13.2, NFR-09 |
 | `db-backup.sh`, `systemd/autograder-backup.{service,timer}` | Daily `pg_dump` with 14-day retention | Bagian 13.4, NFR-13 |
+| `systemd/autograder-expire.{service,timer}` | Daily deletion of submission files a year after their assignment closed | Bagian 13.4, NFR-13 |
 | `loadtest/` | Load tests: seeded student accounts and k6 scripts, [their own README](loadtest/README.md) | Bagian 11.4, NFR-01a, NFR-01b, FR-13, FR-14 |
 
 ## Host setup
@@ -252,6 +253,31 @@ sudo systemctl start autograder
 `dropdb` deletes everything written since that dump. If any of it might still be needed, take a backup
 first, or restore into a database of another name and compare.
 
+## Submission file expiry
+
+`autograder-expire.timer` runs `autograder expire-code` every day at 03:30 WIB as `grader`. It
+deletes the stored files of submissions whose assignment closed (`late_until_at`) more than a year
+ago and keeps their grades (SRS Bagian 13.4, NFR-13); `scheduler/README.md`, "Submission file
+expiry", has the rules. The command is part of the backend binary, so rebuild and install that first
+(step 9).
+
+```sh
+sudo install -m 0644 infra/systemd/autograder-expire.service infra/systemd/autograder-expire.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start autograder-expire; sudo journalctl -u autograder-expire -n 4 -o cat
+sudo systemctl enable --now autograder-expire.timer && systemctl list-timers autograder-expire.timer
+```
+
+The `start` logs `deleted the files of expired submissions` with the numbers deleted, already
+missing and failed, and the cut-off date. A failure makes the unit fail, so it shows in `systemctl
+--failed`. To count the files due without deleting any, the manual check SRS Bagian 11.6 lists for
+NFR-13, run the command with the same environment and `--dry-run`:
+
+```sh
+sudo systemd-run --wait --pipe --collect -p User=grader -p EnvironmentFile=/etc/autograder/autograder.env \
+    /usr/local/bin/autograder expire-code --dry-run
+```
+
 ## Verifying the host
 
 Delegation works differently for a system service than for the user scope that `sandbox/tests/run.sh`
@@ -289,7 +315,6 @@ or `make -C sandbox SANITIZE=1 BUILD_DIR=build/asan BIN=sandbox-exec-asan`.
 - The install steps as one script, and Node.js on the host for the frontend build.
 - An Nginx reverse proxy with TLS that serves the frontend build and uses `/healthz` as a health
   check. The unit has no watchdog until the backend reports readiness.
-- Expiry of submission files (SRS Bagian 13.4, NFR-13).
 - A copy of the daily backups off the server: SRS Bagian 13.4 stores them outside the application
   server, and they are on it for now. The restore test on staging (same section) waits for the
   staging host.

@@ -36,6 +36,7 @@ internal/harness/  starts the Grading Harness for one submission and checks its 
 internal/progress/ in-process hub that carries grading progress from the workers to the WebSocket
 internal/stream/   the /ws/v1/submissions/{id} WebSocket handler
 internal/seed/     creates the first administrator (autograder seed-admin)
+internal/retention/ deletes the files of submissions past their retention (autograder expire-code)
 internal/store/    grading database operations: claim, complete, fail, and reconcile
 internal/worker/   worker pool joining the queue, store, and Harness
 internal/sandbox/  delegated cgroup set-up and the start-up sweep of dead sandbox runs
@@ -202,6 +203,24 @@ unset ADMIN_PASSWORD
   administrators are appointed through `PUT /admin/users/{id}/role`, which is audited.
 
 These are the initial credentials that the handover (SRS 13.5, BAST) passes on.
+
+## Submission file expiry
+
+NFR-13 and SRS 13.4 delete a submission's file one academic year after its assignment closes and
+keep its grade for the records. `autograder expire-code`, which `infra/systemd/autograder-expire.timer`
+runs daily as `grader`, does that for every submission whose assignment's `late_until_at` is more than
+a calendar year ago. `--dry-run` only counts them.
+
+- It needs `DATABASE_URL` and an absolute `CODE_DIR`, and applies the migrations first.
+- The row stays: score, results and audit entries are untouched, and `submissions.code_deleted_at`
+  records when the file went. A handler that reads the code (FR-20) or queues a regrade (FR-17) should
+  check that column and say the file has been deleted; the worker would otherwise fail the regrade
+  on the missing file.
+- A `QUEUED` or `RUNNING` submission keeps its file. Each row is locked while its file is deleted, so
+  a regrade cannot slip in between, and a row locked by someone else waits for the next run.
+- A file that is already gone still marks the row. A file that cannot be deleted, or a `code_path` that
+  would leave `CODE_DIR`, leaves the row unmarked, is logged, and makes the command exit 1 after the
+  other submissions are done.
 
 ## Migrations
 

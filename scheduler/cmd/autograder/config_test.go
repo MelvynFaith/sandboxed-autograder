@@ -105,3 +105,29 @@ func TestSeedAdminUsage(t *testing.T) {
 		})
 	}
 }
+
+func TestExpireCodeUsage(t *testing.T) {
+	env := func(databaseURL, codeDir string) func(string) string {
+		return func(key string) string {
+			return map[string]string{"DATABASE_URL": databaseURL, "CODE_DIR": codeDir}[key]
+		}
+	}
+	const db = "postgres://u@localhost/db"
+	for name, c := range map[string]struct {
+		args   []string
+		getenv func(string) string
+	}{
+		"stray argument":    {[]string{"now"}, env(db, "/var/lib/autograder/submissions")},
+		"unknown flag":      {[]string{"--days", "1"}, env(db, "/var/lib/autograder/submissions")},
+		"no database":       {nil, env("", "/var/lib/autograder/submissions")},
+		"no code directory": {nil, env(db, "")},
+		"relative code dir": {[]string{"--dry-run"}, env(db, "submissions")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := expireCode(c.args, c.getenv)
+			if err == nil || !strings.Contains(err.Error(), "usage: autograder expire-code") {
+				t.Fatalf("got %v, want the usage message", err)
+			}
+		})
+	}
+}

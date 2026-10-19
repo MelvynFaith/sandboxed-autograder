@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: MIT
+#
+# Deletes the stored files of submissions whose assignment closed more than a year ago, keeping
+# their grades (NFR-13, SRS Bagian 13.4). Started daily by autograder-expire.timer, or by hand with
+# `systemctl start autograder-expire`. Install steps: infra/README.md, "Submission file expiry".
+#
+# It runs as grader, which owns the stored files, with the backend's environment file for
+# DATABASE_URL and CODE_DIR; the binary ignores the other variables in it. ReadWritePaths names the
+# default CODE_DIR: change both together.
+
+[Unit]
+Description=Auto-grading platform submission file expiry
+Documentation=https://github.com/MelvynFaith/sandboxed-autograder
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=grader
+Group=grader
+EnvironmentFile=/etc/autograder/autograder.env
+ExecStart=/usr/local/bin/autograder expire-code
+# The command writes only to the stored submission files.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/autograder/submissions
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
