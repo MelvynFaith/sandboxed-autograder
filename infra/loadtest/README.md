@@ -1,5 +1,9 @@
 # Load test
 
+**Run it on staging only (SRS Bagian 13.1), never on a server with real data.** It adds 100
+student accounts that can run code, and puts hundreds of submissions through the workers; see
+[where to run it](#where-to-run-it).
+
 The load tests of SRS Bagian 11.4. [k6](https://k6.io) measures the end-to-end time of a submission:
 from the start of `POST /api/v1/submissions` to the final WebSocket frame, not the HTTP response,
 which only says the submission is queued.
