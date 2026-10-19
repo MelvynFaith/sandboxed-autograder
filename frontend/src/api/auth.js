@@ -1,14 +1,47 @@
-import { apiRequest, throwApiError } from './client.js'
+import { apiRequest, throwApiError, throwMockApiError } from './client.js'
 
 const roles = {
   STUDENT: 'mahasiswa',
   LECTURER: 'dosen',
   ADMIN: 'admin',
 }
-const mockUsers = {
-  'mahasiswa@example.test': { id: 'mock-student', name: 'Mahasiswa Demo', role: 'STUDENT', password: 'password123' },
-  'dosen@example.test': { id: 'mock-lecturer', name: 'Dosen Demo', role: 'LECTURER', password: 'password123' },
-  'admin@example.test': { id: 'mock-admin', name: 'Admin Demo', role: 'ADMIN', password: 'password123' },
+const MOCK_USERS_KEY = 'sandboxed_autograder_mock_users'
+const initialMockUsers = {
+  'mahasiswa@example.test': { id: 'mock-student', name: 'Mahasiswa Demo', email: 'mahasiswa@example.test', role: 'STUDENT', password: 'password123' },
+  'dosen@example.test': { id: 'mock-lecturer', name: 'Dosen Demo', email: 'dosen@example.test', role: 'LECTURER', password: 'password123' },
+  'admin@example.test': { id: 'mock-admin', name: 'Admin Demo', email: 'admin@example.test', role: 'ADMIN', password: 'password123' },
+}
+const seededTokenSuffix = {
+  'mock-student': 'STUDENT',
+  'mock-lecturer': 'LECTURER',
+  'mock-admin': 'ADMIN',
+}
+
+function readMockUsers() {
+  const serialized = localStorage.getItem(MOCK_USERS_KEY)
+  if (!serialized) {
+    return Object.fromEntries(
+      Object.entries(initialMockUsers).map(([email, user]) => [email, { ...user }]),
+    )
+  }
+
+  const users = JSON.parse(serialized)
+  if (!users || typeof users !== 'object' || Array.isArray(users)) {
+    throw new Error('Data pengguna mock tidak valid.')
+  }
+  return users
+}
+
+function saveMockUsers(users) {
+  localStorage.setItem(MOCK_USERS_KEY, JSON.stringify(users))
+}
+
+function findMockUser(users, predicate) {
+  return Object.values(users).find(predicate)
+}
+
+function publicMockUser(user) {
+  return { id: user.id, name: user.name, email: user.email, role: user.role }
 }
 
 function readLoginResponse(payload) {
@@ -34,15 +67,16 @@ function readLoginResponse(payload) {
 }
 
 async function mockLogin(email, password) {
-  const mockUser = mockUsers[email.toLowerCase()]
+  const mockUser = readMockUsers()[email.trim().toLowerCase()]
   if (!mockUser || password !== mockUser.password) {
-    throw new Error('Email atau password tidak valid.')
+    await throwMockApiError('invalid_credentials', 'Email atau password tidak valid.', 401)
   }
 
+  const tokenSuffix = seededTokenSuffix[mockUser.id] ?? mockUser.id
   return readLoginResponse({
-    access_token: `mock-access-token-${mockUser.role}`,
-    refresh_token: `mock-refresh-token-${mockUser.role}`,
-    user: { ...mockUser, email },
+    access_token: `mock-access-token-${tokenSuffix}`,
+    refresh_token: `mock-refresh-token-${tokenSuffix}`,
+    user: { ...mockUser, email: email.trim().toLowerCase() },
   })
 }
 
@@ -68,17 +102,24 @@ export async function register(name, email, password) {
   const body = { name, email, password }
   if (import.meta.env.VITE_USE_MOCK === 'true') {
     const normalizedEmail = email.trim().toLowerCase()
-    if (mockUsers[normalizedEmail]) {
-      throw new Error('Email sudah terdaftar. Gunakan email lain.')
+    const users = readMockUsers()
+    if (users[normalizedEmail]) {
+      await throwMockApiError('email_already_exists', 'Email sudah terdaftar.', 409)
     }
 
-    mockUsers[normalizedEmail] = {
-      id: `mock-student-${Date.now()}`,
-      name,
+    let id
+    do {
+      id = `mock-student-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    } while (findMockUser(users, (user) => user.id === id))
+    users[normalizedEmail] = {
+      id,
+      name: name.trim(),
+      email: normalizedEmail,
       role: 'STUDENT',
       password,
     }
-    return { id: mockUsers[normalizedEmail].id, name, email: normalizedEmail, role: 'STUDENT' }
+    saveMockUsers(users)
+    return publicMockUser(users[normalizedEmail])
   }
 
   const response = await apiRequest('/auth/register', {
@@ -93,12 +134,31 @@ export async function register(name, email, password) {
   return readUserResponse(await response.json())
 }
 
-export function updateMockPassword(email, currentPassword, newPassword) {
-  const mockUser = mockUsers[email.toLowerCase()]
+export function getMockUserById(id) {
+  const mockUser = findMockUser(readMockUsers(), (user) => String(user.id) === String(id))
+  return mockUser ? publicMockUser(mockUser) : null
+}
+
+export function updateMockProfileName(id, name) {
+  const users = readMockUsers()
+  const mockUser = findMockUser(users, (user) => String(user.id) === String(id))
+  if (!mockUser) {
+    return null
+  }
+
+  mockUser.name = name
+  saveMockUsers(users)
+  return publicMockUser(mockUser)
+}
+
+export async function updateMockPassword(email, currentPassword, newPassword) {
+  const users = readMockUsers()
+  const mockUser = users[email.trim().toLowerCase()]
   if (!mockUser || mockUser.password !== currentPassword) {
-    throw new Error('Kata sandi lama tidak sesuai.')
+    await throwMockApiError('invalid_password', 'Kata sandi lama tidak sesuai.', 400)
   }
   mockUser.password = newPassword
+  saveMockUsers(users)
 }
 
 export async function logout(refreshToken) {

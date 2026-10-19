@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { login, register } from './auth.js'
+import { login, logout, register } from './auth.js'
 import { apiRequest } from './client.js'
 
 beforeEach(() => {
@@ -97,6 +97,20 @@ describe('login API', () => {
         'Email sudah terdaftar.',
       )
     })
+  })
+
+  it('revokes the current refresh token through the logout endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(logout('refresh-token')).resolves.toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/auth/logout',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ refresh_token: 'refresh-token' }),
+      }),
+    )
   })
 
   it('includes the saved JWT in the Authorization header for API requests', async () => {

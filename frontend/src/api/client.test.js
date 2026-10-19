@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiRequest, throwApiError } from './client.js'
+import { apiRequest, throwApiError, throwMockApiError } from './client.js'
 
 beforeEach(() => {
   localStorage.clear()
@@ -88,6 +88,12 @@ describe('API errors', () => {
     await expect(throwApiError(response, 'Permintaan gagal.')).rejects.toThrow(
       'Batas memori tidak valid.',
     )
+  })
+
+  it('routes mock failures through the same SRS error envelope', async () => {
+    await expect(
+      throwMockApiError('email_already_exists', 'Email sudah terdaftar.', 409),
+    ).rejects.toThrow('Email sudah terdaftar.')
   })
 
   it('explains rate limiting and honors Retry-After when supplied', async () => {

@@ -45,15 +45,39 @@ describe('authentication routes', () => {
   })
 
   it('registers a student and redirects to login', async () => {
-    render(<App />)
+    const { unmount } = render(<App />)
     fireEvent.click(screen.getByRole('link', { name: 'Register' }))
+    expect(screen.queryByLabelText('Peran')).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Nama'), { target: { value: 'Siswa Baru' } })
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'baru@example.test' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret123' } })
+    fireEvent.change(screen.getByLabelText('Konfirmasi password'), { target: { value: 'secret123' } })
     fireEvent.click(screen.getByRole('button', { name: 'Daftar' }))
 
     expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument()
     expect(localStorage.getItem('token')).toBeNull()
+
+    unmount()
+    window.history.pushState({}, '', '/login')
+    render(<App />)
+    submitLogin('baru@example.test', 'secret123')
+    expect(await screen.findByRole('heading', { name: 'Daftar Assignment' })).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('user')).nama).toBe('Siswa Baru')
+  })
+
+  it('rejects a registration when password confirmation does not match', async () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('link', { name: 'Register' }))
+    fireEvent.change(screen.getByLabelText('Nama'), { target: { value: 'Siswa Baru' } })
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'tidak-daftar@example.test' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret123' } })
+    fireEvent.change(screen.getByLabelText('Konfirmasi password'), { target: { value: 'berbeda123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Daftar' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Konfirmasi kata sandi tidak cocok.')
+    expect(window.location.pathname).toBe('/register')
+    expect(localStorage.getItem('token')).toBeNull()
+    expect(localStorage.getItem('sandboxed_autograder_mock_users')).toBeNull()
   })
 
   it('shows a clear message when registration email is already used', async () => {
@@ -62,6 +86,7 @@ describe('authentication routes', () => {
     fireEvent.change(screen.getByLabelText('Nama'), { target: { value: 'Siswa Baru' } })
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'mahasiswa@example.test' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret123' } })
+    fireEvent.change(screen.getByLabelText('Konfirmasi password'), { target: { value: 'secret123' } })
     fireEvent.click(screen.getByRole('button', { name: 'Daftar' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Email sudah terdaftar.')
@@ -123,10 +148,12 @@ describe('authentication routes', () => {
 
     expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument()
     expect(localStorage.getItem('token')).toBeNull()
+    expect(localStorage.getItem('refresh_token')).toBeNull()
+    expect(localStorage.getItem('user')).toBeNull()
   })
 
   it('updates the current user name on the profile page', async () => {
-    render(<App />)
+    const { unmount } = render(<App />)
     submitLogin('mahasiswa@example.test', 'password123')
     await screen.findByRole('heading', { name: 'Daftar Assignment' })
     fireEvent.click(screen.getByRole('link', { name: 'Profil' }))
@@ -139,6 +166,12 @@ describe('authentication routes', () => {
     expect(await screen.findByText('Nama berhasil diperbarui.')).toBeInTheDocument()
     expect(screen.getByText('Nama Baru')).toBeInTheDocument()
     expect(JSON.parse(localStorage.getItem('user')).nama).toBe('Nama Baru')
+
+    unmount()
+    window.history.pushState({}, '', '/profile')
+    render(<App />)
+    expect(await screen.findByLabelText('Nama tampilan')).toHaveValue('Nama Baru')
+    expect(screen.getByText('Nama Baru')).toBeInTheDocument()
   })
 
   it('clears the session after a password change and redirects to login', async () => {
