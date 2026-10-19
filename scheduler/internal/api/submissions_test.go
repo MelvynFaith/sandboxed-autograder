@@ -99,6 +99,15 @@ func TestSubmissionUploadLimitsQueueAndAccess(t *testing.T) {
 		t.Fatalf("upload non-Python file = %d, %#v; want 400", invalidExtension.StatusCode, invalidExtensionPayload)
 	}
 	assertError(t, invalidExtensionPayload, "invalid_file")
+	for _, filename := range []string{"bad\x00name.py", string([]byte{0xff, '.', 'p', 'y'})} {
+		invalidName, invalidNamePayload := env.upload(t, fixture.assignmentID, filename, []byte("print(1)"), fixture.studentAccess)
+		if invalidName.StatusCode != http.StatusBadRequest {
+			t.Fatalf("upload invalid filename %q = %d, %#v; want 400", filename, invalidName.StatusCode, invalidNamePayload)
+		}
+		if nested, _ := invalidNamePayload["error"].(map[string]any); nested["code"] != "invalid_file" {
+			t.Fatalf("upload filename %q error payload = %#v; want invalid_file", filename, invalidNamePayload)
+		}
+	}
 
 	unregistered, unregisteredPayload := env.upload(t, fixture.assignmentID, "solution.py", []byte("print(1)"), fixture.otherStudentAuth)
 	if unregistered.StatusCode != http.StatusNotFound {
@@ -113,13 +122,16 @@ func TestSubmissionUploadLimitsQueueAndAccess(t *testing.T) {
 
 	data := []byte(strings.Repeat("p", maxSubmissionBytes))
 	created, payload := env.upload(t, fixture.assignmentID, "solution.PY", data, fixture.studentAccess)
-	if created.StatusCode != http.StatusCreated {
-		t.Fatalf("upload exactly 256 KiB = %d, %#v; want 201", created.StatusCode, payload)
+	if created.StatusCode != http.StatusAccepted {
+		t.Fatalf("upload exactly 256 KiB = %d, %#v; want 202", created.StatusCode, payload)
 	}
 	submissionID := int64Field(t, payload, "id")
 	if payload["status"] != "QUEUED" || payload["is_late"] != false ||
 		int64Field(t, payload, "size_bytes") != maxSubmissionBytes {
 		t.Fatalf("created submission = %#v", payload)
+	}
+	if submittedAt, ok := payload["submitted_at"].(string); !ok || submittedAt == "" {
+		t.Fatalf("accepted submission has no submitted_at: %#v", payload)
 	}
 	filePath := env.submissionFile(t, payload)
 	saved, err := os.ReadFile(filePath)
@@ -169,13 +181,19 @@ func TestSubmissionUploadLimitsQueueAndAccess(t *testing.T) {
 		t.Fatalf("demoted course owner detail = %d, %#v; want 404", demotedDetail.StatusCode, demotedPayload)
 	}
 	assertError(t, demotedPayload, "not_found")
+	demotedReport, demotedReportPayload := env.request(t, http.MethodGet,
+		fmt.Sprintf("/api/v1/submissions/%d/report", submissionID), nil, fixture.lecturerAccess)
+	if demotedReport.StatusCode != http.StatusNotFound {
+		t.Fatalf("demoted course owner report = %d, %#v; want 404", demotedReport.StatusCode, demotedReportPayload)
+	}
+	assertError(t, demotedReportPayload, "not_found")
 }
 
 func TestSubmissionRateLimitAndHistoryPagination(t *testing.T) {
 	env := newTestEnvironment(t)
 	fixture := newSubmissionFixture(t, env)
 	first, firstPayload := env.upload(t, fixture.assignmentID, "one.py", []byte("print(1)"), fixture.studentAccess)
-	if first.StatusCode != http.StatusCreated {
+	if first.StatusCode != http.StatusAccepted {
 		t.Fatalf("first upload = %d, %#v", first.StatusCode, firstPayload)
 	}
 	limited, limitedPayload := env.upload(t, fixture.assignmentID, "two.py", []byte("print(2)"), fixture.studentAccess)
@@ -183,11 +201,44 @@ func TestSubmissionRateLimitAndHistoryPagination(t *testing.T) {
 		t.Fatalf("second upload under default FR-14 limits = %d, %#v; want 429", limited.StatusCode, limitedPayload)
 	}
 	assertError(t, limitedPayload, "rate_limit_exceeded")
+	if message, _ := limitedPayload["error"].(map[string]any)["message"].(string); !strings.Contains(message, "antre atau dinilai") || strings.Contains(message, "ratelimit:") {
+		t.Fatalf("active-submission message = %q", message)
+	}
+
+	if _, err := env.pool.Exec(t.Context(), `UPDATE submissions SET status = 'COMPLETED' WHERE id = $1`, int64Field(t, firstPayload, "id")); err != nil {
+		t.Fatalf("complete first submission for interval test: %v", err)
+	}
+	if _, err := env.pool.Exec(t.Context(), `
+		UPDATE settings SET max_active_submissions = 0, min_submission_interval_s = 30,
+			max_submissions_per_assignment = 0 WHERE id = 1
+	`); err != nil {
+		t.Fatalf("set interval rate limit: %v", err)
+	}
+	intervalLimited, intervalPayload := env.upload(t, fixture.assignmentID, "interval.py", []byte("print(1)"), fixture.studentAccess)
+	if intervalLimited.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("upload under interval limit = %d, %#v; want 429", intervalLimited.StatusCode, intervalPayload)
+	}
+	if message, _ := intervalPayload["error"].(map[string]any)["message"].(string); !strings.Contains(message, "Tunggu") || strings.Contains(message, "ratelimit:") {
+		t.Fatalf("interval message = %q", message)
+	}
+	if _, err := env.pool.Exec(t.Context(), `
+		UPDATE settings SET max_active_submissions = 0, min_submission_interval_s = 0,
+			max_submissions_per_assignment = 1 WHERE id = 1
+	`); err != nil {
+		t.Fatalf("set submission quota: %v", err)
+	}
+	quotaLimited, quotaPayload := env.upload(t, fixture.assignmentID, "quota.py", []byte("print(1)"), fixture.studentAccess)
+	if quotaLimited.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("upload under assignment quota = %d, %#v; want 429", quotaLimited.StatusCode, quotaPayload)
+	}
+	if message, _ := quotaPayload["error"].(map[string]any)["message"].(string); !strings.Contains(message, "maksimal 1 submission") || strings.Contains(message, "ratelimit:") {
+		t.Fatalf("quota message = %q", message)
+	}
 
 	disableSubmissionRateLimits(t, env)
 	for i := 0; i < 2; i++ {
 		response, payload := env.upload(t, fixture.assignmentID, fmt.Sprintf("more-%d.py", i), []byte("print(3)"), fixture.studentAccess)
-		if response.StatusCode != http.StatusCreated {
+		if response.StatusCode != http.StatusAccepted {
 			t.Fatalf("additional upload %d = %d, %#v", i, response.StatusCode, payload)
 		}
 	}
@@ -198,6 +249,43 @@ func TestSubmissionRateLimitAndHistoryPagination(t *testing.T) {
 	pageTwo, pageTwoPayload := env.request(t, http.MethodGet, "/api/v1/submissions?page=2&page_size=2", nil, fixture.studentAccess)
 	if pageTwo.StatusCode != http.StatusOK || len(pageItems(t, pageTwoPayload)) != 1 || pageTwoPayload["has_next"] != false {
 		t.Fatalf("submission history page two = %d, %#v", pageTwo.StatusCode, pageTwoPayload)
+	}
+	secondAssignmentResponse, secondAssignment := env.request(t, http.MethodPost, fixture.coursePath+"/assignments", map[string]any{
+		"title": "Second submission assignment", "description": "Submit again.",
+		"deadline_at":   time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339Nano),
+		"late_until_at": time.Now().UTC().Add(4 * time.Hour).Format(time.RFC3339Nano),
+		"resource_limit": map[string]int{
+			"cpu_time_ms": 1000, "memory_mb": 64, "max_processes": 5,
+			"timeout_s": 5, "max_output_bytes": 1 << 20, "tmpfs_size_mb": 32,
+		},
+	}, fixture.lecturerAccess)
+	if secondAssignmentResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("create second submission assignment = %d, %#v", secondAssignmentResponse.StatusCode, secondAssignment)
+	}
+	secondAssignmentID := int64Field(t, secondAssignment, "id")
+	secondAssignmentSubmission, secondAssignmentSubmissionPayload := env.upload(
+		t, secondAssignmentID, "second-assignment.py", []byte("print(4)"), fixture.studentAccess,
+	)
+	if secondAssignmentSubmission.StatusCode != http.StatusAccepted {
+		t.Fatalf("upload second assignment = %d, %#v", secondAssignmentSubmission.StatusCode, secondAssignmentSubmissionPayload)
+	}
+	filtered, filteredPayload := env.request(t, http.MethodGet,
+		fmt.Sprintf("/api/v1/submissions?assignment_id=%d", fixture.assignmentID), nil, fixture.studentAccess)
+	if filtered.StatusCode != http.StatusOK || len(pageItems(t, filteredPayload)) != 3 {
+		t.Fatalf("history filtered by first assignment = %d, %#v", filtered.StatusCode, filteredPayload)
+	}
+	filteredSecond, filteredSecondPayload := env.request(t, http.MethodGet,
+		fmt.Sprintf("/api/v1/submissions?assignment_id=%d", secondAssignmentID), nil, fixture.studentAccess)
+	if filteredSecond.StatusCode != http.StatusOK || len(pageItems(t, filteredSecondPayload)) != 1 ||
+		int64Field(t, pageItems(t, filteredSecondPayload)[0].(map[string]any), "assignment_id") != secondAssignmentID {
+		t.Fatalf("history filtered by second assignment = %d, %#v", filteredSecond.StatusCode, filteredSecondPayload)
+	}
+	for _, query := range []string{"assignment_id=0", "assignment_id=not-a-number", fmt.Sprintf("assignment_id=%d&assignment_id=%d", fixture.assignmentID, secondAssignmentID)} {
+		invalidFilter, invalidFilterPayload := env.request(t, http.MethodGet, "/api/v1/submissions?"+query, nil, fixture.studentAccess)
+		if invalidFilter.StatusCode != http.StatusBadRequest {
+			t.Fatalf("invalid assignment filter %q = %d, %#v; want 400", query, invalidFilter.StatusCode, invalidFilterPayload)
+		}
+		assertError(t, invalidFilterPayload, "invalid_assignment_id")
 	}
 	otherHistory, otherHistoryPayload := env.request(t, http.MethodGet, "/api/v1/submissions", nil, fixture.otherStudentAuth)
 	if otherHistory.StatusCode != http.StatusOK || len(pageItems(t, otherHistoryPayload)) != 0 {
@@ -295,7 +383,7 @@ func TestSubmissionReportRedactsHiddenCasesAndSurvivesConcurrentDelete(t *testin
 	}
 
 	created, submissionPayload := env.upload(t, fixture.assignmentID, "report.py", []byte("print(1)"), fixture.studentAccess)
-	if created.StatusCode != http.StatusCreated {
+	if created.StatusCode != http.StatusAccepted {
 		t.Fatalf("create report submission = %d, %#v", created.StatusCode, submissionPayload)
 	}
 	submissionID := int64Field(t, submissionPayload, "id")
@@ -365,6 +453,31 @@ func TestSubmissionReportRedactsHiddenCasesAndSurvivesConcurrentDelete(t *testin
 					t.Fatalf("visible student report entry %d is missing %q: %#v", i, key, entry)
 				}
 			}
+		}
+	}
+
+	promoted, promotedPayload := env.request(t, http.MethodPut,
+		fmt.Sprintf("/api/v1/admin/users/%d/role", fixture.student.ID),
+		map[string]string{"role": auth.RoleLecturer}, fixture.adminAccess)
+	if promoted.StatusCode != http.StatusOK || promotedPayload["role"] != auth.RoleLecturer {
+		t.Fatalf("promote submission owner to lecturer = %d, %#v", promoted.StatusCode, promotedPayload)
+	}
+	otherCourseResponse, otherCourse := env.request(t, http.MethodPost, "/api/v1/courses", map[string]string{
+		"name": "Other teaching course", "code": "SUB202", "term": "2026",
+	}, fixture.studentAccess)
+	if otherCourseResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("create other course for promoted submission owner = %d, %#v", otherCourseResponse.StatusCode, otherCourse)
+	}
+	promotedOwnerReportResponse, promotedOwnerReport := env.request(t, http.MethodGet,
+		fmt.Sprintf("/api/v1/submissions/%d/report", submissionID), nil, fixture.studentAccess)
+	if promotedOwnerReportResponse.StatusCode != http.StatusOK {
+		t.Fatalf("promoted owner's report = %d, %#v", promotedOwnerReportResponse.StatusCode, promotedOwnerReport)
+	}
+	promotedHiddenResults := pageItems(t, map[string]any{"items": promotedOwnerReport["results"]})
+	promotedHiddenEntry := promotedHiddenResults[len(promotedHiddenResults)-1].(map[string]any)
+	for _, key := range []string{"actual_output", "error_message", "input", "expected_output"} {
+		if _, exists := promotedHiddenEntry[key]; exists {
+			t.Fatalf("promoted owner can see hidden report field %q: %#v", key, promotedHiddenEntry)
 		}
 	}
 

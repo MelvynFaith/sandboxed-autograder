@@ -164,13 +164,13 @@ func (s *Store) DeleteQueued(ctx context.Context, submissionID int64) (bool, err
 	return tag.RowsAffected() > 0, nil
 }
 
-func (s *Store) ListByUser(ctx context.Context, userID int64, page, pageSize int) (Page, error) {
+func (s *Store) ListByUser(ctx context.Context, userID, assignmentID int64, page, pageSize int) (Page, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, user_id, assignment_id, original_filename, size_bytes, status, is_late,
 			stale_grade, total_score, max_score, submitted_at, graded_at
-		FROM submissions WHERE user_id = $1
-		ORDER BY submitted_at DESC, id DESC LIMIT $2 OFFSET $3
-	`, userID, pageSize+1, (page-1)*pageSize)
+		FROM submissions WHERE user_id = $1 AND ($2 = 0 OR assignment_id = $2)
+		ORDER BY submitted_at DESC, id DESC LIMIT $3 OFFSET $4
+	`, userID, assignmentID, pageSize+1, (page-1)*pageSize)
 	if err != nil {
 		return Page{}, fmt.Errorf("submission: list: %w", err)
 	}
@@ -198,11 +198,13 @@ func (s *Store) ListByUser(ctx context.Context, userID int64, page, pageSize int
 	return Page{Items: items, Page: page, PageSize: pageSize, HasNext: hasNext}, nil
 }
 
-func (s *Store) GetVisible(ctx context.Context, submissionID, userID int64, role string) (Submission, error) {
+func (s *Store) GetVisible(ctx context.Context, submissionID, userID int64, role string) (Submission, bool, error) {
 	var submission Submission
+	var canSeeHidden bool
 	err := s.pool.QueryRow(ctx, `
 		SELECT s.id, s.user_id, s.assignment_id, s.original_filename, s.size_bytes, s.status, s.is_late,
-			s.stale_grade, s.total_score, s.max_score, s.submitted_at, s.graded_at
+			s.stale_grade, s.total_score, s.max_score, s.submitted_at, s.graded_at,
+			($3 = 'ADMIN' OR ($3 = 'LECTURER' AND c.lecturer_id = $2))
 		FROM submissions s
 		JOIN assignments a ON a.id = s.assignment_id
 		JOIN courses c ON c.id = a.course_id
@@ -213,17 +215,18 @@ func (s *Store) GetVisible(ctx context.Context, submissionID, userID int64, role
 		&submission.ID, &submission.UserID, &submission.AssignmentID, &submission.OriginalFilename,
 		&submission.SizeBytes, &submission.Status, &submission.IsLate, &submission.StaleGrade,
 		&submission.TotalScore, &submission.MaxScore, &submission.SubmittedAt, &submission.GradedAt,
+		&canSeeHidden,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Submission{}, ErrNotFound
+		return Submission{}, false, ErrNotFound
 	}
 	if err != nil {
-		return Submission{}, fmt.Errorf("submission: get visible %d: %w", submissionID, err)
+		return Submission{}, false, fmt.Errorf("submission: get visible %d: %w", submissionID, err)
 	}
-	return submission, nil
+	return submission, canSeeHidden, nil
 }
 
-func (s *Store) Report(ctx context.Context, submission Submission, role string) (Report, error) {
+func (s *Store) Report(ctx context.Context, submission Submission, canSeeHidden bool) (Report, error) {
 	report := Report{
 		SubmissionID: submission.ID,
 		TotalScore:   submission.TotalScore,
@@ -260,7 +263,7 @@ func (s *Store) Report(ctx context.Context, submission Submission, role string) 
 		); err != nil {
 			return Report{}, fmt.Errorf("submission: scan report row: %w", err)
 		}
-		if role == "STUDENT" && hidden {
+		if !canSeeHidden && hidden {
 			report.Results = append(report.Results, entry)
 			continue
 		}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/auth"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/queue"
@@ -24,13 +26,32 @@ func (a *API) createSubmission(w http.ResponseWriter, r *http.Request, user auth
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
-	if err := r.ParseMultipartForm(maxSubmissionBytes); err != nil {
+	limitedBody := http.MaxBytesReader(w, r.Body, maxRequestBytes)
+	body, err := io.ReadAll(limitedBody)
+	if err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
 			writeError(w, http.StatusRequestEntityTooLarge, "file_too_large", "Ukuran upload melebihi batas 256 KiB.")
 			return
 		}
+		writeError(w, http.StatusBadRequest, "invalid_request", "Body upload tidak dapat dibaca.")
+		return
+	}
+	r.Body = struct {
+		io.Reader
+		io.Closer
+	}{Reader: bytes.NewReader(body), Closer: limitedBody}
+	if err := r.ParseMultipartForm(maxSubmissionBytes); err != nil {
+		if invalidMultipartFilename(body) {
+			writeError(w, http.StatusBadRequest, "invalid_file", "Nama berkas harus berupa UTF-8 yang valid tanpa karakter NUL.")
+			return
+		}
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "file_too_large", "Ukuran upload melebihi batas 256 KiB.")
+			return
+		}
+
 		writeError(w, http.StatusBadRequest, "invalid_request", "Body harus berupa multipart/form-data dengan field assignment_id dan file.")
 		return
 	}
@@ -58,7 +79,8 @@ func (a *API) createSubmission(w http.ResponseWriter, r *http.Request, user auth
 	}
 	fileHeader := fileHeaders[0]
 	filename := filepath.Base(strings.ReplaceAll(fileHeader.Filename, "\\", "/"))
-	if filename == "." || filename == "" || !strings.EqualFold(filepath.Ext(filename), ".py") {
+	if filename == "." || filename == "" || strings.ContainsRune(filename, '\x00') ||
+		!utf8.ValidString(filename) || !strings.EqualFold(filepath.Ext(filename), ".py") {
 		writeError(w, http.StatusBadRequest, "invalid_file", "Berkas submission harus memiliki ekstensi .py.")
 		return
 	}
@@ -148,7 +170,7 @@ func (a *API) createSubmission(w http.ResponseWriter, r *http.Request, user auth
 		}
 		var limitErr *ratelimit.Error
 		if errors.As(err, &limitErr) {
-			writeError(w, http.StatusTooManyRequests, "rate_limit_exceeded", limitErr.Error())
+			writeError(w, http.StatusTooManyRequests, "rate_limit_exceeded", submissionRateLimitMessage(limitErr))
 			return
 		}
 		internalError(w, "create submission", err)
@@ -170,7 +192,33 @@ func (a *API) createSubmission(w http.ResponseWriter, r *http.Request, user auth
 		internalError(w, "enqueue submission", errors.Join(err, cleanupErr))
 		return
 	}
-	writeJSON(w, http.StatusCreated, submission)
+	writeJSON(w, http.StatusAccepted, submission)
+}
+
+func invalidMultipartFilename(body []byte) bool {
+	lines := bytes.Split(body, []byte("\r\n"))
+	if len(lines) < 2 || !bytes.HasPrefix(lines[0], []byte("--")) {
+		return false
+	}
+	boundary := lines[0]
+	for i := 1; i < len(lines); i++ {
+		if !bytes.Equal(lines[i], boundary) {
+			continue
+		}
+		for i++; i < len(lines) && len(lines[i]) > 0; i++ {
+			line := lines[i]
+			if !bytes.HasPrefix(bytes.ToLower(line), []byte("content-disposition:")) {
+				continue
+			}
+			if !utf8.Valid(line) {
+				return true
+			}
+			if bytes.Contains(line, []byte("filename=")) && bytes.ContainsRune(line, '\x00') {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (a *API) listSubmissions(w http.ResponseWriter, r *http.Request, user auth.User) {
@@ -179,7 +227,20 @@ func (a *API) listSubmissions(w http.ResponseWriter, r *http.Request, user auth.
 		writeError(w, http.StatusBadRequest, "invalid_pagination", "page dan page_size harus bilangan bulat positif; page_size maksimal 100.")
 		return
 	}
-	result, err := a.submissions.ListByUser(r.Context(), user.ID, page, pageSize)
+	var assignmentID int64
+	if values, exists := r.URL.Query()["assignment_id"]; exists {
+		if len(values) != 1 {
+			writeError(w, http.StatusBadRequest, "invalid_assignment_id", "assignment_id harus satu bilangan bulat positif.")
+			return
+		}
+		parsedID, err := strconv.ParseInt(values[0], 10, 64)
+		if err != nil || parsedID <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid_assignment_id", "assignment_id harus satu bilangan bulat positif.")
+			return
+		}
+		assignmentID = parsedID
+	}
+	result, err := a.submissions.ListByUser(r.Context(), user.ID, assignmentID, page, pageSize)
 	if err != nil {
 		internalError(w, "list submissions", err)
 		return
@@ -193,7 +254,7 @@ func (a *API) getSubmission(w http.ResponseWriter, r *http.Request, user auth.Us
 		writeError(w, http.StatusNotFound, "not_found", "Submission tidak ditemukan.")
 		return
 	}
-	submission, err := a.submissions.GetVisible(r.Context(), submissionID, user.ID, user.Role)
+	submission, _, err := a.submissions.GetVisible(r.Context(), submissionID, user.ID, user.Role)
 	if errors.Is(err, submissions.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "Submission tidak ditemukan.")
 		return
@@ -211,7 +272,7 @@ func (a *API) getSubmissionReport(w http.ResponseWriter, r *http.Request, user a
 		writeError(w, http.StatusNotFound, "not_found", "Submission tidak ditemukan.")
 		return
 	}
-	submission, err := a.submissions.GetVisible(r.Context(), submissionID, user.ID, user.Role)
+	submission, canSeeHidden, err := a.submissions.GetVisible(r.Context(), submissionID, user.ID, user.Role)
 	if errors.Is(err, submissions.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "Submission tidak ditemukan.")
 		return
@@ -220,10 +281,30 @@ func (a *API) getSubmissionReport(w http.ResponseWriter, r *http.Request, user a
 		internalError(w, "check submission report access", err)
 		return
 	}
-	report, err := a.submissions.Report(r.Context(), submission, user.Role)
+	report, err := a.submissions.Report(r.Context(), submission, canSeeHidden)
 	if err != nil {
 		internalError(w, "get submission report", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, report)
+}
+
+func submissionRateLimitMessage(limitErr *ratelimit.Error) string {
+	switch limitErr.Rule {
+	case ratelimit.RuleActive:
+		return "Masih ada submission yang sedang antre atau dinilai untuk assignment ini."
+	case ratelimit.RuleInterval:
+		retrySeconds := int64(limitErr.RetryAfter / time.Second)
+		if limitErr.RetryAfter%time.Second != 0 {
+			retrySeconds++
+		}
+		if retrySeconds < 1 {
+			retrySeconds = 1
+		}
+		return fmt.Sprintf("Tunggu setidaknya %d detik sebelum mengirim submission berikutnya.", retrySeconds)
+	case ratelimit.RuleQuota:
+		return fmt.Sprintf("Batas pengumpulan untuk assignment ini tercapai (maksimal %d submission).", limitErr.Limit)
+	default:
+		return "Batas pengumpulan tercapai. Silakan coba lagi nanti."
+	}
 }
