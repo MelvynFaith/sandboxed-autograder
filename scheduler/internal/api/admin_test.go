@@ -18,6 +18,7 @@ import (
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/settings"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/store"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/submissions"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type fixedWorkers struct{ alive, configured int }
@@ -40,6 +41,50 @@ func withChecker(t *testing.T, env *testEnvironment, checker *health.Checker) *t
 	copied := *env
 	copied.server = server
 	return &copied
+}
+
+// A database failure behind the admin endpoints answers 500 internal_error and shows nothing of the
+// error. The handler authenticates through the working pool and reads everything else through a pool
+// that is already closed.
+func TestAdminEndpointsHideDatabaseFailures(t *testing.T) {
+	env := newTestEnvironment(t)
+	_, adminAccess := createCourseTestUser(t, env, "Admin", "admin@example.test", auth.RoleAdmin)
+	broken, err := pgxpool.NewWithConfig(t.Context(), env.pool.Config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken.Close()
+	tokens, err := auth.NewTokens([]byte(testJWTSecret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(NewHandler(
+		env.store, tokens, env.tickets, courses.NewStore(env.pool), submissions.NewStore(broken),
+		settings.NewStore(broken), audit.NewStore(broken), health.New(env.pool, nil, nil), env.jobs, env.codeDir,
+	))
+	t.Cleanup(server.Close)
+	failing := *env
+	failing.server = server
+
+	for _, endpoint := range []struct {
+		method, path string
+		body         any
+	}{
+		{http.MethodGet, "/api/v1/admin/audit-logs", nil},
+		{http.MethodGet, "/api/v1/admin/queue", nil},
+		{http.MethodGet, "/api/v1/admin/rate-limits", nil},
+		{http.MethodPut, "/api/v1/admin/rate-limits", rateLimitsBody(1, 30, 30)},
+	} {
+		response, payload := failing.request(t, endpoint.method, endpoint.path, endpoint.body, adminAccess)
+		if response.StatusCode != http.StatusInternalServerError {
+			t.Fatalf("%s %s with the database down = %d, %#v; want 500", endpoint.method, endpoint.path,
+				response.StatusCode, payload)
+		}
+		assertError(t, payload, "internal_error")
+		if message := errorMessage(t, payload); strings.Contains(message, "closed") || strings.Contains(message, "pool") {
+			t.Fatalf("%s %s leaks the database error: %q", endpoint.method, endpoint.path, message)
+		}
+	}
 }
 
 func assertNull(t *testing.T, object map[string]any, key string) {
