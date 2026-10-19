@@ -10,12 +10,16 @@ const verdicts = new Set([
   'SECURITY_VIOLATION',
 ])
 
+// Mirrors the student view: a hidden result carries no testcase_id and only status, score, time
+// and memory (FR-03).
 const mockSubmissionReport = {
   submission_id: 'submission-1',
   total_score: 85,
+  max_score: 100,
   results: [
     {
       testcase_id: 'testcase-1',
+      external_id: 'tc_01',
       status: 'PASSED',
       score: 25,
       exec_time_ms: 12,
@@ -26,6 +30,7 @@ const mockSubmissionReport = {
     },
     {
       testcase_id: 'testcase-2',
+      external_id: 'tc_02',
       status: 'RUNTIME_ERROR',
       score: 0,
       exec_time_ms: 18,
@@ -35,17 +40,15 @@ const mockSubmissionReport = {
       actual_output: '',
     },
     {
-      testcase_id: 'testcase-3',
       status: 'SECURITY_VIOLATION',
       score: 0,
       exec_time_ms: 1,
       memory_kb: 1024,
-      error_message: 'Pesan tersembunyi',
       is_hidden: true,
-      actual_output: 'OUTPUT-TERSEMBUNYI-MOCK',
     },
     {
       testcase_id: 'testcase-4',
+      external_id: 'tc_04',
       status: 'FAILED',
       score: 0,
       exec_time_ms: 14,
@@ -56,6 +59,7 @@ const mockSubmissionReport = {
     },
     {
       testcase_id: 'testcase-5',
+      external_id: 'tc_05',
       status: 'TIMEOUT',
       score: 0,
       exec_time_ms: 5000,
@@ -66,6 +70,7 @@ const mockSubmissionReport = {
     },
     {
       testcase_id: 'testcase-6',
+      external_id: 'tc_06',
       status: 'MEMORY_LIMIT_EXCEEDED',
       score: 0,
       exec_time_ms: 28,
@@ -76,6 +81,7 @@ const mockSubmissionReport = {
     },
     {
       testcase_id: 'testcase-7',
+      external_id: 'tc_07',
       status: 'SYNTAX_ERROR',
       score: 0,
       exec_time_ms: 0,
@@ -92,10 +98,14 @@ function isIdentifier(value) {
 }
 
 function readResult(result) {
+  const hidden = result?.is_hidden === true
   if (
     !result ||
     typeof result !== 'object' ||
-    !isIdentifier(result.testcase_id) ||
+    // A hidden result keeps no testcase_id for a student; a visible one always has it.
+    (hidden ? result.testcase_id != null && !isIdentifier(result.testcase_id)
+      : !isIdentifier(result.testcase_id)) ||
+    (result.external_id != null && typeof result.external_id !== 'string') ||
     !verdicts.has(result.status) ||
     !Number.isFinite(result.score) ||
     !Number.isFinite(result.exec_time_ms) ||
@@ -107,9 +117,10 @@ function readResult(result) {
     throw new Error('Data hasil test case tidak sesuai format yang diharapkan.')
   }
 
-  const hidden = result.is_hidden === true
+  // Hidden content is dropped here even if a server mistakenly sent it (FR-03).
   return {
-    testCaseId: String(result.testcase_id),
+    testCaseId: hidden || result.testcase_id == null ? null : String(result.testcase_id),
+    externalId: hidden ? null : result.external_id ?? null,
     verdict: result.status,
     score: result.score,
     executionTimeMs: result.exec_time_ms,
@@ -121,12 +132,14 @@ function readResult(result) {
 }
 
 function readReportResponse(payload, submissionId) {
+  // total_score and max_score are omitted until the submission has been graded.
   if (
     !payload ||
     typeof payload !== 'object' ||
     !isIdentifier(payload.submission_id) ||
     String(payload.submission_id) !== String(submissionId) ||
-    !Number.isFinite(payload.total_score) ||
+    (payload.total_score != null && !Number.isFinite(payload.total_score)) ||
+    (payload.max_score != null && !Number.isFinite(payload.max_score)) ||
     !Array.isArray(payload.results)
   ) {
     throw new Error('Respons laporan submission tidak sesuai format yang diharapkan.')
@@ -134,7 +147,8 @@ function readReportResponse(payload, submissionId) {
 
   return {
     submissionId: String(payload.submission_id),
-    totalScore: payload.total_score,
+    totalScore: payload.total_score ?? null,
+    maxScore: payload.max_score ?? null,
     results: payload.results.map(readResult),
   }
 }
