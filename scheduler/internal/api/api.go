@@ -81,6 +81,7 @@ func (a *API) routes() {
 	a.mux.HandleFunc("GET /api/v1/submissions", a.requireAuth(a.listSubmissions))
 	a.mux.HandleFunc("GET /api/v1/submissions/{id}", a.requireAuth(a.getSubmission))
 	a.mux.HandleFunc("GET /api/v1/submissions/{id}/report", a.requireAuth(a.getSubmissionReport))
+	a.mux.HandleFunc("GET /api/v1/submissions/{id}/code", a.requireAuth(a.getSubmissionCode))
 	a.mux.HandleFunc("GET /api/v1/courses", a.requireAuth(a.listCourses))
 	a.mux.HandleFunc("POST /api/v1/courses", a.requireAuth(a.createCourse))
 	a.mux.HandleFunc("GET /api/v1/courses/{id}/enrollments", a.requireAuth(a.listEnrollments))
