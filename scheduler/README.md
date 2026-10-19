@@ -5,9 +5,8 @@ persists results. It is **the only component that writes to PostgreSQL.**
 
 **Owner:** Evan William
 **Status:** authentication/session, course/enrollment, assignment, resource-limit, and test-case
-endpoints are implemented, as are the in-process `JobQueue`, Harness runner, grading store, worker
-pool, `/healthz`, and WebSocket progress stream. Submission and grading-report APIs are not
-implemented.
+endpoints are implemented, as are submission upload/history/report endpoints, the in-process
+`JobQueue`, Harness runner, grading store, worker pool, `/healthz`, and WebSocket progress stream.
 
 ## Responsibilities
 
@@ -31,6 +30,7 @@ internal/api/      authentication and course/assignment HTTP routes and handlers
 internal/health/   the /healthz handler: database, live workers, queue depth
 internal/auth/     authentication, password/token helpers, PostgreSQL user/session store, WS tickets
 internal/courses/  course, enrollment, and course-scoped assignment listing store
+internal/submissions/ submission creation, scoped history/report reads, and submission lifecycle storage
 internal/queue/    JobQueue interface between the handlers and worker pool; in-process Memory implementation
 internal/harness/  starts the Grading Harness for one submission and checks its report
 internal/progress/ in-process hub that carries grading progress from the workers to the WebSocket
@@ -63,20 +63,15 @@ systemd-run --user --scope -p Delegate=yes ./autograder
 ```
 
 Without delegation it exits with an error that names `Delegate=yes`. `WORKERS=0` runs the API alone,
-needs no cgroup, Harness or code directory, and grades nothing; use it for frontend work on a machine
-without the sandbox.
+needs no cgroup or Harness, and grades nothing; it still needs `CODE_DIR` to save uploaded submissions.
 
-The queue is in memory and is filled from the database: at start-up and every minute after, every
-`QUEUED` submission is added to it. Until a submission handler enqueues directly, a new submission
-therefore waits up to a minute before a worker takes it.
+The queue is in memory and is filled from the database at start-up and every minute after; submission
+handlers also enqueue accepted jobs immediately. `WORKERS=0` still accepts and queues submissions in
+the database, but does not grade them until a worker process starts.
 
-The API and authentication packages are separate from grading work in `internal/queue`. The current
-auth/session, course, and assignment endpoints do not enqueue grading jobs.
 The grading pipeline includes the schema, in-process queue, Harness runner, grading store, and
-worker pool. Request-handling code and grading work meet at `JobQueue`: a handler stores a
-submission as `QUEUED` and calls `Enqueue`; a worker calls `Dequeue`. Authentication, course,
-enrollment, assignment, resource-limit, and test-case endpoints are implemented, but submission and
-grading-report APIs are not. The WebSocket progress stream is implemented.
+worker pool. Request handling stores a submission as `QUEUED` and calls `Enqueue` with its submission
+and user IDs; a worker calls `Dequeue`.
 
 ## Authentication API
 
@@ -87,6 +82,7 @@ export DATABASE_URL='postgres://USER:PASSWORD@localhost:5432/DATABASE?sslmode=di
 export JWT_SECRET='at-least-32-random-bytes-from-a-local-secret-manager'
 export HTTP_ADDR=':8080'
 export WORKERS=0          # API only; grading needs the settings in "Running"
+export CODE_DIR=/tmp/autograder-submissions
 go run ./cmd/autograder
 ```
 
@@ -113,6 +109,22 @@ The client contract is:
   are held in process memory, bound to the authenticated user and submission, and expire within 60
   seconds. `TicketStore.Consume` atomically removes a ticket; a second or expired use is rejected.
   `/ws/v1/submissions/{id}` consumes them (see "Grading progress").
+- `POST /submissions` accepts `multipart/form-data` with `assignment_id` and one `file` part, as
+  specified in SRS Appendix B. It returns 202 Accepted with the queued submission. The file must
+  have a valid UTF-8 `.py` filename without NUL and be no larger than 256 KiB. The server stores
+  the file under a generated name in `CODE_DIR`; the client filename is retained as metadata only.
+  An enrolled student may submit through `deadline_at` normally; a later submission through
+  `late_until_at` is marked late, and one after that returns 409. Submission insertion and FR-14
+  rate-limit checks share one database transaction; rate-limit rejection returns 429. Accepted
+  submissions are stored as `QUEUED` and immediately enqueued as `{submission_id, user_id}`.
+- `GET /submissions?page=N&page_size=N&assignment_id=ID` returns only the caller's paginated
+  history, optionally filtered to one assignment.
+  `GET /submissions/{id}` and `GET /submissions/{id}/report` are visible to the submission owner,
+  the current lecturer owner of its Course, and administrators; other callers receive 404.
+  Reports use the seven per-test verdicts in the schema. Hidden test data is revealed only to
+  administrators and current lecturers who own the Course, regardless of the submission owner's
+  current role. Other viewers receive only `status`, `score`, `exec_time_ms`, and `memory_kb` for
+  hidden results; test identity, input, expected output, actual output, and error message are omitted.
 - `GET /admin/users?page=N&page_size=N` returns `items`, `page`, `page_size`, and `has_next`.
   `PUT /admin/users/{id}/role` accepts `{ "role" }`. Only `ADMIN` can use these routes; role changes
   revoke every refresh token for the target user and write a `ROLE_CHANGED` audit row in the same

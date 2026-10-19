@@ -20,8 +20,10 @@ import (
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/progress"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/queue"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/sandbox"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/settings"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/store"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/stream"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/submissions"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/worker"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/migrations"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -56,6 +58,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if err := os.MkdirAll(cfg.codeDir, 0o700); err != nil {
+		return fmt.Errorf("create CODE_DIR: %w", err)
+	}
 	tokens, err := auth.NewTokens([]byte(cfg.jwtSecret))
 	if err != nil {
 		return err
@@ -88,8 +93,8 @@ func run() error {
 	pipeline := store.NewPipeline(pool)
 	hub := progress.NewHub()
 	checker := health.New(pool, nil, nil)
+	jobs := queue.NewMemory()
 	if cfg.workers > 0 {
-		jobs := queue.NewMemory()
 		workers, err := newWorkers(cfg, pipeline, jobs, hub)
 		if err != nil {
 			return err
@@ -106,7 +111,10 @@ func run() error {
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", checker)
 	mux.Handle("GET /ws/v1/submissions/{id}", stream.New(ticketStore, pipeline, hub))
-	mux.Handle("/", api.NewHandler(auth.NewStore(pool), tokens, ticketStore, courses.NewStore(pool)))
+	mux.Handle("/", api.NewHandler(
+		auth.NewStore(pool), tokens, ticketStore, courses.NewStore(pool),
+		submissions.NewStore(pool), settings.NewStore(pool), jobs, cfg.codeDir,
+	))
 	server := &http.Server{
 		Addr:              cfg.httpAddr,
 		Handler:           mux,

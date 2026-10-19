@@ -15,10 +15,14 @@ import (
 
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/auth"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/courses"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/queue"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/settings"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/submissions"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const maxRequestBytes = 1 << 20
+const maxSubmissionBytes = 256 << 10
 const maxUserNameLength = 200
 
 var (
@@ -27,18 +31,35 @@ var (
 )
 
 type API struct {
-	store   *auth.Store
-	courses *courses.Store
-	tokens  *auth.Tokens
-	tickets *auth.TicketStore
-	mux     *http.ServeMux
+	store       *auth.Store
+	courses     *courses.Store
+	tokens      *auth.Tokens
+	tickets     *auth.TicketStore
+	submissions *submissions.Store
+	settings    *settings.Store
+	queue       queue.JobQueue
+	codeDir     string
+	mux         *http.ServeMux
 }
 
-func NewHandler(store *auth.Store, tokens *auth.Tokens, tickets *auth.TicketStore, courseStore *courses.Store) *API {
+func NewHandler(
+	store *auth.Store,
+	tokens *auth.Tokens,
+	tickets *auth.TicketStore,
+	courseStore *courses.Store,
+	submissionStore *submissions.Store,
+	settingsStore *settings.Store,
+	jobs queue.JobQueue,
+	codeDir string,
+) *API {
 	if tickets == nil {
 		tickets, _ = auth.NewTicketStore(auth.MaxTicketTTL)
 	}
-	api := &API{store: store, courses: courseStore, tokens: tokens, tickets: tickets, mux: http.NewServeMux()}
+	api := &API{
+		store: store, courses: courseStore, tokens: tokens, tickets: tickets,
+		submissions: submissionStore, settings: settingsStore, queue: jobs, codeDir: codeDir,
+		mux: http.NewServeMux(),
+	}
 	api.routes()
 	return api
 }
@@ -56,6 +77,10 @@ func (a *API) routes() {
 	a.mux.HandleFunc("PUT /api/v1/users/me", a.requireAuth(a.updateMe))
 	a.mux.HandleFunc("PUT /api/v1/users/me/password", a.requireAuth(a.changePassword))
 	a.mux.HandleFunc("POST /api/v1/ws-tickets", a.requireAuth(a.createWSTicket))
+	a.mux.HandleFunc("POST /api/v1/submissions", a.requireAuth(a.createSubmission))
+	a.mux.HandleFunc("GET /api/v1/submissions", a.requireAuth(a.listSubmissions))
+	a.mux.HandleFunc("GET /api/v1/submissions/{id}", a.requireAuth(a.getSubmission))
+	a.mux.HandleFunc("GET /api/v1/submissions/{id}/report", a.requireAuth(a.getSubmissionReport))
 	a.mux.HandleFunc("GET /api/v1/courses", a.requireAuth(a.listCourses))
 	a.mux.HandleFunc("POST /api/v1/courses", a.requireAuth(a.createCourse))
 	a.mux.HandleFunc("GET /api/v1/courses/{id}/enrollments", a.requireAuth(a.listEnrollments))

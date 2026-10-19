@@ -198,9 +198,12 @@ func (a *API) listTestCases(w http.ResponseWriter, r *http.Request, user auth.Us
 		writeError(w, http.StatusBadRequest, "invalid_pagination", "page dan page_size harus bilangan bulat positif; page_size maksimal 100.")
 		return
 	}
-	result, err := a.courses.ListTestCases(
-		r.Context(), assignmentID, user.Role != auth.RoleStudent, page, pageSize,
-	)
+	includeHidden, err := a.courses.CanManageAssignment(r.Context(), assignmentID, user.ID, user.Role)
+	if err != nil {
+		internalError(w, "check hidden test-case access", err)
+		return
+	}
+	result, err := a.courses.ListTestCases(r.Context(), assignmentID, includeHidden, page, pageSize)
 	if err != nil {
 		internalError(w, "list test cases", err)
 		return

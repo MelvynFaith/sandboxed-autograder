@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,6 +21,9 @@ import (
 
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/auth"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/courses"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/queue"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/settings"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/submissions"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/migrations"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/golang-migrate/migrate/v4"
@@ -36,6 +41,38 @@ type testEnvironment struct {
 	store   *auth.Store
 	tickets *auth.TicketStore
 	pool    *pgxpool.Pool
+	jobs    *recordingQueue
+	codeDir string
+}
+
+type recordingQueue struct {
+	delegate queue.JobQueue
+	mu       sync.Mutex
+	jobs     []queue.Job
+}
+
+func (q *recordingQueue) Enqueue(ctx context.Context, job queue.Job) error {
+	if err := q.delegate.Enqueue(ctx, job); err != nil {
+		return err
+	}
+	q.mu.Lock()
+	q.jobs = append(q.jobs, job)
+	q.mu.Unlock()
+	return nil
+}
+
+func (q *recordingQueue) Dequeue(ctx context.Context) (queue.Job, error) {
+	return q.delegate.Dequeue(ctx)
+}
+
+func (q *recordingQueue) Remove(ctx context.Context, submissionID int64) (bool, error) {
+	return q.delegate.Remove(ctx, submissionID)
+}
+
+func (q *recordingQueue) enqueued() []queue.Job {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return append([]queue.Job(nil), q.jobs...)
 }
 
 func newTestEnvironment(t *testing.T) *testEnvironment {
@@ -118,9 +155,14 @@ func newTestEnvironment(t *testing.T) *testEnvironment {
 		t.Fatal(err)
 	}
 	store := auth.NewStore(pool)
-	server := httptest.NewServer(NewHandler(store, tokens, tickets, courses.NewStore(pool)))
+	jobs := &recordingQueue{delegate: queue.NewMemory()}
+	codeDir := t.TempDir()
+	server := httptest.NewServer(NewHandler(
+		store, tokens, tickets, courses.NewStore(pool), submissions.NewStore(pool),
+		settings.NewStore(pool), jobs, codeDir,
+	))
 	t.Cleanup(server.Close)
-	return &testEnvironment{server: server, store: store, tickets: tickets, pool: pool}
+	return &testEnvironment{server: server, store: store, tickets: tickets, pool: pool, jobs: jobs, codeDir: codeDir}
 }
 
 func (e *testEnvironment) request(t *testing.T, method, path string, body any, token string) (*http.Response, map[string]any) {
@@ -155,6 +197,50 @@ func (e *testEnvironment) request(t *testing.T, method, path string, body any, t
 		}
 	}
 	return response, payload
+}
+
+func (e *testEnvironment) upload(t *testing.T, assignmentID int64, filename string, data []byte, token string) (*http.Response, map[string]any) {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("assignment_id", strconv.FormatInt(assignmentID, 10)); err != nil {
+		t.Fatal(err)
+	}
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request, err := http.NewRequest(http.MethodPost, e.server.URL+"/api/v1/submissions", &body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	request.Header.Set("Authorization", "Bearer "+token)
+	response, err := e.server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = response.Body.Close() })
+	payload := map[string]any{}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode upload response (status %d): %v", response.StatusCode, err)
+	}
+	return response, payload
+}
+
+func (e *testEnvironment) submissionFile(t *testing.T, payload map[string]any) string {
+	t.Helper()
+	var codePath string
+	if err := e.pool.QueryRow(t.Context(), `SELECT code_path FROM submissions WHERE id = $1`, int64Field(t, payload, "id")).Scan(&codePath); err != nil {
+		t.Fatalf("read submission code path: %v", err)
+	}
+	return filepath.Join(e.codeDir, codePath)
 }
 
 func (e *testEnvironment) register(t *testing.T, name, email, password string) map[string]any {
