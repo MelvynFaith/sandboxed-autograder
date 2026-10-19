@@ -94,6 +94,8 @@ func (a *API) routes() {
 	a.mux.HandleFunc("DELETE /api/v1/assignments/{id}", a.requireAuth(a.deleteAssignment))
 	a.mux.HandleFunc("GET /api/v1/assignments/{id}/resource-limit", a.requireAuth(a.getResourceLimit))
 	a.mux.HandleFunc("PUT /api/v1/assignments/{id}/resource-limit", a.requireAuth(a.putResourceLimit))
+	a.mux.HandleFunc("GET /api/v1/assignments/{id}/results", a.requireAuth(a.listAssignmentResults))
+	a.mux.HandleFunc("GET /api/v1/assignments/{id}/results/export", a.requireAuth(a.exportAssignmentResults))
 	a.mux.HandleFunc("GET /api/v1/assignments/{id}/testcases", a.requireAuth(a.listTestCases))
 	a.mux.HandleFunc("POST /api/v1/assignments/{id}/testcases", a.requireAuth(a.createTestCase))
 	a.mux.HandleFunc("PUT /api/v1/testcases/{id}", a.requireAuth(a.updateTestCase))
