@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { cancelSubmission, getSubmissionHistory } from '../api/submissionHistory.js'
 import { getSubmissionReport } from '../api/submissionReport.js'
 import StatusBadge from '../components/StatusBadge.jsx'
@@ -220,6 +221,14 @@ function HistoryPage() {
               >
                 {selectedId === submission.id ? 'Tutup laporan' : 'Lihat laporan'}
               </button>
+              {/* FR-20: the student may read their own submitted code. */}
+              <Link
+                aria-label={`Lihat kode ${submission.assignmentTitle}`}
+                className="rounded border border-slate-300 px-4 py-2 font-medium hover:bg-slate-100"
+                to={`/submissions/${encodeURIComponent(submission.id)}/code`}
+              >
+                Lihat kode
+              </Link>
               {submission.status === 'QUEUED' && confirmingId !== submission.id && (
                 <button
                   aria-label={`Batalkan submission ${submission.assignmentTitle}`}

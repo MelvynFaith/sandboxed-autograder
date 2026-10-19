@@ -247,6 +247,14 @@ describe('HistoryPage', () => {
     expect(within(report).queryByText('Output aktual')).not.toBeInTheDocument()
   })
 
+  it('links each submission to its code view', async () => {
+    setUser()
+    render(<App />)
+
+    const link = await screen.findByRole('link', { name: 'Lihat kode Dasar Algoritma' })
+    expect(link).toHaveAttribute('href', '/submissions/submission-1/code')
+  })
+
   it('offers cancel only for a queued submission', async () => {
     setUser()
     getSubmissionHistory.mockResolvedValue(pageOf([submission, queuedSubmission]))
