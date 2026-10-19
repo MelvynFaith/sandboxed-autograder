@@ -25,8 +25,10 @@ var (
 // results, and resets attempts, so the grading starts clean. submitted_at and is_late are not touched:
 // a regrade is the same submission graded again, not a new one. FR-14 does not apply to it.
 //
-// stale_grade is left as it is. The worker clears it when it claims the submission, after which the
-// definition it grades against is the current one (see store.Pipeline.Claim).
+// stale_grade is cleared too: the grade it flagged is gone, and the new one is made against the
+// definition the worker reads when it claims the submission. Claim clears the flag again, so an edit
+// made while the submission waits in the queue is still part of what is graded (see
+// store.Pipeline.Claim).
 //
 // It returns the job the caller must enqueue, which names the student that owns the submission. The
 // row is locked while its state is checked, so two regrades, or a regrade and the retention job,
@@ -119,7 +121,8 @@ func (s *Store) RegradeAssignment(ctx context.Context, assignmentID int64) (jobs
 func requeueForRegrade(ctx context.Context, tx pgx.Tx, ids []int64) error {
 	if _, err := tx.Exec(ctx, `
 		UPDATE submissions
-		SET status = 'QUEUED', attempts = 0, total_score = NULL, max_score = NULL, graded_at = NULL
+		SET status = 'QUEUED', attempts = 0, stale_grade = false,
+			total_score = NULL, max_score = NULL, graded_at = NULL
 		WHERE id = ANY($1)`, ids); err != nil {
 		return err
 	}
