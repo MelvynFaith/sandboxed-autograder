@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from harness.grade import grade, load_definition
+from harness.progress import progress_writer
 from harness.runner import SandboxConfig
 from harness.verdict import InternalError
 
@@ -27,7 +28,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         config = SandboxConfig.from_env(os.environ)
         if not Path(args.code).is_file():
             raise InternalError("the code file does not exist")
-        report = grade(load_definition(args.definition), args.code, config)
+        definition = load_definition(args.definition)
+        report = grade(definition, args.code, config, progress_writer(os.environ))
     except InternalError as exc:
         print(f"harness: {exc}", file=sys.stderr)
         return 1
