@@ -155,7 +155,7 @@ Ubuntu 24.04 (the campus server).
 | `JWT_SECRET` | yes | At least 32 random bytes; signs the access tokens. |
 | `HTTP_ADDR` | yes | Listen address, for example `127.0.0.1:8080` behind Nginx. |
 | `WORKERS` | no | Submissions graded at once, default 4 (SRS Bagian 5.1). `0` runs the API alone and grades nothing. |
-| `CODE_DIR` | unless `WORKERS=0` | Absolute path of the stored submission files, for example `/var/lib/autograder/submissions`. |
+| `CODE_DIR` | yes | Absolute path where uploaded submission files are stored, for example `/var/lib/autograder/submissions`; required even when `WORKERS=0` because the API accepts uploads. |
 | `HARNESS_COMMAND` | unless `WORKERS=0` | The Grading Harness program and its leading arguments, split on spaces, the program as an absolute path: `/opt/grader/venv/bin/python -m harness`. |
 | `SANDBOX_EXEC` | no | Path of `sandbox-exec`, default `/usr/local/bin/sandbox-exec`, the path the AppArmor profile names. |
 
