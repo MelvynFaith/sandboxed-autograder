@@ -65,3 +65,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Database backup (`infra/`): a systemd timer that runs `pg_dump` every day at 02:30 WIB as the
   `postgres` user and keeps the dumps of the last 14 days, with the steps to check a backup by
   restoring it and to restore the database (SRS 13.4, NFR-13).
+- Load test (`infra/loadtest/`): `seed.sh` registers up to 999 student accounts through the API and
+  enrolls them in a load-test course, then reports, resets and removes the load-test submissions.
+  The k6 scripts measure each submission until its final WebSocket frame (SRS 11.4): `submit.js`
+  against NFR-01a at 5, 10 and 30 accounts and NFR-01b at 60 and 100, `ratelimit.js` against FR-14
+  with 200 submissions in a row from one account, and `fairness.js` against FR-13 with one account
+  flooding the queue.

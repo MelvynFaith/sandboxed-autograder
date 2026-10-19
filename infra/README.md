@@ -20,6 +20,7 @@ database backup exist, and the backend runs on the campus server from these step
 | `systemd/autograder.service` | Backend unit; delegates a cgroup subtree to the service user | R11, Bagian 13.2 |
 | `smoke-test.sh` | Three submissions through the installed pipeline, checked against their scores | Bagian 13.2, NFR-09 |
 | `db-backup.sh`, `systemd/autograder-backup.{service,timer}` | Daily `pg_dump` with 14-day retention | Bagian 13.4, NFR-13 |
+| `loadtest/` | Load tests: seeded student accounts and k6 scripts, [their own README](loadtest/README.md) | Bagian 11.4, NFR-01a, NFR-01b, FR-13, FR-14 |
 
 ## Host setup
 
