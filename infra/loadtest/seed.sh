@@ -1,9 +1,9 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
 #
-# Accounts and an assignment for the load test (SRS Bagian 11.4; infra/loadtest/README.md).
+# Accounts and assignments for the load test (SRS Bagian 11.4; infra/loadtest/README.md).
 #
-#   export LOAD_PASSWORD=...; infra/loadtest/seed.sh    ACCOUNTS students in one assignment
+#   export LOAD_PASSWORD=...; infra/loadtest/seed.sh    ACCOUNTS students in one course
 #   infra/loadtest/seed.sh report                       how every load-test submission was graded
 #   infra/loadtest/seed.sh reset                        remove the submissions, keep the accounts
 #   infra/loadtest/seed.sh clean                        remove everything this script made
@@ -11,23 +11,31 @@
 # FR-14 allows a student one submission in the queue per assignment, so N simultaneous submissions
 # need N accounts. The students register through the API, so their passwords are hashed as for real
 # users. LOAD_PASSWORD is theirs, and it is required because these accounts can run code on the
-# server. The lecturer, course, enrollments, assignment and test cases are made with SQL. Every row
-# is recognisable (emails load-*@example.test, course LOAD), and `clean` removes exactly those.
+# server. The lecturer, course, enrollments, assignments and test cases are made with SQL: the
+# assignment every account submits to, 'Load test', and FLOOD more for fairness.js, 'Load test
+# flood NN'. Every row is recognisable (emails load-*@example.test, course LOAD), and `clean`
+# removes exactly those.
 #
-# Overrides: ACCOUNTS (100), API (http://127.0.0.1:8080), DB (autograder), CODE_DIR
-# (/var/lib/autograder/submissions), AS_POSTGRES ("sudo -u postgres") and AS_GRADER ("sudo -u
-# grader"), the prefixes that run psql and delete the stored files.
+# Overrides: ACCOUNTS (100), FLOOD (30), WAIT_S (300), API (http://127.0.0.1:8080), DB
+# (autograder), CODE_DIR (/var/lib/autograder/submissions), AS_POSTGRES ("sudo -u postgres") and
+# AS_GRADER ("sudo -u grader"), the prefixes that run psql and delete the stored files.
 set -euo pipefail
 
 ACCOUNTS=${ACCOUNTS:-100}
+FLOOD=${FLOOD:-30}
+WAIT_S=${WAIT_S:-300}
+if ! [[ $WAIT_S =~ ^[0-9]+$ ]]; then
+	echo "WAIT_S must be a whole number of seconds, not '$WAIT_S'" >&2
+	exit 2
+fi
 API=${API:-http://127.0.0.1:8080}
 DB=${DB:-autograder}
 CODE_DIR=${CODE_DIR:-/var/lib/autograder/submissions}
 AS_POSTGRES=${AS_POSTGRES-sudo -u postgres}
 AS_GRADER=${AS_GRADER-sudo -u grader}
 
-# The five test cases of the model in SRS Bagian 5.1 (N=5); the program in submit.js doubles its
-# input, so it scores 100.
+# The five test cases of the model in SRS Bagian 5.1 (N=5), in every assignment; the program in
+# lib.js doubles its input, so it scores 100.
 TEST_CASES="('tc_01', E'1\n', E'2\n'), ('tc_02', E'21\n', E'42\n'), ('tc_03', E'-7\n', E'-14\n'),
 	('tc_04', E'0\n', E'0\n'), ('tc_05', E'123456789\n', E'246913578\n')"
 LOAD_ASSIGNMENT="SELECT a.id FROM assignments a JOIN courses c ON c.id = a.course_id
@@ -43,7 +51,7 @@ reset() {
 	if [ "$(q "SELECT count(*) FROM submissions WHERE id IN ($LOAD_SUBMISSIONS)
 		AND status IN ('QUEUED', 'RUNNING')")" != 0 ]; then
 		echo "submissions are still queued or running;" \
-			"wait until '$0 report' shows none" >&2
+			"'$0 report' waits for them to finish" >&2
 		exit 1
 	fi
 	local paths
@@ -88,10 +96,20 @@ clean() {
 	echo "load-test accounts and assignment removed"
 }
 
-# report prints how the load-test submissions were graded and how long the server took from
-# submitted_at to graded_at. It exits 0 only if every one was graded with full marks.
+# report waits up to WAIT_S seconds for the queue to empty (fairness.js ends while its flood is
+# still being graded), then prints how the load-test submissions were graded and how long the
+# server took from submitted_at to graded_at. It exits 0 only if every one was graded with full
+# marks.
 report() {
-	q "SELECT 'assignment ' || id FROM ($LOAD_ASSIGNMENT) a"
+	local active waited=0
+	while active=$(q "SELECT count(*) FROM submissions WHERE id IN ($LOAD_SUBMISSIONS)
+		AND status IN ('QUEUED', 'RUNNING')") &&
+		[ "$active" != 0 ] && [ "$waited" -lt "$WAIT_S" ]; do
+		[ "$waited" != 0 ] || echo "waiting for $active queued or running submissions..."
+		sleep 1
+		waited=$((waited + 1))
+	done
+	q "SELECT count(*) || ' load-test assignments' FROM ($LOAD_ASSIGNMENT) a"
 	q "SELECT coalesce(string_agg(status || ' ' || n, ', ' ORDER BY status), 'no submissions')
 		FROM (SELECT status, count(*) AS n FROM submissions WHERE id IN ($LOAD_SUBMISSIONS)
 		GROUP BY status) t"
@@ -126,6 +144,10 @@ esac
 password=${LOAD_PASSWORD:-}
 if ! [[ $ACCOUNTS =~ ^[1-9][0-9]{0,2}$ ]]; then
 	echo "ACCOUNTS must be a whole number from 1 to 999, not '$ACCOUNTS'" >&2
+	exit 2
+fi
+if ! [[ $FLOOD =~ ^(0|[1-9][0-9]?)$ ]]; then
+	echo "FLOOD must be a whole number from 0 to 99, not '$FLOOD'" >&2
 	exit 2
 fi
 # The password goes into a JSON string below, so it may not contain a quote or a backslash.
@@ -165,8 +187,11 @@ INSERT INTO enrollments (course_id, user_id)
 	SELECT c.id, u.id FROM courses c CROSS JOIN users u
 	WHERE c.code = 'LOAD' AND u.email LIKE 'load-%@example.test' AND u.role = 'STUDENT';
 INSERT INTO assignments (course_id, title, deadline_at, late_until_at)
-	SELECT id, 'Load test', now() + interval '7 days', now() + interval '8 days'
-	FROM courses WHERE code = 'LOAD';
+	SELECT c.id, t.title, now() + interval '7 days', now() + interval '8 days'
+	FROM courses c CROSS JOIN (SELECT 'Load test' AS title UNION ALL
+		SELECT 'Load test flood ' || lpad(n::text, 2, '0')
+		FROM generate_series(1, $FLOOD) n) t
+	WHERE c.code = 'LOAD';
 INSERT INTO resource_limits (assignment_id, cpu_time_ms, memory_mb, max_processes, timeout_s,
 	max_output_bytes, tmpfs_size_mb)
 	SELECT id, 2000, 64, 5, 5, 1048576, 32 FROM ($LOAD_ASSIGNMENT) a;
@@ -174,9 +199,10 @@ INSERT INTO test_cases (assignment_id, external_id, input, expected_output, weig
 	SELECT a.id, t.external_id, t.input, t.expected_output, 20, 'EXACT'
 	FROM ($LOAD_ASSIGNMENT) a
 	CROSS JOIN (VALUES $TEST_CASES) AS t (external_id, input, expected_output);
-$LOAD_ASSIGNMENT;
+$LOAD_ASSIGNMENT AND a.title = 'Load test';
 COMMIT;
 SQL
 )
-echo "load test ready: $ACCOUNTS students enrolled in assignment $assignment"
-echo "next: k6 run -e ACCOUNTS=30 -e ASSIGNMENT=$assignment infra/loadtest/submit.js"
+echo "load test ready: $ACCOUNTS students in course LOAD, assignment $assignment" \
+	"and $FLOOD flood assignments"
+echo "next: k6 run -e ACCOUNTS=30 infra/loadtest/submit.js"
