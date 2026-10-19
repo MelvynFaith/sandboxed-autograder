@@ -101,27 +101,31 @@ afterEach(() => {
 })
 
 describe('LecturerAssignmentsPage', () => {
-  it('creates an assignment with positive resource limits', async () => {
+  it('creates an assignment together with its resource limits', async () => {
     setUser()
     render(<App />)
     await fillAssignmentForm()
     fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
 
     expect(await screen.findByRole('heading', { name: 'Tambah test case' })).toBeInTheDocument()
-    expect(createLecturerAssignment).toHaveBeenCalledWith('course-1', {
-      title: 'Latihan Algoritma',
-      description: 'Latihan dasar',
-      deadline_at: new Date('2026-10-12T23:59').toISOString(),
-      late_until_at: new Date('2026-10-13T23:59').toISOString(),
-    })
-    expect(updateResourceLimit).toHaveBeenCalledWith('assignment-1', {
+    expect(createLecturerAssignment).toHaveBeenCalledWith(
+      'course-1',
+      {
+        title: 'Latihan Algoritma',
+        description: 'Latihan dasar',
+        deadline_at: new Date('2026-10-12T23:59').toISOString(),
+        late_until_at: new Date('2026-10-13T23:59').toISOString(),
+      },
+      {
         cpu_time_ms: 1000,
         memory_mb: 64,
         max_processes: 4,
         timeout_s: 5,
         max_output_bytes: 1048576,
         tmpfs_size_mb: 32,
-    })
+      },
+    )
+    expect(updateResourceLimit).not.toHaveBeenCalled()
   })
 
   it('rejects non-positive resource limits', async () => {
@@ -169,7 +173,27 @@ describe('LecturerAssignmentsPage', () => {
     expect(createLecturerAssignment).not.toHaveBeenCalled()
   })
 
-  it('retries a failed resource-limit save without creating another assignment', async () => {
+  it('keeps a failed create in create mode so a retry creates it once', async () => {
+    setUser()
+    createLecturerAssignment.mockRejectedValueOnce(
+      new Error('resource_limit wajib diisi dengan batas sumber daya yang valid.'),
+    )
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'resource_limit wajib diisi dengan batas sumber daya yang valid.',
+    )
+    expect(screen.getByRole('heading', { name: 'Buat assignment' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+
+    expect(await screen.findByText('Assignment berhasil dibuat.')).toBeInTheDocument()
+    expect(createLecturerAssignment).toHaveBeenCalledTimes(2)
+    expect(updateLecturerAssignment).not.toHaveBeenCalled()
+  })
+
+  it('edits an assignment and then its resource limits, retrying a failed limit save', async () => {
     setUser()
     updateResourceLimit
       .mockRejectedValueOnce(new Error('Resource limit gagal disimpan.'))
@@ -177,6 +201,13 @@ describe('LecturerAssignmentsPage', () => {
     render(<App />)
     await fillAssignmentForm()
     fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+    await screen.findByText('Assignment berhasil dibuat.')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ubah assignment terpilih' }))
+    fireEvent.change(screen.getByLabelText('Batas waktu CPU (ms)'), {
+      target: { value: '2000' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan perubahan' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Resource limit gagal disimpan.')
     expect(screen.getByRole('heading', { name: 'Ubah assignment' })).toBeInTheDocument()
@@ -184,8 +215,22 @@ describe('LecturerAssignmentsPage', () => {
 
     expect(await screen.findByText('Assignment berhasil diperbarui.')).toBeInTheDocument()
     expect(createLecturerAssignment).toHaveBeenCalledTimes(1)
-    expect(updateLecturerAssignment).toHaveBeenCalledTimes(1)
+    expect(updateLecturerAssignment).toHaveBeenCalledTimes(2)
+    expect(updateLecturerAssignment).toHaveBeenLastCalledWith('assignment-1', {
+      title: 'Latihan Algoritma',
+      description: 'Latihan dasar',
+      deadline_at: new Date('2026-10-12T23:59').toISOString(),
+      late_until_at: new Date('2026-10-13T23:59').toISOString(),
+    })
     expect(updateResourceLimit).toHaveBeenCalledTimes(2)
+    expect(updateResourceLimit).toHaveBeenLastCalledWith('assignment-1', {
+      cpu_time_ms: 2000,
+      memory_mb: 64,
+      max_processes: 4,
+      timeout_s: 5,
+      max_output_bytes: 1048576,
+      tmpfs_size_mb: 32,
+    })
   })
 
   it('rejects tmpfs limits that exceed the memory constraint', async () => {
