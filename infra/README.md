@@ -115,7 +115,7 @@ Ubuntu 24.04 (the campus server).
    sudo install -m 0755 scheduler/autograder /usr/local/bin/autograder
    sudo install -d -m 0700 -o grader -g grader /var/lib/autograder/submissions
    sudo systemctl enable --now autograder
-   sudo journalctl -u autograder -n 20 -o cat
+   sudo journalctl -u autograder -n 20 -o cat --no-pager
    curl -s http://127.0.0.1:8080/healthz
    ```
 
@@ -208,8 +208,8 @@ sudo install -m 0755 infra/db-backup.sh /usr/local/sbin/autograder-backup
 sudo install -d -m 0700 -o postgres -g postgres /var/backups/autograder
 sudo install -m 0644 infra/systemd/autograder-backup.service infra/systemd/autograder-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl start autograder-backup && sudo journalctl -u autograder-backup -n 4 -o cat
-sudo systemctl enable --now autograder-backup.timer && systemctl list-timers autograder-backup.timer
+sudo systemctl start autograder-backup && sudo journalctl -u autograder-backup -n 4 -o cat --no-pager
+sudo systemctl enable --now autograder-backup.timer && systemctl list-timers autograder-backup.timer --no-pager
 ```
 
 The `start` takes a backup straight away and logs `backup written: /var/backups/autograder/...dump (N
@@ -264,8 +264,8 @@ expiry", has the rules. The command is part of the backend binary, so rebuild an
 ```sh
 sudo install -m 0644 infra/systemd/autograder-expire.service infra/systemd/autograder-expire.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl start autograder-expire; sudo journalctl -u autograder-expire -n 4 -o cat
-sudo systemctl enable --now autograder-expire.timer && systemctl list-timers autograder-expire.timer
+sudo systemctl start autograder-expire; sudo journalctl -u autograder-expire -n 4 -o cat --no-pager
+sudo systemctl enable --now autograder-expire.timer && systemctl list-timers autograder-expire.timer --no-pager
 ```
 
 The `start` logs `deleted the files of expired submissions` with the numbers deleted, already
