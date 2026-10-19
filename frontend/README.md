@@ -23,11 +23,32 @@ npm run build
 
 - Students can browse assignments, submit Python files, follow grading status,
   and view submission history and test-case reports.
-- Lecturers can manage courses, assignments, test cases, and resource limits.
+- Lecturers and administrators can manage Courses and student enrollments
+  (`/courses`), assignments, test cases, and resource limits. Course UI is in
+  PR #99.
+- Lecturers can import and export an assignment's test cases as YAML from the
+  assignment management page. The UI is in PR #100 and depends on the backend
+  endpoints in PR #87.
 - Administrators can manage user roles and review audit logs.
 - Grade-summary and CSV-export screens (FR-11) remain to be implemented as
-  part of the frontend dashboard scope. Confirm the backend endpoint contract
-  and backend delivery owner with the team.
+  part of the frontend dashboard scope; the UI is tracked in PR #98 and the
+  backend contract in PR #69.
+
+## Routes
+
+| Route | Roles | Page |
+| --- | --- | --- |
+| `/login` | Public | Sign in |
+| `/register` | Public | Student registration |
+| `/assignments` | Student, lecturer | Student assignment list and upload; lecturer assignment list |
+| `/history` | Student | Submission history and report |
+| `/courses` | Lecturer, administrator | Course creation and enrollment management (PR #99) |
+| `/lecturer/assignments` | Lecturer, administrator | Assignment, resource-limit, and test-case management; YAML import/export (PR #100) |
+| `/admin` | Administrator | User administration and audit log |
+| `/profile` | Authenticated users | Profile and password settings |
+
+Some routes and integrations are in open PRs and are not available from the
+current `develop` branch until those PRs are merged.
 
 The UI is expected to work at 360 px, 768 px, and 1280 px without horizontal
 scrolling. Forms have keyboard support and accessible labels. Timestamps are
@@ -63,6 +84,7 @@ the frontend currently relies on; confirm exact payloads with the backend in
 | Course and assignments | Course-scoped assignment listing/creation uses `/api/v1/courses/{course_id}/assignments`. Assignment fields use the SRS names `title`, `description`, `deadline_at`, and `late_until_at`. Assignment edit/delete use `PUT`/`DELETE /api/v1/assignments/{id}`. |
 | Resource limits | Bagian 6.3 menetapkan `GET`/`PUT /api/v1/assignments/{id}/resource-limit`; FR-06 menetapkan field `cpu_time_ms`, `memory_mb`, `max_processes`, `timeout_s`, `max_output_bytes`, dan `tmpfs_size_mb` beserta invarian kapasitas yang divalidasi form. |
 | Test cases | Endpoint berada di bawah `/api/v1/assignments/{id}/testcases` (Bagian 6.3). Field entitas `external_id`, `input`, `expected_output`, `weight`, `is_hidden`, dan `match_mode` mengikuti Bagian 7.1. |
+| Test-case YAML (PR #100; backend PR #87 pending) | Export uses `GET /api/v1/assignments/{id}/testcases/export` and imports the selected UTF-8 YAML file through `POST /api/v1/assignments/{id}/testcases/import` with `Content-Type: application/yaml`. The UI enforces the backend's 1 MiB request limit and displays the backend validation message. A successful import returns `{ "created", "updated" }`; export uses the filename from `Content-Disposition`. The document format is schema version 1 from SRS 7.3. |
 | Upload | FR-04 menetapkan `POST /api/v1/submissions` dengan `assignment_id` dan berkas `.py`; berkas di atas 256 KB (frontend mengukur 256 × 1024 byte) ditolak, submission dalam jendela terlambat ditandai `is_late`, dan submission setelah `late_until_at` ditolak (409). FR-14 membatasi satu submission `QUEUED`/`RUNNING` per assignment, jeda minimum 30 detik, dan 30 submission per assignment per mahasiswa. UI menampilkan `is_late` tanpa mengubah skor. |
 | Status and WebSocket | Bagian 6.3 menetapkan endpoint submission dan tiket WebSocket. Status Submission (`QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED`) mengikuti Bagian 7.1/FR-08; tujuh verdict `Result.status` tetap berbeda dari status Submission. Saat WebSocket putus, UI melakukan polling `GET /api/v1/submissions/{id}` tiap 3 detik. |
 | History and report | Riwayat menggunakan `GET /api/v1/submissions` dan laporan `GET /api/v1/submissions/{id}/report` (Bagian 6.3); daftar meminta parameter `page` dan `page_size`. Field laporan mengikuti nama Inggris di Bagian 7.1 dan FR hasil: `assignment_title`, `total_score`, `score`, `exec_time_ms`, dan `memory_kb`. |

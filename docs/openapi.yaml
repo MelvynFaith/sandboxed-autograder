@@ -1,0 +1,347 @@
+openapi: 3.1.0
+info:
+  title: Sandboxed Autograder Submission API
+  version: 1.0.0
+  description: OpenAPI documentation for the submission endpoints implemented in PR #63.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Submissions
+    description: Submission upload, owner history, detail, and report.
+paths:
+  /submissions:
+    post:
+      tags: [Submissions]
+      operationId: createSubmission
+      summary: Upload a Python submission
+      description: |
+        Students may submit only to an assignment in a Course in which they are enrolled.
+        The original filename is retained as metadata; the server generates the stored filename.
+        A submission after deadline_at and at or before late_until_at is accepted with is_late=true.
+        A request from a non-student role or for an assignment the caller cannot submit to returns
+        404. Rate-limit rejections identify the violated rule in the error message.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [assignment_id, file]
+              properties:
+                assignment_id:
+                  type: string
+                  pattern: '^[1-9][0-9]*$'
+                  description: Positive assignment ID.
+                file:
+                  type: string
+                  format: binary
+                  description: A .py file no larger than 256 KiB.
+      responses:
+        '202':
+          description: Submission queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '400':
+          description: Invalid multipart request or invalid Python filename.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Assignment not found, inaccessible, or caller is not a student.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Submission window has closed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Upload exceeds 256 KiB.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: A submission rate limit was reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags: [Submissions]
+      operationId: listSubmissions
+      summary: List the authenticated user's submissions
+      description: The list contains only submissions owned by the authenticated user.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: assignment_id
+          in: query
+          required: false
+          description: Filter the caller's history to one positive assignment ID.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: A page of the caller's submissions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionPage'
+        '400':
+          description: Invalid pagination or assignment_id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /submissions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SubmissionId'
+    get:
+      tags: [Submissions]
+      operationId: getSubmission
+      summary: Get a visible submission
+      description: |
+        Available to the submission owner, an administrator, or a current lecturer who owns the
+        submission's Course. Other users receive 404 to avoid disclosing whether the submission exists.
+      responses:
+        '200':
+          description: Submission details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Submission is missing or not visible to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /submissions/{id}/report:
+    parameters:
+      - $ref: '#/components/parameters/SubmissionId'
+    get:
+      tags: [Submissions]
+      operationId: getSubmissionReport
+      summary: Get per-test results for a visible submission
+      description: |
+        Available to the submission owner, an administrator, or a current lecturer who owns the
+        submission's Course. Other users receive 404. For hidden test cases, viewers other than an
+        administrator or the current Course owner receive only status, score, exec_time_ms, and
+        memory_kb; test identity, inputs, expected and actual output, and error message are omitted.
+      responses:
+        '200':
+          description: Submission score and per-test results.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionReport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Submission is missing or not visible to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Page number; defaults to 1.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      description: Items per page; defaults to 50 and may not exceed 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    SubmissionId:
+      name: id
+      in: path
+      required: true
+      description: Positive submission ID.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+  responses:
+    Unauthorized:
+      description: Missing or invalid Bearer access token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+    Submission:
+      type: object
+      required:
+        - id
+        - user_id
+        - assignment_id
+        - original_filename
+        - size_bytes
+        - status
+        - is_late
+        - stale_grade
+        - submitted_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        assignment_id:
+          type: integer
+          format: int64
+        original_filename:
+          type: string
+        size_bytes:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED]
+        is_late:
+          type: boolean
+        stale_grade:
+          type: boolean
+        total_score:
+          type: integer
+        max_score:
+          type: integer
+        submitted_at:
+          type: string
+          format: date-time
+        graded_at:
+          type: string
+          format: date-time
+    SubmissionPage:
+      type: object
+      required: [items, page, page_size, has_next]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Submission'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        has_next:
+          type: boolean
+    SubmissionReport:
+      type: object
+      required: [submission_id, results]
+      properties:
+        submission_id:
+          type: integer
+          format: int64
+        total_score:
+          type: integer
+        max_score:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportEntry'
+    ReportEntry:
+      type: object
+      required: [status, score, exec_time_ms, memory_kb]
+      properties:
+        testcase_id:
+          type: integer
+          format: int64
+          description: Omitted for hidden cases when the viewer is not authorized to see their identity.
+        external_id:
+          type: string
+          description: Omitted for hidden cases when the viewer is not authorized to see their identity.
+        status:
+          type: string
+          enum:
+            - PASSED
+            - FAILED
+            - TIMEOUT
+            - MEMORY_LIMIT_EXCEEDED
+            - RUNTIME_ERROR
+            - SYNTAX_ERROR
+            - SECURITY_VIOLATION
+        score:
+          type: integer
+        actual_output:
+          type: string
+          description: Omitted for hidden cases when the viewer is not authorized to see their content.
+        error_message:
+          type: string
+          description: Omitted for hidden cases when the viewer is not authorized to see their content.
+        is_truncated:
+          type: boolean
+        exec_time_ms:
+          type: integer
+        memory_kb:
+          type: integer
+        memory_source:
+          type: string
+        input:
+          type: string
+          description: Omitted for hidden cases when the viewer is not authorized to see their content.
+        expected_output:
+          type: string
+          description: Omitted for hidden cases when the viewer is not authorized to see their content.
