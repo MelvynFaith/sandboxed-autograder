@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 
@@ -41,7 +42,7 @@ def use_env(monkeypatch):
 
 def test_success_writes_one_json_document_and_returns_zero(monkeypatch, tmp_path, capsys):
     use_env(monkeypatch)
-    monkeypatch.setattr(cli, "grade", lambda definition, code, config: REPORT)
+    monkeypatch.setattr(cli, "grade", lambda definition, code, config, progress=None: REPORT)
     definition, code = write_files(tmp_path)
     assert cli.main(["--definition", definition, "--code", code]) == 0
     out = capsys.readouterr().out
@@ -52,7 +53,7 @@ def test_success_writes_one_json_document_and_returns_zero(monkeypatch, tmp_path
 def test_internal_error_writes_nothing_to_stdout(monkeypatch, tmp_path, capsys):
     use_env(monkeypatch)
 
-    def boom(definition, code, config):
+    def boom(definition, code, config, progress=None):
         raise InternalError("sandbox-exec exited with status 70")
 
     monkeypatch.setattr(cli, "grade", boom)
@@ -94,3 +95,27 @@ def test_python_dash_m_harness_fails_without_arguments(tmp_path):
     )
     assert proc.returncode != 0
     assert proc.stdout == b""
+
+
+def test_progress_pipe_from_the_environment_is_used(monkeypatch, tmp_path, capsys):
+    use_env(monkeypatch)
+    read_end, write_end = os.pipe()
+    monkeypatch.setenv("HARNESS_PROGRESS_FD", str(write_end))
+
+    def fake_grade(definition, code, config, progress=None):
+        progress(1)
+        progress(2)
+        return REPORT
+
+    monkeypatch.setattr(cli, "grade", fake_grade)
+    definition, code = write_files(tmp_path)
+    try:
+        assert cli.main(["--definition", definition, "--code", code]) == 0
+        os.close(write_end)
+        write_end = -1
+        assert os.read(read_end, 1024) == b'{"current_test": 1}\n{"current_test": 2}\n'
+    finally:
+        os.close(read_end)
+        if write_end >= 0:
+            os.close(write_end)
+    assert json.loads(capsys.readouterr().out) == REPORT

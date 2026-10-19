@@ -284,3 +284,37 @@ def test_internal_error_stops_the_run(monkeypatch):
 def test_no_test_cases_gives_an_empty_report():
     report = grade(parse_definition(make_data(test_cases=[])), "/tmp/s.py", CONFIG)
     assert report == {"submission_id": 7, "total_score": 0, "max_score": 0, "results": []}
+
+
+def test_progress_is_reported_before_each_test_case(monkeypatch):
+    events = []
+
+    def fake(config, limits, code_path, input_text, expected_output, mode):
+        events.append(("run", input_text))
+        return make_result()
+
+    monkeypatch.setattr(grade_module, "run_test_case", fake)
+    grade(
+        parse_definition(make_data()),
+        "/tmp/s.py",
+        CONFIG,
+        progress=lambda n: events.append(("progress", n)),
+    )
+    assert events == [("progress", 1), ("run", "5\n"), ("progress", 2), ("run", "0\n")]
+
+
+def test_progress_stops_when_a_test_case_fails_internally(monkeypatch):
+    events = []
+
+    def fake(config, limits, code_path, input_text, expected_output, mode):
+        raise InternalError("sandbox-exec exited with status 70")
+
+    monkeypatch.setattr(grade_module, "run_test_case", fake)
+    with pytest.raises(InternalError):
+        grade(
+            parse_definition(make_data()),
+            "/tmp/s.py",
+            CONFIG,
+            progress=lambda n: events.append(n),
+        )
+    assert events == [1]
