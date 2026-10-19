@@ -55,6 +55,12 @@ func loadConfig(getenv func(string) string) (config, error) {
 		}
 		cfg.workers = n
 	}
+	if cfg.codeDir == "" {
+		return config{}, errors.New("CODE_DIR is required to store uploaded submissions")
+	}
+	if !filepath.IsAbs(cfg.codeDir) {
+		return config{}, fmt.Errorf("CODE_DIR %q is not an absolute path", cfg.codeDir)
+	}
 	if cfg.sandboxExec == "" {
 		cfg.sandboxExec = defaultSandboxExec
 	}
@@ -65,10 +71,8 @@ func loadConfig(getenv func(string) string) (config, error) {
 	// The paths are handed to other programs and resolved against their working directories, so
 	// relative ones would point somewhere else.
 	switch {
-	case cfg.codeDir == "" || len(cfg.harnessCommand) == 0:
-		return config{}, errors.New("CODE_DIR and HARNESS_COMMAND are required unless WORKERS=0")
-	case !filepath.IsAbs(cfg.codeDir):
-		return config{}, fmt.Errorf("CODE_DIR %q is not an absolute path", cfg.codeDir)
+	case len(cfg.harnessCommand) == 0:
+		return config{}, errors.New("HARNESS_COMMAND is required unless WORKERS=0")
 	case !filepath.IsAbs(cfg.harnessCommand[0]):
 		return config{}, fmt.Errorf("HARNESS_COMMAND starts with %q, not an absolute path", cfg.harnessCommand[0])
 	case !filepath.IsAbs(cfg.sandboxExec):

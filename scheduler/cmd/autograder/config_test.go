@@ -36,9 +36,9 @@ func TestLoadConfig(t *testing.T) {
 }
 
 func TestLoadConfigAPIOnly(t *testing.T) {
-	cfg, err := loadConfig(env(map[string]string{"WORKERS": "0"}))
+	cfg, err := loadConfig(env(map[string]string{"WORKERS": "0", "CODE_DIR": "/var/lib/autograder/submissions"}))
 	if err != nil {
-		t.Fatalf("WORKERS=0 needs no grading settings: %v", err)
+		t.Fatalf("WORKERS=0 needs no grading settings but still stores uploads: %v", err)
 	}
 	if cfg.workers != 0 {
 		t.Errorf("workers %d, want 0", cfg.workers)
