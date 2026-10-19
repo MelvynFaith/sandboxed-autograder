@@ -35,6 +35,7 @@ internal/queue/    JobQueue interface between the handlers and worker pool; in-p
 internal/harness/  starts the Grading Harness for one submission and checks its report
 internal/progress/ in-process hub that carries grading progress from the workers to the WebSocket
 internal/stream/   the /ws/v1/submissions/{id} WebSocket handler
+internal/seed/     creates the first administrator (autograder seed-admin)
 internal/store/    grading database operations: claim, complete, fail, and reconcile
 internal/worker/   worker pool joining the queue, store, and Harness
 internal/sandbox/  delegated cgroup set-up and the start-up sweep of dead sandbox runs
@@ -149,6 +150,32 @@ Admin user lists accept `page` and `page_size` (maximum 100).
 
 Dependencies added for B1 via `go get`: `github.com/golang-jwt/jwt/v5` (JWT) and
 `golang.org/x/crypto` (Argon2id). The existing `pgx/v5` module is used for PostgreSQL access.
+
+## First administrator
+
+Registration always yields a `STUDENT`, and only an administrator can grant `LECTURER` or `ADMIN`
+(FR-19), so a new deployment creates its first administrator from the command line (SRS 13.2):
+
+```sh
+read -rsp 'Administrator password: ' ADMIN_PASSWORD && echo && export ADMIN_PASSWORD
+sudo --preserve-env=ADMIN_PASSWORD -u grader \
+    DATABASE_URL='postgres://grader@/autograder?host=/var/run/postgresql' \
+    /usr/local/bin/autograder seed-admin --name 'NAME' --email 'EMAIL'
+unset ADMIN_PASSWORD
+```
+
+- The password comes only from `ADMIN_PASSWORD`. There is no flag for it, because a flag would show in
+  the process list, the shell history and sudo's log; `read -s` keeps it off the screen and out of the
+  history, and `--preserve-env` passes it without putting it on a command line.
+- It must have 12 to 1024 characters. Name and e-mail follow the registration rules; the e-mail is
+  stored in lower case.
+- It applies the migrations first, so it works before the service has ever started.
+- It writes the account and an `ADMIN_SEEDED` audit log row in one transaction, and refuses, without
+  writing anything, if an administrator already exists or the e-mail address is taken. It never
+  promotes an existing account, so it cannot become a second way to gain the role: further
+  administrators are appointed through `PUT /admin/users/{id}/role`, which is audited.
+
+These are the initial credentials that the handover (SRS 13.5, BAST) passes on.
 
 ## Migrations
 

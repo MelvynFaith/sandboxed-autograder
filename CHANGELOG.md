@@ -28,6 +28,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   migration pair with a test that applies, reverses and checks its constraints, and the `JobQueue`
   interface with its in-process implementation, which serves students round-robin (FR-13). The
   scheduler CI job now starts a PostgreSQL service.
+- First administrator (`scheduler/`): `autograder seed-admin --name NAME --email EMAIL` creates the
+  first `ADMIN` account with the password from `ADMIN_PASSWORD`, and an `ADMIN_SEEDED` audit row; it
+  refuses once an administrator exists (FR-19, SRS 13.2).
 - Grading progress over WebSocket (`scheduler/`): `/ws/v1/submissions/{id}` streams queued, running
   test n of total and the final status to the dashboard, authenticated by the one-time ticket
   (FR-08). The Harness may report each test case it starts on `HARNESS_PROGRESS_FD`.

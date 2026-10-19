@@ -121,6 +121,20 @@ Ubuntu 24.04 (the campus server).
    `delegated cgroup ready`, `grading worker pool started`, `scheduler API listening` and `swept
    leftovers of dead sandbox runs`, and `/healthz` answers `"status":"ok"` with every worker alive.
    Then run the [smoke test](#smoke-test).
+10. **First administrator.** Registration only makes students, so create the account that appoints
+    lecturers (FR-19). The password is read without echo and passed in the environment, never on a
+    command line; `scheduler/README.md`, "First administrator", has the rules.
+
+    ```sh
+    read -rsp 'Administrator password: ' ADMIN_PASSWORD && echo && export ADMIN_PASSWORD
+    sudo --preserve-env=ADMIN_PASSWORD -u grader \
+        DATABASE_URL='postgres://grader@/autograder?host=/var/run/postgresql' \
+        /usr/local/bin/autograder seed-admin --name 'NAME' --email 'EMAIL'
+    unset ADMIN_PASSWORD
+    ```
+
+    It refuses once an administrator exists. These are the credentials the handover (SRS Bagian 13.5)
+    passes on.
 
 ### Backend environment
 
