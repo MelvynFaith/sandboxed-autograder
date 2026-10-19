@@ -13,10 +13,6 @@ import (
 )
 
 func (a *API) createAssignment(w http.ResponseWriter, r *http.Request, user auth.User) {
-	if !canWriteAssignments(user.Role) {
-		writeError(w, http.StatusForbidden, "forbidden", "Hanya dosen atau administrator yang dapat mengubah assignment.")
-		return
-	}
 	courseID, ok := coursePathID(r, "id")
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "Course tidak ditemukan.")
@@ -75,10 +71,6 @@ func (a *API) getAssignment(w http.ResponseWriter, r *http.Request, user auth.Us
 }
 
 func (a *API) updateAssignment(w http.ResponseWriter, r *http.Request, user auth.User) {
-	if !canWriteAssignments(user.Role) {
-		writeError(w, http.StatusForbidden, "forbidden", "Hanya dosen atau administrator yang dapat mengubah assignment.")
-		return
-	}
 	assignmentID, ok := coursePathID(r, "id")
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "Assignment tidak ditemukan.")
@@ -111,10 +103,6 @@ func (a *API) updateAssignment(w http.ResponseWriter, r *http.Request, user auth
 }
 
 func (a *API) deleteAssignment(w http.ResponseWriter, r *http.Request, user auth.User) {
-	if !canWriteAssignments(user.Role) {
-		writeError(w, http.StatusForbidden, "forbidden", "Hanya dosen atau administrator yang dapat mengubah assignment.")
-		return
-	}
 	assignmentID, ok := coursePathID(r, "id")
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "Assignment tidak ditemukan.")
@@ -157,10 +145,6 @@ func (a *API) getResourceLimit(w http.ResponseWriter, r *http.Request, user auth
 }
 
 func (a *API) putResourceLimit(w http.ResponseWriter, r *http.Request, user auth.User) {
-	if !canWriteAssignments(user.Role) {
-		writeError(w, http.StatusForbidden, "forbidden", "Hanya dosen atau administrator yang dapat mengubah batas sumber daya.")
-		return
-	}
 	assignmentID, ok := coursePathID(r, "id")
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "Assignment tidak ditemukan.")
@@ -223,10 +207,6 @@ func (a *API) listTestCases(w http.ResponseWriter, r *http.Request, user auth.Us
 }
 
 func (a *API) createTestCase(w http.ResponseWriter, r *http.Request, user auth.User) {
-	if !canWriteAssignments(user.Role) {
-		writeError(w, http.StatusForbidden, "forbidden", "Hanya dosen atau administrator yang dapat mengubah test case.")
-		return
-	}
 	assignmentID, ok := coursePathID(r, "id")
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "Assignment tidak ditemukan.")
@@ -256,10 +236,6 @@ func (a *API) createTestCase(w http.ResponseWriter, r *http.Request, user auth.U
 }
 
 func (a *API) updateTestCase(w http.ResponseWriter, r *http.Request, user auth.User) {
-	if !canWriteAssignments(user.Role) {
-		writeError(w, http.StatusForbidden, "forbidden", "Hanya dosen atau administrator yang dapat mengubah test case.")
-		return
-	}
 	testCaseID, ok := coursePathID(r, "id")
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "Test case tidak ditemukan.")
@@ -298,10 +274,6 @@ func (a *API) updateTestCase(w http.ResponseWriter, r *http.Request, user auth.U
 }
 
 func (a *API) deleteTestCase(w http.ResponseWriter, r *http.Request, user auth.User) {
-	if !canWriteAssignments(user.Role) {
-		writeError(w, http.StatusForbidden, "forbidden", "Hanya dosen atau administrator yang dapat mengubah test case.")
-		return
-	}
 	testCaseID, ok := coursePathID(r, "id")
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "Test case tidak ditemukan.")
@@ -394,10 +366,6 @@ func validResourceLimit(cpuTimeMS, memoryMB, maxProcesses, timeoutS, maxOutputBy
 	}
 	return int64(tmpfsSizeMB)+16 <= int64(memoryMB) &&
 		2*int64(maxOutputBytes) < int64(tmpfsSizeMB)*(1<<20)
-}
-
-func canWriteAssignments(role string) bool {
-	return role == auth.RoleLecturer || role == auth.RoleAdmin
 }
 
 func (a *API) requireAssignmentAccess(w http.ResponseWriter, r *http.Request, user auth.User, assignmentID int64) bool {

@@ -11,7 +11,7 @@ import (
 
 func TestAssignmentResourceLimitAndTestCaseLifecycle(t *testing.T) {
 	env := newTestEnvironment(t)
-	_, lecturerAccess := createCourseTestUser(t, env, "Lecturer", "lecturer@example.test", auth.RoleLecturer)
+	lecturer, lecturerAccess := createCourseTestUser(t, env, "Lecturer", "lecturer@example.test", auth.RoleLecturer)
 	_, otherLecturerAccess := createCourseTestUser(t, env, "Other Lecturer", "other@example.test", auth.RoleLecturer)
 	student, studentAccess := createCourseTestUser(t, env, "Student", "student@example.test", auth.RoleStudent)
 	_, otherStudentAccess := createCourseTestUser(t, env, "Other Student", "other-student@example.test", auth.RoleStudent)
@@ -24,6 +24,9 @@ func TestAssignmentResourceLimitAndTestCaseLifecycle(t *testing.T) {
 		t.Fatalf("create course = %d, %#v", courseResponse.StatusCode, course)
 	}
 	courseID := int64Field(t, course, "id")
+	if int64Field(t, course, "lecturer_id") != lecturer.ID {
+		t.Fatalf("course lecturer_id = %d; want lecturer %d", int64Field(t, course, "lecturer_id"), lecturer.ID)
+	}
 	coursePath := fmt.Sprintf("/api/v1/courses/%d", courseID)
 	enrolled, _ := env.request(t, http.MethodPost, coursePath+"/enrollments", map[string]string{
 		"email": student.Email,
@@ -108,9 +111,10 @@ func TestAssignmentResourceLimitAndTestCaseLifecycle(t *testing.T) {
 		assertSubmissionStale(t, env, submissionID, true)
 	}
 	studentWriteCase, studentWriteCasePayload := env.request(t, http.MethodPost, assignmentPath+"/testcases", visibleCase, studentAccess)
-	if studentWriteCase.StatusCode != http.StatusForbidden {
-		t.Fatalf("student create test case = %d, %#v; want 403", studentWriteCase.StatusCode, studentWriteCasePayload)
+	if studentWriteCase.StatusCode != http.StatusNotFound {
+		t.Fatalf("student create test case = %d, %#v; want 404", studentWriteCase.StatusCode, studentWriteCasePayload)
 	}
+	assertError(t, studentWriteCasePayload, "not_found")
 	invalidCase, invalidCasePayload := env.request(t, http.MethodPost, assignmentPath+"/testcases", map[string]any{
 		"input": "", "expected_output": "", "weight": 1, "is_hidden": false, "match_mode": "APPROXIMATE",
 	}, lecturerAccess)
@@ -254,10 +258,10 @@ func TestAssignmentResourceLimitAndTestCaseLifecycle(t *testing.T) {
 		token  string
 		want   int
 	}{
-		{"student write forbidden", http.MethodPost, courseAssignmentPath, map[string]string{
+		{"student write hidden", http.MethodPost, courseAssignmentPath, map[string]string{
 			"title": "No", "description": "", "deadline_at": "2026-10-20T12:00:00Z",
 			"late_until_at": "2026-10-21T12:00:00Z",
-		}, studentAccess, http.StatusForbidden},
+		}, studentAccess, http.StatusNotFound},
 		{"unenrolled student hidden", http.MethodGet, assignmentPath, nil, otherStudentAccess, http.StatusNotFound},
 		{"other lecturer hidden", http.MethodGet, assignmentPath, nil, otherLecturerAccess, http.StatusNotFound},
 		{"missing token", http.MethodGet, assignmentPath, nil, "", http.StatusUnauthorized},
@@ -285,8 +289,8 @@ func assertSubmissionStale(t *testing.T, env *testEnvironment, submissionID int6
 
 func TestAssignmentValidationAndProtectedDelete(t *testing.T) {
 	env := newTestEnvironment(t)
-	_, lecturerAccess := createCourseTestUser(t, env, "Lecturer", "lecturer@example.test", auth.RoleLecturer)
-	student, _ := createCourseTestUser(t, env, "Student", "student@example.test", auth.RoleStudent)
+	lecturer, lecturerAccess := createCourseTestUser(t, env, "Lecturer", "lecturer@example.test", auth.RoleLecturer)
+	student, studentAccess := createCourseTestUser(t, env, "Student", "student@example.test", auth.RoleStudent)
 	_, otherLecturerAccess := createCourseTestUser(t, env, "Other", "other@example.test", auth.RoleLecturer)
 
 	courseResponse, course := env.request(t, http.MethodPost, "/api/v1/courses", map[string]string{
@@ -305,8 +309,28 @@ func TestAssignmentValidationAndProtectedDelete(t *testing.T) {
 	if created.StatusCode != http.StatusCreated {
 		t.Fatalf("create assignment = %d, %#v", created.StatusCode, assignment)
 	}
+	if int64Field(t, course, "lecturer_id") != lecturer.ID {
+		t.Fatalf("course lecturer_id = %d; want lecturer %d", int64Field(t, course, "lecturer_id"), lecturer.ID)
+	}
 	assignmentID := int64Field(t, assignment, "id")
 	assignmentPath := fmt.Sprintf("/api/v1/assignments/%d", assignmentID)
+	resourceLimit := map[string]int{
+		"cpu_time_ms": 1000, "memory_mb": 64, "max_processes": 5,
+		"timeout_s": 5, "max_output_bytes": 1 << 20, "tmpfs_size_mb": 32,
+	}
+	limitResponse, limitPayload := env.request(t, http.MethodPut, assignmentPath+"/resource-limit", resourceLimit, lecturerAccess)
+	if limitResponse.StatusCode != http.StatusOK {
+		t.Fatalf("set resource limit = %d, %#v", limitResponse.StatusCode, limitPayload)
+	}
+	caseResponse, testCase := env.request(t, http.MethodPost, assignmentPath+"/testcases", map[string]any{
+		"external_id": "tc_01", "input": "1", "expected_output": "1",
+		"weight": 1, "is_hidden": false, "match_mode": "EXACT",
+	}, lecturerAccess)
+	if caseResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("create test case = %d, %#v", caseResponse.StatusCode, testCase)
+	}
+	testCaseID := int64Field(t, testCase, "id")
+	testCasePath := fmt.Sprintf("/api/v1/testcases/%d", testCaseID)
 
 	for _, request := range []struct {
 		name string
@@ -372,9 +396,110 @@ func TestAssignmentValidationAndProtectedDelete(t *testing.T) {
 	}
 	assertError(t, deletePayload, "conflict")
 
-	otherLecturerWrite, otherPayload := env.request(t, http.MethodPut, assignmentPath, assignmentBody, otherLecturerAccess)
-	if otherLecturerWrite.StatusCode != http.StatusNotFound {
-		t.Fatalf("other lecturer update = %d, %#v; want 404", otherLecturerWrite.StatusCode, otherPayload)
+	for _, actor := range []struct {
+		name  string
+		token string
+	}{
+		{"other lecturer", otherLecturerAccess},
+		{"student", studentAccess},
+	} {
+		for _, request := range []struct {
+			name   string
+			method string
+			path   string
+			body   any
+		}{
+			{"create assignment", http.MethodPost, coursePath + "/assignments", assignmentBody},
+			{"update assignment", http.MethodPut, assignmentPath, assignmentBody},
+			{"delete assignment", http.MethodDelete, assignmentPath, nil},
+			{"update resource limit", http.MethodPut, assignmentPath + "/resource-limit", resourceLimit},
+			{"create test case", http.MethodPost, assignmentPath + "/testcases", map[string]any{
+				"input": "2", "expected_output": "2", "weight": 1, "is_hidden": false, "match_mode": "EXACT",
+			}},
+			{"update test case", http.MethodPut, testCasePath, map[string]any{
+				"external_id": "tc_02", "input": "2", "expected_output": "2",
+				"weight": 1, "is_hidden": false, "match_mode": "EXACT",
+			}},
+			{"delete test case", http.MethodDelete, testCasePath, nil},
+		} {
+			response, payload := env.request(t, request.method, request.path, request.body, actor.token)
+			if response.StatusCode != http.StatusNotFound {
+				t.Fatalf("%s %s = %d, %#v; want 404", actor.name+" "+request.name, request.path, response.StatusCode, payload)
+			}
+			assertError(t, payload, "not_found")
+		}
 	}
-	assertError(t, otherPayload, "not_found")
+}
+
+func TestDemotedAssignmentOwnerCannotWrite(t *testing.T) {
+	env := newTestEnvironment(t)
+	lecturer, lecturerAccess := createCourseTestUser(t, env, "Lecturer", "lecturer@example.test", auth.RoleLecturer)
+	_, adminAccess := createCourseTestUser(t, env, "Admin", "admin@example.test", auth.RoleAdmin)
+
+	courseResponse, course := env.request(t, http.MethodPost, "/api/v1/courses", map[string]string{
+		"name": "Algorithms", "code": "CS101", "term": "2026",
+	}, lecturerAccess)
+	if courseResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("create course = %d, %#v", courseResponse.StatusCode, course)
+	}
+	courseID := int64Field(t, course, "id")
+	if int64Field(t, course, "lecturer_id") != lecturer.ID {
+		t.Fatalf("course lecturer_id = %d; want lecturer %d", int64Field(t, course, "lecturer_id"), lecturer.ID)
+	}
+	coursePath := fmt.Sprintf("/api/v1/courses/%d", courseID)
+	assignmentBody := map[string]string{
+		"title": "Sorting", "description": "Sort the input.",
+		"deadline_at": "2026-10-20T12:00:00Z", "late_until_at": "2026-10-21T12:00:00Z",
+	}
+	created, assignment := env.request(t, http.MethodPost, coursePath+"/assignments", assignmentBody, lecturerAccess)
+	if created.StatusCode != http.StatusCreated {
+		t.Fatalf("create assignment = %d, %#v", created.StatusCode, assignment)
+	}
+	assignmentID := int64Field(t, assignment, "id")
+	assignmentPath := fmt.Sprintf("/api/v1/assignments/%d", assignmentID)
+	limitBody := map[string]int{
+		"cpu_time_ms": 1000, "memory_mb": 64, "max_processes": 5,
+		"timeout_s": 5, "max_output_bytes": 1 << 20, "tmpfs_size_mb": 32,
+	}
+	limitResponse, limitPayload := env.request(t, http.MethodPut, assignmentPath+"/resource-limit", limitBody, lecturerAccess)
+	if limitResponse.StatusCode != http.StatusOK {
+		t.Fatalf("set resource limit = %d, %#v", limitResponse.StatusCode, limitPayload)
+	}
+	caseBody := map[string]any{
+		"external_id": "tc_01", "input": "1", "expected_output": "1",
+		"weight": 1, "is_hidden": false, "match_mode": "EXACT",
+	}
+	caseResponse, testCase := env.request(t, http.MethodPost, assignmentPath+"/testcases", caseBody, lecturerAccess)
+	if caseResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("create test case = %d, %#v", caseResponse.StatusCode, testCase)
+	}
+	testCasePath := fmt.Sprintf("/api/v1/testcases/%d", int64Field(t, testCase, "id"))
+
+	demoted, demotedPayload := env.request(t, http.MethodPut,
+		"/api/v1/admin/users/"+strconv.FormatInt(lecturer.ID, 10)+"/role",
+		map[string]string{"role": auth.RoleStudent}, adminAccess)
+	if demoted.StatusCode != http.StatusOK || demotedPayload["role"] != auth.RoleStudent {
+		t.Fatalf("demote assignment owner = %d, %#v", demoted.StatusCode, demotedPayload)
+	}
+
+	for _, request := range []struct {
+		name   string
+		method string
+		path   string
+		body   any
+	}{
+		{"update assignment", http.MethodPut, assignmentPath, assignmentBody},
+		{"create assignment", http.MethodPost, coursePath + "/assignments", assignmentBody},
+		{"delete assignment", http.MethodDelete, assignmentPath, nil},
+		{"update resource limit", http.MethodPut, assignmentPath + "/resource-limit", limitBody},
+		{"create test case", http.MethodPost, assignmentPath + "/testcases", caseBody},
+		{"update test case", http.MethodPut, testCasePath, caseBody},
+		{"delete test case", http.MethodDelete, testCasePath, nil},
+	} {
+		response, payload := env.request(t, request.method, request.path, request.body, lecturerAccess)
+		if response.StatusCode != http.StatusNotFound {
+			t.Fatalf("demoted owner %s = %d, %#v; want 404", request.name, response.StatusCode, payload)
+		}
+		assertError(t, payload, "not_found")
+	}
 }
