@@ -78,3 +78,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   against NFR-01a at 5, 10 and 30 accounts and NFR-01b at 60 and 100, `ratelimit.js` against FR-14
   with 200 submissions in a row from one account, and `fairness.js` against FR-13 with one account
   flooding the queue.
+- Submission file expiry (`scheduler/`, `infra/`): `autograder expire-code`, run daily by a systemd
+  timer, deletes the stored files of submissions whose assignment closed more than a year ago and
+  keeps their grades, recording the deletion in the new `submissions.code_deleted_at` (NFR-13,
+  SRS 13.4). `--dry-run` counts them.
