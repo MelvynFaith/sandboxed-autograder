@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/auth"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/courses"
 )
 
 func TestAssignmentResourceLimitAndTestCaseLifecycle(t *testing.T) {
@@ -35,9 +37,14 @@ func TestAssignmentResourceLimitAndTestCaseLifecycle(t *testing.T) {
 		t.Fatalf("enroll student = %d; want 204", enrolled.StatusCode)
 	}
 
-	assignmentResponse, assignment := env.request(t, http.MethodPost, coursePath+"/assignments", map[string]string{
+	resourceLimit := map[string]int{
+		"cpu_time_ms": 2000, "memory_mb": 64, "max_processes": 5,
+		"timeout_s": 5, "max_output_bytes": 1 << 20, "tmpfs_size_mb": 32,
+	}
+	assignmentResponse, assignment := env.request(t, http.MethodPost, coursePath+"/assignments", map[string]any{
 		"title": "Sorting", "description": "Sort the input.",
 		"deadline_at": "2026-10-20T12:00:00Z", "late_until_at": "2026-10-21T12:00:00Z",
+		"resource_limit": resourceLimit,
 	}, lecturerAccess)
 	if assignmentResponse.StatusCode != http.StatusCreated {
 		t.Fatalf("create assignment = %d, %#v", assignmentResponse.StatusCode, assignment)
@@ -49,24 +56,26 @@ func TestAssignmentResourceLimitAndTestCaseLifecycle(t *testing.T) {
 		t.Fatalf("assignment response = %#v", assignment)
 	}
 
-	resourceLimit := map[string]int{
-		"cpu_time_ms": 2000, "memory_mb": 64, "max_processes": 5,
-		"timeout_s": 5, "max_output_bytes": 1 << 20, "tmpfs_size_mb": 32,
-	}
-	missingLimit, missingLimitPayload := env.request(t, http.MethodGet, assignmentPath+"/resource-limit", nil, lecturerAccess)
-	if missingLimit.StatusCode != http.StatusNotFound {
-		t.Fatalf("get unset resource limit = %d, %#v; want 404", missingLimit.StatusCode, missingLimitPayload)
-	}
-	assertError(t, missingLimitPayload, "not_found")
-	limitResponse, limit := env.request(t, http.MethodPut, assignmentPath+"/resource-limit", resourceLimit, lecturerAccess)
-	if limitResponse.StatusCode != http.StatusOK {
-		t.Fatalf("set resource limit = %d, %#v", limitResponse.StatusCode, limit)
-	}
-	if int64Field(t, limit, "assignment_id") != assignmentID || limit["memory_mb"] != float64(64) {
-		t.Fatalf("resource limit response = %#v", limit)
-	}
 	getLimit, getLimitPayload := env.request(t, http.MethodGet, assignmentPath+"/resource-limit", nil, lecturerAccess)
 	if getLimit.StatusCode != http.StatusOK || getLimitPayload["tmpfs_size_mb"] != float64(32) {
+		t.Fatalf("get resource limit after create = %d, %#v", getLimit.StatusCode, getLimitPayload)
+	}
+	if int64Field(t, getLimitPayload, "assignment_id") != assignmentID || getLimitPayload["memory_mb"] != float64(64) {
+		t.Fatalf("resource limit after create = %#v", getLimitPayload)
+	}
+	updatedLimit := map[string]int{
+		"cpu_time_ms": 3000, "memory_mb": 80, "max_processes": 7,
+		"timeout_s": 8, "max_output_bytes": 1 << 20, "tmpfs_size_mb": 32,
+	}
+	limitResponse, limit := env.request(t, http.MethodPut, assignmentPath+"/resource-limit", updatedLimit, lecturerAccess)
+	if limitResponse.StatusCode != http.StatusOK {
+		t.Fatalf("update resource limit = %d, %#v", limitResponse.StatusCode, limit)
+	}
+	if int64Field(t, limit, "assignment_id") != assignmentID || limit["memory_mb"] != float64(80) {
+		t.Fatalf("resource limit response = %#v", limit)
+	}
+	getLimit, getLimitPayload = env.request(t, http.MethodGet, assignmentPath+"/resource-limit", nil, lecturerAccess)
+	if getLimit.StatusCode != http.StatusOK || getLimitPayload["memory_mb"] != float64(80) {
 		t.Fatalf("get resource limit = %d, %#v", getLimit.StatusCode, getLimitPayload)
 	}
 
@@ -160,16 +169,19 @@ func TestAssignmentResourceLimitAndTestCaseLifecycle(t *testing.T) {
 
 	studentCases, studentCasesPayload := env.request(t, http.MethodGet, assignmentPath+"/testcases", nil, studentAccess)
 	studentItems := pageItems(t, studentCasesPayload)
+	assertNoHiddenTestCaseData(t, studentItems)
 	if studentCases.StatusCode != http.StatusOK || len(studentItems) != 1 {
 		t.Fatalf("student visible test cases = %d, %#v", studentCases.StatusCode, studentCasesPayload)
 	}
 	publicCase, ok := studentItems[0].(map[string]any)
-	if !ok || publicCase["input"] != "1 2" || publicCase["expected_output"] != "2 1" {
+	if !ok || publicCase["input"] != "1 2" || publicCase["expected_output"] != "2 1" || publicCase["is_hidden"] != false {
 		t.Fatalf("student test case = %#v", studentItems[0])
 	}
-	if _, exists := studentCasesPayload["secret input"]; exists {
-		t.Fatal("hidden test input was exposed")
+	studentAssignmentDetail, studentAssignmentDetailPayload := env.request(t, http.MethodGet, assignmentPath, nil, studentAccess)
+	if studentAssignmentDetail.StatusCode != http.StatusOK {
+		t.Fatalf("student assignment detail = %d, %#v", studentAssignmentDetail.StatusCode, studentAssignmentDetailPayload)
 	}
+	assertNoHiddenTestCaseData(t, studentAssignmentDetailPayload)
 
 	lecturerCases, lecturerCasesPayload := env.request(t, http.MethodGet, assignmentPath+"/testcases", nil, lecturerAccess)
 	if lecturerCases.StatusCode != http.StatusOK || len(pageItems(t, lecturerCasesPayload)) != 2 {
@@ -202,12 +214,12 @@ func TestAssignmentResourceLimitAndTestCaseLifecycle(t *testing.T) {
 	for _, submissionID := range submissionIDs {
 		assertSubmissionStale(t, env, submissionID, true)
 	}
-	var visibleStillExists bool
-	if err := env.pool.QueryRow(t.Context(), `SELECT EXISTS (SELECT 1 FROM test_cases WHERE id = $1)`, testCaseID).Scan(&visibleStillExists); err != nil {
-		t.Fatalf("check physically deleted test case: %v", err)
+	var visibleRetired bool
+	if err := env.pool.QueryRow(t.Context(), `SELECT is_deleted FROM test_cases WHERE id = $1`, testCaseID).Scan(&visibleRetired); err != nil {
+		t.Fatalf("check soft-deleted test case without result: %v", err)
 	}
-	if visibleStillExists {
-		t.Fatal("test case without results was not physically deleted")
+	if !visibleRetired {
+		t.Fatal("test case on assignment with submissions was not soft deleted")
 	}
 	afterDelete, afterDeletePayload := env.request(t, http.MethodGet, assignmentPath+"/testcases", nil, lecturerAccess)
 	if afterDelete.StatusCode != http.StatusOK || len(pageItems(t, afterDeletePayload)) != 1 {
@@ -287,6 +299,159 @@ func assertSubmissionStale(t *testing.T, env *testEnvironment, submissionID int6
 	}
 }
 
+func assertNoHiddenTestCaseData(t *testing.T, value any) {
+	t.Helper()
+	switch item := value.(type) {
+	case map[string]any:
+		if item["is_hidden"] == true {
+			t.Fatalf("hidden test case was exposed: %#v", item)
+		}
+		for key, child := range item {
+			if text, ok := child.(string); ok &&
+				(key == "external_id" && text == "hidden_case" ||
+					key == "input" && text == "secret input" ||
+					key == "expected_output" && text == "secret output") {
+				t.Fatalf("hidden test case field %q was exposed: %#v", key, text)
+			}
+			assertNoHiddenTestCaseData(t, child)
+		}
+	case []any:
+		for _, child := range item {
+			assertNoHiddenTestCaseData(t, child)
+		}
+	}
+}
+
+func TestCreateAssignmentRollsBackWhenResourceLimitInsertFails(t *testing.T) {
+	env := newTestEnvironment(t)
+	_, lecturerAccess := createCourseTestUser(t, env, "Lecturer", "lecturer@example.test", auth.RoleLecturer)
+	courseResponse, course := env.request(t, http.MethodPost, "/api/v1/courses", map[string]string{
+		"name": "Algorithms", "code": "CS101", "term": "2026",
+	}, lecturerAccess)
+	if courseResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("create course = %d, %#v", courseResponse.StatusCode, course)
+	}
+	courseID := int64Field(t, course, "id")
+	_, err := courses.NewStore(env.pool).CreateAssignment(
+		t.Context(), courseID, "Invalid resource limit", "",
+		time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC),
+		time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC),
+		courses.ResourceLimit{
+			CPUTimeMS: 1000, MemoryMB: 64, MaxProcesses: 5, TimeoutS: 5,
+			MaxOutputBytes: 1 << 20, TmpfsSizeMB: 49,
+		},
+	)
+	if err == nil {
+		t.Fatal("create assignment with database-invalid resource limit succeeded")
+	}
+	var assignmentCount int
+	if err := env.pool.QueryRow(t.Context(), `SELECT count(*) FROM assignments WHERE course_id = $1`, courseID).Scan(&assignmentCount); err != nil {
+		t.Fatalf("count assignments after failed create: %v", err)
+	}
+	if assignmentCount != 0 {
+		t.Fatalf("failed create left %d partial assignment rows; want 0", assignmentCount)
+	}
+}
+
+func TestDeleteTestCaseDuringRunningSubmissionSoftDeletes(t *testing.T) {
+	env := newTestEnvironment(t)
+	lecturer, lecturerAccess := createCourseTestUser(t, env, "Lecturer", "lecturer@example.test", auth.RoleLecturer)
+	student, _ := createCourseTestUser(t, env, "Student", "student@example.test", auth.RoleStudent)
+	courseResponse, course := env.request(t, http.MethodPost, "/api/v1/courses", map[string]string{
+		"name": "Algorithms", "code": "CS101", "term": "2026",
+	}, lecturerAccess)
+	if courseResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("create course = %d, %#v", courseResponse.StatusCode, course)
+	}
+	if int64Field(t, course, "lecturer_id") != lecturer.ID {
+		t.Fatalf("course lecturer_id = %d; want lecturer %d", int64Field(t, course, "lecturer_id"), lecturer.ID)
+	}
+	coursePath := fmt.Sprintf("/api/v1/courses/%d", int64Field(t, course, "id"))
+	limit := map[string]int{
+		"cpu_time_ms": 1000, "memory_mb": 64, "max_processes": 5,
+		"timeout_s": 5, "max_output_bytes": 1 << 20, "tmpfs_size_mb": 32,
+	}
+	assignmentResponse, assignment := env.request(t, http.MethodPost, coursePath+"/assignments", map[string]any{
+		"title": "Running test", "description": "",
+		"deadline_at": "2026-10-20T12:00:00Z", "late_until_at": "2026-10-21T12:00:00Z",
+		"resource_limit": limit,
+	}, lecturerAccess)
+	if assignmentResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("create assignment = %d, %#v", assignmentResponse.StatusCode, assignment)
+	}
+	assignmentID := int64Field(t, assignment, "id")
+	var submissionID int64
+	err := env.pool.QueryRow(t.Context(), `
+		INSERT INTO submissions (user_id, assignment_id, code_path, original_filename, size_bytes, status)
+		VALUES ($1, $2, 'test/path/running', 'solution.py', 1, 'RUNNING')
+		RETURNING id
+	`, student.ID, assignmentID).Scan(&submissionID)
+	if err != nil {
+		t.Fatalf("insert running submission: %v", err)
+	}
+	caseResponse, testCase := env.request(t, http.MethodPost,
+		fmt.Sprintf("/api/v1/assignments/%d/testcases", assignmentID),
+		map[string]any{
+			"external_id": "running_case", "input": "1", "expected_output": "1",
+			"weight": 1, "is_hidden": false, "match_mode": "EXACT",
+		}, lecturerAccess)
+	if caseResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("create running test case = %d, %#v", caseResponse.StatusCode, testCase)
+	}
+	testCaseID := int64Field(t, testCase, "id")
+	deleted, payload := env.request(t, http.MethodDelete,
+		fmt.Sprintf("/api/v1/testcases/%d", testCaseID), nil, lecturerAccess)
+	if deleted.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete running test case = %d, %#v", deleted.StatusCode, payload)
+	}
+	var isDeleted bool
+	if err := env.pool.QueryRow(t.Context(), `SELECT is_deleted FROM test_cases WHERE id = $1`, testCaseID).Scan(&isDeleted); err != nil {
+		t.Fatalf("read running test case after delete: %v", err)
+	}
+	if !isDeleted {
+		t.Fatal("test case for a running submission was not soft deleted")
+	}
+	assertSubmissionStale(t, env, submissionID, true)
+	if _, err := env.pool.Exec(t.Context(), `
+		INSERT INTO results (submission_id, testcase_id, status, exec_time_ms, memory_kb, memory_source, score)
+		VALUES ($1, $2, 'PASSED', 1, 1, 'CGROUP_PEAK', 1)
+	`, submissionID, testCaseID); err != nil {
+		t.Fatalf("insert result after running test case delete: %v", err)
+	}
+
+	assignmentResponse, assignment = env.request(t, http.MethodPost, coursePath+"/assignments", map[string]any{
+		"title": "No submissions", "description": "",
+		"deadline_at": "2026-10-20T12:00:00Z", "late_until_at": "2026-10-21T12:00:00Z",
+		"resource_limit": limit,
+	}, lecturerAccess)
+	if assignmentResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("create assignment without submissions = %d, %#v", assignmentResponse.StatusCode, assignment)
+	}
+	assignmentID = int64Field(t, assignment, "id")
+	caseResponse, testCase = env.request(t, http.MethodPost,
+		fmt.Sprintf("/api/v1/assignments/%d/testcases", assignmentID),
+		map[string]any{
+			"external_id": "unused_case", "input": "2", "expected_output": "2",
+			"weight": 1, "is_hidden": false, "match_mode": "EXACT",
+		}, lecturerAccess)
+	if caseResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("create test case without submissions = %d, %#v", caseResponse.StatusCode, testCase)
+	}
+	testCaseID = int64Field(t, testCase, "id")
+	deleted, payload = env.request(t, http.MethodDelete,
+		fmt.Sprintf("/api/v1/testcases/%d", testCaseID), nil, lecturerAccess)
+	if deleted.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete test case without submissions = %d, %#v", deleted.StatusCode, payload)
+	}
+	var stillExists bool
+	if err := env.pool.QueryRow(t.Context(), `SELECT EXISTS (SELECT 1 FROM test_cases WHERE id = $1)`, testCaseID).Scan(&stillExists); err != nil {
+		t.Fatalf("check hard-deleted test case: %v", err)
+	}
+	if stillExists {
+		t.Fatal("test case without submissions was not physically deleted")
+	}
+}
+
 func TestAssignmentValidationAndProtectedDelete(t *testing.T) {
 	env := newTestEnvironment(t)
 	lecturer, lecturerAccess := createCourseTestUser(t, env, "Lecturer", "lecturer@example.test", auth.RoleLecturer)
@@ -301,9 +466,14 @@ func TestAssignmentValidationAndProtectedDelete(t *testing.T) {
 	}
 	courseID := int64Field(t, course, "id")
 	coursePath := fmt.Sprintf("/api/v1/courses/%d", courseID)
-	assignmentBody := map[string]string{
+	resourceLimit := map[string]int{
+		"cpu_time_ms": 1000, "memory_mb": 64, "max_processes": 5,
+		"timeout_s": 5, "max_output_bytes": 1 << 20, "tmpfs_size_mb": 32,
+	}
+	assignmentBody := map[string]any{
 		"title": "Sorting", "description": "Sort the input.",
 		"deadline_at": "2026-10-20T12:00:00Z", "late_until_at": "2026-10-21T12:00:00Z",
+		"resource_limit": resourceLimit,
 	}
 	created, assignment := env.request(t, http.MethodPost, coursePath+"/assignments", assignmentBody, lecturerAccess)
 	if created.StatusCode != http.StatusCreated {
@@ -314,14 +484,6 @@ func TestAssignmentValidationAndProtectedDelete(t *testing.T) {
 	}
 	assignmentID := int64Field(t, assignment, "id")
 	assignmentPath := fmt.Sprintf("/api/v1/assignments/%d", assignmentID)
-	resourceLimit := map[string]int{
-		"cpu_time_ms": 1000, "memory_mb": 64, "max_processes": 5,
-		"timeout_s": 5, "max_output_bytes": 1 << 20, "tmpfs_size_mb": 32,
-	}
-	limitResponse, limitPayload := env.request(t, http.MethodPut, assignmentPath+"/resource-limit", resourceLimit, lecturerAccess)
-	if limitResponse.StatusCode != http.StatusOK {
-		t.Fatalf("set resource limit = %d, %#v", limitResponse.StatusCode, limitPayload)
-	}
 	caseResponse, testCase := env.request(t, http.MethodPost, assignmentPath+"/testcases", map[string]any{
 		"external_id": "tc_01", "input": "1", "expected_output": "1",
 		"weight": 1, "is_hidden": false, "match_mode": "EXACT",
@@ -334,13 +496,13 @@ func TestAssignmentValidationAndProtectedDelete(t *testing.T) {
 
 	for _, request := range []struct {
 		name string
-		body map[string]string
+		body map[string]any
 	}{
-		{"late window before deadline", map[string]string{
+		{"late window before deadline", map[string]any{
 			"title": "Invalid", "deadline_at": "2026-10-21T12:00:00Z",
 			"late_until_at": "2026-10-20T12:00:00Z",
 		}},
-		{"malformed deadline", map[string]string{
+		{"malformed deadline", map[string]any{
 			"title": "Invalid", "deadline_at": "tomorrow",
 			"late_until_at": "2026-10-21T12:00:00Z",
 		}},
@@ -351,6 +513,42 @@ func TestAssignmentValidationAndProtectedDelete(t *testing.T) {
 				t.Fatalf("invalid assignment status = %d, %#v; want 400", response.StatusCode, payload)
 			}
 			assertError(t, payload, "invalid_assignment")
+		})
+	}
+
+	missingCreateLimit, missingCreateLimitPayload := env.request(t, http.MethodPost, coursePath+"/assignments", map[string]any{
+		"title": "Missing limit", "description": "No resource limit.",
+		"deadline_at": "2026-10-20T12:00:00Z", "late_until_at": "2026-10-21T12:00:00Z",
+	}, lecturerAccess)
+	if missingCreateLimit.StatusCode != http.StatusBadRequest {
+		t.Fatalf("create assignment without resource limit = %d, %#v; want 400", missingCreateLimit.StatusCode, missingCreateLimitPayload)
+	}
+	assertError(t, missingCreateLimitPayload, "invalid_request")
+
+	for _, request := range []struct {
+		name  string
+		limit map[string]int
+	}{
+		{"tmpfs exceeds memory allowance", map[string]int{
+			"cpu_time_ms": 1000, "memory_mb": 64, "max_processes": 5,
+			"timeout_s": 5, "max_output_bytes": 1 << 20, "tmpfs_size_mb": 49,
+		}},
+		{"output exceeds tmpfs allowance", map[string]int{
+			"cpu_time_ms": 1000, "memory_mb": 64, "max_processes": 5,
+			"timeout_s": 5, "max_output_bytes": 16 << 20, "tmpfs_size_mb": 32,
+		}},
+	} {
+		t.Run("create invalid resource limit/"+request.name, func(t *testing.T) {
+			body := map[string]any{
+				"title": "Invalid limit", "description": "Invalid resource limit.",
+				"deadline_at": "2026-10-20T12:00:00Z", "late_until_at": "2026-10-21T12:00:00Z",
+				"resource_limit": request.limit,
+			}
+			response, payload := env.request(t, http.MethodPost, coursePath+"/assignments", body, lecturerAccess)
+			if response.StatusCode != http.StatusBadRequest {
+				t.Fatalf("create assignment with invalid resource limit = %d, %#v; want 400", response.StatusCode, payload)
+			}
+			assertError(t, payload, "invalid_request")
 		})
 	}
 
@@ -447,9 +645,14 @@ func TestDemotedAssignmentOwnerCannotWrite(t *testing.T) {
 		t.Fatalf("course lecturer_id = %d; want lecturer %d", int64Field(t, course, "lecturer_id"), lecturer.ID)
 	}
 	coursePath := fmt.Sprintf("/api/v1/courses/%d", courseID)
-	assignmentBody := map[string]string{
+	limitBody := map[string]int{
+		"cpu_time_ms": 1000, "memory_mb": 64, "max_processes": 5,
+		"timeout_s": 5, "max_output_bytes": 1 << 20, "tmpfs_size_mb": 32,
+	}
+	assignmentBody := map[string]any{
 		"title": "Sorting", "description": "Sort the input.",
 		"deadline_at": "2026-10-20T12:00:00Z", "late_until_at": "2026-10-21T12:00:00Z",
+		"resource_limit": limitBody,
 	}
 	created, assignment := env.request(t, http.MethodPost, coursePath+"/assignments", assignmentBody, lecturerAccess)
 	if created.StatusCode != http.StatusCreated {
@@ -457,14 +660,6 @@ func TestDemotedAssignmentOwnerCannotWrite(t *testing.T) {
 	}
 	assignmentID := int64Field(t, assignment, "id")
 	assignmentPath := fmt.Sprintf("/api/v1/assignments/%d", assignmentID)
-	limitBody := map[string]int{
-		"cpu_time_ms": 1000, "memory_mb": 64, "max_processes": 5,
-		"timeout_s": 5, "max_output_bytes": 1 << 20, "tmpfs_size_mb": 32,
-	}
-	limitResponse, limitPayload := env.request(t, http.MethodPut, assignmentPath+"/resource-limit", limitBody, lecturerAccess)
-	if limitResponse.StatusCode != http.StatusOK {
-		t.Fatalf("set resource limit = %d, %#v", limitResponse.StatusCode, limitPayload)
-	}
 	caseBody := map[string]any{
 		"external_id": "tc_01", "input": "1", "expected_output": "1",
 		"weight": 1, "is_hidden": false, "match_mode": "EXACT",

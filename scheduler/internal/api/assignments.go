@@ -25,8 +25,18 @@ func (a *API) createAssignment(w http.ResponseWriter, r *http.Request, user auth
 	if !ok {
 		return
 	}
+	if request.ResourceLimit == nil || !request.ResourceLimit.valid() {
+		writeError(w, http.StatusBadRequest, "invalid_request", "resource_limit wajib diisi dengan batas sumber daya yang valid.")
+		return
+	}
 	assignment, err := a.courses.CreateAssignment(
 		r.Context(), courseID, request.Title, request.Description, request.DeadlineAt, request.LateUntilAt,
+		courses.ResourceLimit{
+			CPUTimeMS: request.ResourceLimit.CPUTimeMS, MemoryMB: request.ResourceLimit.MemoryMB,
+			MaxProcesses: request.ResourceLimit.MaxProcesses,
+			TimeoutS:     request.ResourceLimit.TimeoutS, MaxOutputBytes: request.ResourceLimit.MaxOutputBytes,
+			TmpfsSizeMB: request.ResourceLimit.TmpfsSizeMB,
+		},
 	)
 	if err != nil {
 		internalError(w, "create assignment", err)
@@ -133,10 +143,6 @@ func (a *API) getResourceLimit(w http.ResponseWriter, r *http.Request, user auth
 		return
 	}
 	limit, err := a.courses.GetResourceLimit(r.Context(), assignmentID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, http.StatusNotFound, "not_found", "Batas sumber daya belum diatur.")
-		return
-	}
 	if err != nil {
 		internalError(w, "get resource limit", err)
 		return
@@ -153,30 +159,26 @@ func (a *API) putResourceLimit(w http.ResponseWriter, r *http.Request, user auth
 	if !a.requireAssignmentManager(w, r, user, assignmentID) {
 		return
 	}
-	var request struct {
-		CPUTimeMS      int `json:"cpu_time_ms"`
-		MemoryMB       int `json:"memory_mb"`
-		MaxProcesses   int `json:"max_processes"`
-		TimeoutS       int `json:"timeout_s"`
-		MaxOutputBytes int `json:"max_output_bytes"`
-		TmpfsSizeMB    int `json:"tmpfs_size_mb"`
-	}
+	var request resourceLimitRequest
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	if !validResourceLimit(request.CPUTimeMS, request.MemoryMB, request.MaxProcesses,
-		request.TimeoutS, request.MaxOutputBytes, request.TmpfsSizeMB) {
+	if !request.valid() {
 		writeError(w, http.StatusBadRequest, "invalid_resource_limit", "Semua batas harus bilangan bulat positif; tmpfs_size_mb + 16 harus <= memory_mb dan 2 * max_output_bytes harus < tmpfs_size_mb * 2^20.")
 		return
 	}
 
-	limit, err := a.courses.UpsertResourceLimit(r.Context(), courses.ResourceLimit{
+	limit, err := a.courses.UpdateResourceLimit(r.Context(), courses.ResourceLimit{
 		AssignmentID: assignmentID, CPUTimeMS: request.CPUTimeMS, MemoryMB: request.MemoryMB,
 		MaxProcesses: request.MaxProcesses, TimeoutS: request.TimeoutS,
 		MaxOutputBytes: request.MaxOutputBytes, TmpfsSizeMB: request.TmpfsSizeMB,
 	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "not_found", "Assignment tidak ditemukan.")
+		return
+	}
 	if err != nil {
-		internalError(w, "save resource limit", err)
+		internalError(w, "update resource limit", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, limit)
@@ -301,18 +303,20 @@ func (a *API) deleteTestCase(w http.ResponseWriter, r *http.Request, user auth.U
 }
 
 type assignmentRequest struct {
-	Title       string
-	Description string
-	DeadlineAt  time.Time
-	LateUntilAt time.Time
+	Title         string
+	Description   string
+	DeadlineAt    time.Time
+	LateUntilAt   time.Time
+	ResourceLimit *resourceLimitRequest
 }
 
 func decodeAssignmentRequest(w http.ResponseWriter, r *http.Request) (assignmentRequest, bool) {
 	var payload struct {
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		DeadlineAt  string `json:"deadline_at"`
-		LateUntilAt string `json:"late_until_at"`
+		Title         string                `json:"title"`
+		Description   string                `json:"description"`
+		DeadlineAt    string                `json:"deadline_at"`
+		LateUntilAt   string                `json:"late_until_at"`
+		ResourceLimit *resourceLimitRequest `json:"resource_limit"`
 	}
 	if !decodeJSON(w, r, &payload) {
 		return assignmentRequest{}, false
@@ -328,8 +332,22 @@ func decodeAssignmentRequest(w http.ResponseWriter, r *http.Request) (assignment
 	}
 	return assignmentRequest{
 		Title: payload.Title, Description: payload.Description,
-		DeadlineAt: deadlineAt, LateUntilAt: lateUntilAt,
+		DeadlineAt: deadlineAt, LateUntilAt: lateUntilAt, ResourceLimit: payload.ResourceLimit,
 	}, true
+}
+
+type resourceLimitRequest struct {
+	CPUTimeMS      int `json:"cpu_time_ms"`
+	MemoryMB       int `json:"memory_mb"`
+	MaxProcesses   int `json:"max_processes"`
+	TimeoutS       int `json:"timeout_s"`
+	MaxOutputBytes int `json:"max_output_bytes"`
+	TmpfsSizeMB    int `json:"tmpfs_size_mb"`
+}
+
+func (request resourceLimitRequest) valid() bool {
+	return validResourceLimit(request.CPUTimeMS, request.MemoryMB, request.MaxProcesses,
+		request.TimeoutS, request.MaxOutputBytes, request.TmpfsSizeMB)
 }
 
 type testCaseRequest struct {

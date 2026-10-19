@@ -370,9 +370,15 @@ func (s *Store) ListAssignments(ctx context.Context, courseID int64, page, pageS
 	return AssignmentPage{Items: items, Page: page, PageSize: pageSize, HasNext: hasNext}, nil
 }
 
-func (s *Store) CreateAssignment(ctx context.Context, courseID int64, title, description string, deadlineAt, lateUntilAt time.Time) (Assignment, error) {
+func (s *Store) CreateAssignment(ctx context.Context, courseID int64, title, description string, deadlineAt, lateUntilAt time.Time, limit ResourceLimit) (Assignment, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Assignment{}, fmt.Errorf("begin create assignment: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	var assignment Assignment
-	err := s.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO assignments (course_id, title, description, deadline_at, late_until_at)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, course_id, title, description, deadline_at, late_until_at
@@ -382,6 +388,18 @@ func (s *Store) CreateAssignment(ctx context.Context, courseID int64, title, des
 	)
 	if err != nil {
 		return Assignment{}, fmt.Errorf("create assignment: %w", err)
+	}
+	limit.AssignmentID = assignment.ID
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO resource_limits (
+			assignment_id, cpu_time_ms, memory_mb, max_processes, timeout_s, max_output_bytes, tmpfs_size_mb
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, limit.AssignmentID, limit.CPUTimeMS, limit.MemoryMB, limit.MaxProcesses, limit.TimeoutS,
+		limit.MaxOutputBytes, limit.TmpfsSizeMB); err != nil {
+		return Assignment{}, fmt.Errorf("create assignment resource limit: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Assignment{}, fmt.Errorf("commit create assignment: %w", err)
 	}
 	return assignment, nil
 }
@@ -513,19 +531,17 @@ func (s *Store) GetResourceLimit(ctx context.Context, assignmentID int64) (Resou
 	return limit, nil
 }
 
-func (s *Store) UpsertResourceLimit(ctx context.Context, limit ResourceLimit) (ResourceLimit, error) {
+func (s *Store) UpdateResourceLimit(ctx context.Context, limit ResourceLimit) (ResourceLimit, error) {
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO resource_limits (
-			assignment_id, cpu_time_ms, memory_mb, max_processes, timeout_s, max_output_bytes, tmpfs_size_mb
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (assignment_id) DO UPDATE SET
-			cpu_time_ms = EXCLUDED.cpu_time_ms,
-			memory_mb = EXCLUDED.memory_mb,
-			max_processes = EXCLUDED.max_processes,
-			timeout_s = EXCLUDED.timeout_s,
-			max_output_bytes = EXCLUDED.max_output_bytes,
-			tmpfs_size_mb = EXCLUDED.tmpfs_size_mb,
+		UPDATE resource_limits SET
+			cpu_time_ms = $2,
+			memory_mb = $3,
+			max_processes = $4,
+			timeout_s = $5,
+			max_output_bytes = $6,
+			tmpfs_size_mb = $7,
 			updated_at = now()
+		WHERE assignment_id = $1
 		RETURNING assignment_id, cpu_time_ms, memory_mb, max_processes, timeout_s,
 			max_output_bytes, tmpfs_size_mb
 	`, limit.AssignmentID, limit.CPUTimeMS, limit.MemoryMB, limit.MaxProcesses, limit.TimeoutS,
@@ -534,7 +550,7 @@ func (s *Store) UpsertResourceLimit(ctx context.Context, limit ResourceLimit) (R
 		&limit.TimeoutS, &limit.MaxOutputBytes, &limit.TmpfsSizeMB,
 	)
 	if err != nil {
-		return ResourceLimit{}, fmt.Errorf("save resource limit: %w", err)
+		return ResourceLimit{}, fmt.Errorf("update resource limit: %w", err)
 	}
 	return limit, nil
 }
@@ -681,11 +697,11 @@ func (s *Store) DeleteTestCase(ctx context.Context, testCaseID int64) (bool, err
 	if err != nil {
 		return false, fmt.Errorf("lock test case for deletion: %w", err)
 	}
-	var hasResults bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM results WHERE testcase_id = $1)`, testCaseID).Scan(&hasResults); err != nil {
-		return false, fmt.Errorf("check test case results: %w", err)
+	var hasSubmissions bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM submissions WHERE assignment_id = $1)`, assignmentID).Scan(&hasSubmissions); err != nil {
+		return false, fmt.Errorf("check assignment submissions: %w", err)
 	}
-	if hasResults {
+	if hasSubmissions {
 		_, err = tx.Exec(ctx, `
 			UPDATE test_cases SET is_deleted = true, updated_at = now()
 			WHERE id = $1
