@@ -8,9 +8,9 @@ the same scripts and differ only in their `.env` file, database, and domain.
 | Staging | Free-tier cloud VM | merges to `develop` |
 | Production | Campus server, reachable from outside the campus network | merges to `main` |
 
-**Status:** the AppArmor profile, the systemd unit, the install steps and a smoke test exist, and the
-backend runs on the campus server from these steps. Everything under [Not started](#not-started) does
-not.
+**Status:** the AppArmor profile, the systemd unit, the install steps, a smoke test and a daily
+database backup exist, and the backend runs on the campus server from these steps. Everything under
+[Not started](#not-started) does not.
 
 ## Contents
 
@@ -19,6 +19,7 @@ not.
 | `apparmor/sandbox-exec` | AppArmor profile that lets `sandbox-exec` create user namespaces | R9 |
 | `systemd/autograder.service` | Backend unit; delegates a cgroup subtree to the service user | R11, Bagian 13.2 |
 | `smoke-test.sh` | Three submissions through the installed pipeline, checked against their scores | Bagian 13.2, NFR-09 |
+| `db-backup.sh`, `systemd/autograder-backup.{service,timer}` | Daily `pg_dump` with 14-day retention | Bagian 13.4, NFR-13 |
 
 ## Host setup
 
@@ -183,6 +184,64 @@ sudo systemctl stop postgresql; sleep 2; curl -s -w ' %{http_code}\n' http://127
 sudo systemctl start postgresql; sleep 3; curl -s -w ' %{http_code}\n' http://127.0.0.1:8080/healthz
 ```
 
+## Database backup
+
+`autograder-backup.timer` dumps the database every day at 02:30 WIB and keeps the dumps of the last
+14 days (SRS Bagian 13.4, NFR-13). Each one is a `pg_dump` archive in the custom format,
+`/var/backups/autograder/autograder-<UTC time>.dump`, mode `0600`. The unit runs as `postgres`, not as
+`grader`: the backend's account is the one a damaged or compromised backend would act as, so it must
+not be able to change or delete the backups.
+
+```sh
+sudo install -m 0755 infra/db-backup.sh /usr/local/sbin/autograder-backup
+sudo install -d -m 0700 -o postgres -g postgres /var/backups/autograder
+sudo install -m 0644 infra/systemd/autograder-backup.service infra/systemd/autograder-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start autograder-backup && sudo journalctl -u autograder-backup -n 2 -o cat
+sudo systemctl enable --now autograder-backup.timer && systemctl list-timers autograder-backup.timer
+```
+
+The `start` takes a backup straight away and logs `backup written: /var/backups/autograder/...dump (N
+bytes)`; `list-timers` shows the next run.
+
+- A dump is written under a `.partial` name and renamed once `pg_dump` has succeeded, and older dumps
+  are deleted only after that, so a failed run keeps every earlier backup. It shows in `systemctl
+  --failed`, and the journal has `pg_dump`'s error.
+- Each run deletes the dumps whose UTC date is 14 or more days before its own, so the daily timer
+  keeps 14. Files in the directory that the script did not name are left alone.
+- Before an upgrade that brings a migration (SRS Bagian 13.3), take one by hand with `sudo systemctl
+  start autograder-backup`. It is deleted with the daily ones after 14 days; copy it elsewhere to keep
+  it until the release is stable.
+- A dump holds the `autograder` database only. The `grader` role is outside it (recreate it as in
+  step 6), and so are the stored submission files under `CODE_DIR`.
+
+**Checking a backup.** A backup that has never been restored does not count (SRS Bagian 13.4).
+Restore the newest one into a scratch database, look at it, and drop it:
+
+```sh
+f=$(sudo -u postgres sh -c 'ls /var/backups/autograder/autograder-*.dump | tail -1') && echo "$f"
+sudo -u postgres createdb -O grader autograder_check
+sudo -u postgres pg_restore --exit-on-error -d autograder_check "$f"
+sudo -u postgres psql -d autograder_check -c 'SELECT version, dirty FROM schema_migrations' -c 'SELECT count(*) FROM users'
+sudo -u postgres dropdb autograder_check
+```
+
+`pg_restore` prints nothing on success, and the schema version is the one the backend logged at
+start-up.
+
+**Restoring.** Stop the backend, replace the database with the dump, and start it again:
+
+```sh
+sudo systemctl stop autograder
+sudo -u postgres dropdb autograder
+sudo -u postgres createdb -O grader autograder
+sudo -u postgres pg_restore --exit-on-error -d autograder /var/backups/autograder/autograder-<UTC time>.dump
+sudo systemctl start autograder
+```
+
+`dropdb` deletes everything written since that dump. If any of it might still be needed, take a backup
+first, or restore into a database of another name and compare.
+
 ## Verifying the host
 
 Delegation works differently for a system service than for the user scope that `sandbox/tests/run.sh`
@@ -220,7 +279,9 @@ or `make -C sandbox SANITIZE=1 BUILD_DIR=build/asan BIN=sandbox-exec-asan`.
 - The install steps as one script, and Node.js on the host for the frontend build.
 - An Nginx reverse proxy with TLS that serves the frontend build and uses `/healthz` as a health
   check. The unit has no watchdog until the backend reports readiness.
-- A seed command for the first admin account, a daily `pg_dump` with 14-day retention, and expiry
-  of submission files.
+- A seed command for the first admin account, and expiry of submission files.
+- A copy of the daily backups off the server: SRS Bagian 13.4 stores them outside the application
+  server, and they are on it for now. The restore test on staging (same section) waits for the
+  staging host.
 
 Secrets are never stored here. They live in GitHub Actions secrets, separately for each environment.

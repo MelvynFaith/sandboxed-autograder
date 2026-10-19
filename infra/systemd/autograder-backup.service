@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: MIT
+#
+# One database backup (SRS Bagian 13.4), started daily by autograder-backup.timer or by hand with
+# `systemctl start autograder-backup`. ExecStart is infra/db-backup.sh; install steps and restore:
+# infra/README.md, "Database backup".
+#
+# It runs as postgres, not as the service user grader. grader runs the grading pipeline and owns the
+# database, so it is the account a damaged or compromised backend would act as; the backups exist to
+# undo that, so grader must not be able to change or delete them. postgres reaches the database by
+# peer authentication over the Unix socket, like the backend.
+
+[Unit]
+Description=Auto-grading platform database backup
+Documentation=https://github.com/MelvynFaith/sandboxed-autograder
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+ExecStart=/usr/local/sbin/autograder-backup
+# The script writes only to the backup directory.
+ProtectSystem=strict
+ReadWritePaths=/var/backups/autograder
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes

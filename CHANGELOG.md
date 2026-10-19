@@ -62,3 +62,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   own virtual environment, the environment file and the unit, as run on the campus server; and
   `infra/smoke-test.sh`, which pushes three submissions through the installed pipeline and checks
   their scores, the audit rows, `/healthz` and the leftover cgroups.
+- Database backup (`infra/`): a systemd timer that runs `pg_dump` every day at 02:30 WIB as the
+  `postgres` user and keeps the dumps of the last 14 days, with the steps to check a backup by
+  restoring it and to restore the database (SRS 13.4, NFR-13).
