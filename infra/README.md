@@ -126,15 +126,24 @@ Ubuntu 24.04 (the campus server).
     command line; `scheduler/README.md`, "First administrator", has the rules.
 
     ```sh
-    read -rsp 'Administrator password: ' ADMIN_PASSWORD && echo && export ADMIN_PASSWORD
+    ADMIN_NAME='Full Name'; ADMIN_EMAIL='admin@example.ac.id'
+    IFS= read -rsp 'Administrator password: ' ADMIN_PASSWORD && echo && export ADMIN_PASSWORD
     sudo --preserve-env=ADMIN_PASSWORD -u grader \
         DATABASE_URL='postgres://grader@/autograder?host=/var/run/postgresql' \
-        /usr/local/bin/autograder seed-admin --name 'NAME' --email 'EMAIL'
+        /usr/local/bin/autograder seed-admin --name "$ADMIN_NAME" --email "$ADMIN_EMAIL"
+    printf '{"email":"%s","password":"%s"}' "$ADMIN_EMAIL" "$ADMIN_PASSWORD" |
+        curl -s -o /dev/null -w 'login %{http_code}\n' -H 'Content-Type: application/json' \
+        --data-binary @- http://127.0.0.1:8080/api/v1/auth/login
     unset ADMIN_PASSWORD
     ```
 
-    It refuses once an administrator exists. These are the credentials the handover (SRS Bagian 13.5)
-    passes on.
+    Put the real name and address on the first line. A good run logs `administrator created` and
+    prints `login 200`. The password is typed once, with no confirmation, and a second seed is
+    refused, so the login is what catches a typo; `printf` is a shell builtin, so the password stays
+    out of the process list, but it must not contain `"` or `\`, which would break the JSON. `IFS=`
+    keeps spaces at either end of the password, which `read` would otherwise drop. Use a password of
+    its own, not one of the host's: these are the credentials the handover (SRS Bagian 13.5) passes
+    on.
 
 ### Backend environment
 
@@ -197,7 +206,7 @@ sudo install -m 0755 infra/db-backup.sh /usr/local/sbin/autograder-backup
 sudo install -d -m 0700 -o postgres -g postgres /var/backups/autograder
 sudo install -m 0644 infra/systemd/autograder-backup.service infra/systemd/autograder-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl start autograder-backup && sudo journalctl -u autograder-backup -n 2 -o cat
+sudo systemctl start autograder-backup && sudo journalctl -u autograder-backup -n 4 -o cat
 sudo systemctl enable --now autograder-backup.timer && systemctl list-timers autograder-backup.timer
 ```
 
@@ -279,7 +288,7 @@ or `make -C sandbox SANITIZE=1 BUILD_DIR=build/asan BIN=sandbox-exec-asan`.
 - The install steps as one script, and Node.js on the host for the frontend build.
 - An Nginx reverse proxy with TLS that serves the frontend build and uses `/healthz` as a health
   check. The unit has no watchdog until the backend reports readiness.
-- A seed command for the first admin account, and expiry of submission files.
+- Expiry of submission files (SRS Bagian 13.4, NFR-13).
 - A copy of the daily backups off the server: SRS Bagian 13.4 stores them outside the application
   server, and they are on it for now. The restore test on staging (same section) waits for the
   staging host.
