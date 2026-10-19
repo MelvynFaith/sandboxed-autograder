@@ -157,7 +157,7 @@ Registration always yields a `STUDENT`, and only an administrator can grant `LEC
 (FR-19), so a new deployment creates its first administrator from the command line (SRS 13.2):
 
 ```sh
-read -rsp 'Administrator password: ' ADMIN_PASSWORD && echo && export ADMIN_PASSWORD
+IFS= read -rsp 'Administrator password: ' ADMIN_PASSWORD && echo && export ADMIN_PASSWORD
 sudo --preserve-env=ADMIN_PASSWORD -u grader \
     DATABASE_URL='postgres://grader@/autograder?host=/var/run/postgresql' \
     /usr/local/bin/autograder seed-admin --name 'NAME' --email 'EMAIL'
