@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MIT
+#
+# Starts autograder-backup.service once a day (SRS Bagian 13.4). The time zone is explicit so the
+# schedule does not depend on the host's: 02:30 WIB is after the usual 23:59 deadlines. Persistent=
+# runs a backup missed while the host was down as soon as it is up again.
+
+[Unit]
+Description=Daily auto-grading platform database backup
+Documentation=https://github.com/MelvynFaith/sandboxed-autograder
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 Asia/Jakarta
+Persistent=true
+
+[Install]
+WantedBy=timers.target
