@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/auth"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/courses"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/migrations"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/golang-migrate/migrate/v4"
@@ -117,7 +118,7 @@ func newTestEnvironment(t *testing.T) *testEnvironment {
 		t.Fatal(err)
 	}
 	store := auth.NewStore(pool)
-	server := httptest.NewServer(NewHandler(store, tokens, tickets))
+	server := httptest.NewServer(NewHandler(store, tokens, tickets, courses.NewStore(pool)))
 	t.Cleanup(server.Close)
 	return &testEnvironment{server: server, store: store, tickets: tickets, pool: pool}
 }
