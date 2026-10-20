@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getAssignments } from '../api/assignments.js'
 import { getCourses } from '../api/courses.js'
 import {
@@ -8,7 +8,14 @@ import {
   updateLecturerAssignment,
   updateResourceLimit,
 } from '../api/lecturerAssignments.js'
-import { createTestCase, deleteTestCase, getTestCases, updateTestCase } from '../api/testcases.js'
+import {
+  createTestCase,
+  deleteTestCase,
+  exportTestCasesYaml,
+  getTestCases,
+  importTestCasesYaml,
+  updateTestCase,
+} from '../api/testcases.js'
 
 const resourceLimitFields = [
   { name: 'cpu_time_ms', label: 'Batas waktu CPU (ms)' },
@@ -22,6 +29,7 @@ const resourceLimitFields = [
 const emptyLimits = Object.fromEntries(resourceLimitFields.map(({ name }) => [name, '']))
 const emptyAssignment = { title: '', description: '', deadline_at: '', late_until_at: '' }
 const matchModes = ['EXACT', 'WHITESPACE_INSENSITIVE']
+const MAX_YAML_SIZE = 1024 * 1024
 const emptyTestCase = {
   external_id: '',
   input: '',
@@ -69,6 +77,10 @@ function LecturerAssignmentsPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [pendingDelete, setPendingDelete] = useState(null)
+  const [yamlFile, setYamlFile] = useState(null)
+  const [isImportingYaml, setIsImportingYaml] = useState(false)
+  const [isExportingYaml, setIsExportingYaml] = useState(false)
+  const yamlFileInput = useRef(null)
 
   useEffect(() => {
     let current = true
@@ -253,10 +265,68 @@ function LecturerAssignmentsPage() {
     }
   }
 
+  async function exportTestCases() {
+    setError('')
+    setSuccess('')
+    setIsExportingYaml(true)
+    try {
+      const { blob, filename } = await exportTestCasesYaml(activeAssignment.id)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 0)
+      setSuccess('Test case berhasil diekspor sebagai YAML.')
+    } catch (exportError) {
+      setError(exportError.message)
+    } finally {
+      setIsExportingYaml(false)
+    }
+  }
+
+  async function importTestCases(event) {
+    event.preventDefault()
+    if (!yamlFile || !activeAssignment) return
+
+    setError('')
+    setSuccess('')
+    setIsImportingYaml(true)
+    try {
+      const result = await importTestCasesYaml(activeAssignment.id, await yamlFile.text())
+      setYamlFile(null)
+      if (yamlFileInput.current) {
+        yamlFileInput.current.value = ''
+      }
+      setSuccess(`Impor YAML selesai: ${result.created} dibuat, ${result.updated} diperbarui.`)
+      try {
+        const [updatedTestCases, updatedLimits] = await Promise.all([
+          getTestCases(activeAssignment.id),
+          getResourceLimit(activeAssignment.id),
+        ])
+        setTestCases(updatedTestCases)
+        setResourceLimits(
+          Object.fromEntries(
+            resourceLimitFields.map(({ name }) => [name, String(updatedLimits[name])]),
+          ),
+        )
+      } catch (refreshError) {
+        setError(`YAML berhasil diimpor, tetapi data terbaru gagal dimuat: ${refreshError.message}`)
+      }
+    } catch (importError) {
+      setError(importError.message)
+    } finally {
+      setIsImportingYaml(false)
+    }
+  }
+
   async function confirmDeleteTestCase() {
     if (!pendingDelete || pendingDelete.type !== 'testcase') {
       return
     }
+
     try {
       await deleteTestCase(pendingDelete.id)
       setTestCases((current) => current.filter((entry) => entry.id !== pendingDelete.id))
@@ -428,6 +498,53 @@ function LecturerAssignmentsPage() {
               <h2 className="text-xl font-semibold" id="testcases-title">
                 Test case — {activeAssignment.title}
               </h2>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  className="rounded border border-slate-300 px-4 py-2 font-medium disabled:opacity-60"
+                  disabled={isExportingYaml}
+                  onClick={exportTestCases}
+                  type="button"
+                >
+                  {isExportingYaml ? 'Mengekspor YAML...' : 'Ekspor YAML'}
+                </button>
+              </div>
+              <form
+                className="space-y-3 rounded-lg border border-slate-200 bg-white p-5"
+                onSubmit={importTestCases}
+              >
+                <h3 className="text-lg font-semibold">Impor test case dari YAML</h3>
+                <label className="block">
+                  <span className="mb-1 block font-medium">Berkas YAML (maksimal 1 MiB)</span>
+                  <input
+                    accept=".yaml,.yml,application/yaml,text/yaml"
+                    className="block w-full min-w-0 rounded border border-slate-300 p-2"
+                    onChange={(event) => {
+                      const selectedFile = event.target.files?.[0] ?? null
+                      setError('')
+                      setSuccess('')
+                      if (selectedFile && selectedFile.size > MAX_YAML_SIZE) {
+                        event.target.value = ''
+                        setYamlFile(null)
+                        setError('Berkas YAML maksimal 1 MiB.')
+                        return
+                      }
+                      setYamlFile(selectedFile)
+                    }}
+                    ref={yamlFileInput}
+                    type="file"
+                  />
+                </label>
+                {yamlFile && (
+                  <p className="text-sm text-slate-600">Dipilih: {yamlFile.name}</p>
+                )}
+                <button
+                  className="rounded bg-blue-700 px-4 py-2 font-medium text-white disabled:opacity-60"
+                  disabled={!yamlFile || isImportingYaml}
+                  type="submit"
+                >
+                  {isImportingYaml ? 'Mengimpor YAML...' : 'Impor YAML'}
+                </button>
+              </form>
               <ul className="space-y-3">
                 {testCases.map((testCase) => (
                   <li className="rounded-lg border border-slate-200 bg-white p-4" key={testCase.id}>
