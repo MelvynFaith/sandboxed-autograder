@@ -100,6 +100,8 @@ func (a *API) routes() {
 	a.mux.HandleFunc("PUT /api/v1/assignments/{id}/resource-limit", a.requireAuth(a.putResourceLimit))
 	a.mux.HandleFunc("GET /api/v1/assignments/{id}/testcases", a.requireAuth(a.listTestCases))
 	a.mux.HandleFunc("POST /api/v1/assignments/{id}/testcases", a.requireAuth(a.createTestCase))
+	a.mux.HandleFunc("GET /api/v1/assignments/{id}/testcases/export", a.requireAuth(a.exportTestCases))
+	a.mux.HandleFunc("POST /api/v1/assignments/{id}/testcases/import", a.requireAuth(a.importTestCases))
 	a.mux.HandleFunc("PUT /api/v1/testcases/{id}", a.requireAuth(a.updateTestCase))
 	a.mux.HandleFunc("DELETE /api/v1/testcases/{id}", a.requireAuth(a.deleteTestCase))
 	a.mux.HandleFunc("GET /api/v1/admin/users", a.requireAdmin(a.listUsers))
