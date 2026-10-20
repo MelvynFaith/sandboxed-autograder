@@ -4,10 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App.jsx'
 import {
   createLecturerAssignment,
+  getResourceLimit,
   updateLecturerAssignment,
   updateResourceLimit,
 } from '../api/lecturerAssignments.js'
-import { createTestCase, getTestCases } from '../api/testcases.js'
+import {
+  createTestCase,
+  exportTestCasesYaml,
+  getTestCases,
+  importTestCasesYaml,
+} from '../api/testcases.js'
 
 vi.mock('../api/lecturerAssignments.js', () => ({
   createLecturerAssignment: vi.fn(),
@@ -20,7 +26,9 @@ vi.mock('../api/lecturerAssignments.js', () => ({
 vi.mock('../api/testcases.js', () => ({
   createTestCase: vi.fn(),
   deleteTestCase: vi.fn(),
+  exportTestCasesYaml: vi.fn(),
   getTestCases: vi.fn(),
+  importTestCasesYaml: vi.fn(),
   updateTestCase: vi.fn(),
 }))
 
@@ -81,7 +89,20 @@ beforeEach(() => {
     lateUntilAt: '2026-10-13T16:59:00.000Z',
   })
   createTestCase.mockResolvedValue({ id: 'testcase-1', assignmentId: 'assignment-1' })
+  exportTestCasesYaml.mockResolvedValue({
+    blob: new Blob(['schema_version: 1\n']),
+    filename: 'testcases-assignment-1.yaml',
+  })
   getTestCases.mockResolvedValue([])
+  getResourceLimit.mockResolvedValue({
+    cpu_time_ms: 1000,
+    memory_mb: 64,
+    max_processes: 4,
+    timeout_s: 5,
+    max_output_bytes: 1048576,
+    tmpfs_size_mb: 32,
+  })
+  importTestCasesYaml.mockResolvedValue({ created: 2, updated: 1 })
   updateResourceLimit.mockResolvedValue({})
   updateLecturerAssignment.mockResolvedValue({
     id: 'assignment-1',
@@ -101,27 +122,31 @@ afterEach(() => {
 })
 
 describe('LecturerAssignmentsPage', () => {
-  it('creates an assignment with positive resource limits', async () => {
+  it('creates an assignment together with its resource limits', async () => {
     setUser()
     render(<App />)
     await fillAssignmentForm()
     fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
 
     expect(await screen.findByRole('heading', { name: 'Tambah test case' })).toBeInTheDocument()
-    expect(createLecturerAssignment).toHaveBeenCalledWith('course-1', {
-      title: 'Latihan Algoritma',
-      description: 'Latihan dasar',
-      deadline_at: new Date('2026-10-12T23:59').toISOString(),
-      late_until_at: new Date('2026-10-13T23:59').toISOString(),
-    })
-    expect(updateResourceLimit).toHaveBeenCalledWith('assignment-1', {
+    expect(createLecturerAssignment).toHaveBeenCalledWith(
+      'course-1',
+      {
+        title: 'Latihan Algoritma',
+        description: 'Latihan dasar',
+        deadline_at: new Date('2026-10-12T23:59').toISOString(),
+        late_until_at: new Date('2026-10-13T23:59').toISOString(),
+      },
+      {
         cpu_time_ms: 1000,
         memory_mb: 64,
         max_processes: 4,
         timeout_s: 5,
         max_output_bytes: 1048576,
         tmpfs_size_mb: 32,
-    })
+      },
+    )
+    expect(updateResourceLimit).not.toHaveBeenCalled()
   })
 
   it('rejects non-positive resource limits', async () => {
@@ -169,7 +194,27 @@ describe('LecturerAssignmentsPage', () => {
     expect(createLecturerAssignment).not.toHaveBeenCalled()
   })
 
-  it('retries a failed resource-limit save without creating another assignment', async () => {
+  it('keeps a failed create in create mode so a retry creates it once', async () => {
+    setUser()
+    createLecturerAssignment.mockRejectedValueOnce(
+      new Error('resource_limit wajib diisi dengan batas sumber daya yang valid.'),
+    )
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'resource_limit wajib diisi dengan batas sumber daya yang valid.',
+    )
+    expect(screen.getByRole('heading', { name: 'Buat assignment' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+
+    expect(await screen.findByText('Assignment berhasil dibuat.')).toBeInTheDocument()
+    expect(createLecturerAssignment).toHaveBeenCalledTimes(2)
+    expect(updateLecturerAssignment).not.toHaveBeenCalled()
+  })
+
+  it('edits an assignment and then its resource limits, retrying a failed limit save', async () => {
     setUser()
     updateResourceLimit
       .mockRejectedValueOnce(new Error('Resource limit gagal disimpan.'))
@@ -177,6 +222,13 @@ describe('LecturerAssignmentsPage', () => {
     render(<App />)
     await fillAssignmentForm()
     fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+    await screen.findByText('Assignment berhasil dibuat.')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ubah assignment terpilih' }))
+    fireEvent.change(screen.getByLabelText('Batas waktu CPU (ms)'), {
+      target: { value: '2000' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan perubahan' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Resource limit gagal disimpan.')
     expect(screen.getByRole('heading', { name: 'Ubah assignment' })).toBeInTheDocument()
@@ -184,8 +236,22 @@ describe('LecturerAssignmentsPage', () => {
 
     expect(await screen.findByText('Assignment berhasil diperbarui.')).toBeInTheDocument()
     expect(createLecturerAssignment).toHaveBeenCalledTimes(1)
-    expect(updateLecturerAssignment).toHaveBeenCalledTimes(1)
+    expect(updateLecturerAssignment).toHaveBeenCalledTimes(2)
+    expect(updateLecturerAssignment).toHaveBeenLastCalledWith('assignment-1', {
+      title: 'Latihan Algoritma',
+      description: 'Latihan dasar',
+      deadline_at: new Date('2026-10-12T23:59').toISOString(),
+      late_until_at: new Date('2026-10-13T23:59').toISOString(),
+    })
     expect(updateResourceLimit).toHaveBeenCalledTimes(2)
+    expect(updateResourceLimit).toHaveBeenLastCalledWith('assignment-1', {
+      cpu_time_ms: 2000,
+      memory_mb: 64,
+      max_processes: 4,
+      timeout_s: 5,
+      max_output_bytes: 1048576,
+      tmpfs_size_mb: 32,
+    })
   })
 
   it('rejects tmpfs limits that exceed the memory constraint', async () => {
@@ -255,6 +321,84 @@ describe('LecturerAssignmentsPage', () => {
       is_hidden: true,
       match_mode: 'WHITESPACE_INSENSITIVE',
     })
+  })
+
+  it('imports a YAML file and reports backend validation errors', async () => {
+    setUser()
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+    await screen.findByRole('heading', { name: 'Test case — Latihan Algoritma' })
+
+    const document = 'schema_version: 1\ntest_cases: []\n'
+    const file = new File([document], 'testcases.yaml', { type: 'application/yaml' })
+    Object.defineProperty(file, 'text', { value: async () => document })
+    fireEvent.change(screen.getByLabelText('Berkas YAML (maksimal 1 MiB)'), {
+      target: { files: [file] },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Impor YAML' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Impor YAML selesai: 2 dibuat, 1 diperbarui.',
+    )
+    expect(importTestCasesYaml).toHaveBeenCalledWith('assignment-1', document)
+
+    importTestCasesYaml.mockRejectedValueOnce(
+      new Error('test_cases[0].weight harus berupa bilangan positif.'),
+    )
+    const invalidFile = new File([document], 'invalid-testcases.yaml', {
+      type: 'application/yaml',
+    })
+    Object.defineProperty(invalidFile, 'text', { value: async () => document })
+    fireEvent.change(screen.getByLabelText('Berkas YAML (maksimal 1 MiB)'), {
+      target: { files: [invalidFile] },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Impor YAML' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'test_cases[0].weight harus berupa bilangan positif.',
+    )
+  })
+
+  it('downloads the exported YAML document for the selected assignment', async () => {
+    setUser()
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+    await screen.findByRole('heading', { name: 'Test case — Latihan Algoritma' })
+
+    const createObjectURL = vi.fn(() => 'blob:yaml-export')
+    const revokeObjectURL = vi.fn()
+    const MockURL = class extends URL {}
+    MockURL.createObjectURL = createObjectURL
+    MockURL.revokeObjectURL = revokeObjectURL
+    vi.stubGlobal('URL', MockURL)
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    fireEvent.click(screen.getByRole('button', { name: 'Ekspor YAML' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Test case berhasil diekspor sebagai YAML.',
+    )
+    expect(exportTestCasesYaml).toHaveBeenCalledWith('assignment-1')
+    expect(anchorClick).toHaveBeenCalledOnce()
+    expect(createObjectURL).toHaveBeenCalledOnce()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:yaml-export')
+  })
+
+  it('rejects YAML files larger than the backend request limit', async () => {
+    setUser()
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+    await screen.findByRole('heading', { name: 'Test case — Latihan Algoritma' })
+
+    const file = new File([new Uint8Array(1024 * 1024 + 1)], 'too-large.yaml')
+    fireEvent.change(screen.getByLabelText('Berkas YAML (maksimal 1 MiB)'), {
+      target: { files: [file] },
+    })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Berkas YAML maksimal 1 MiB.')
+    expect(importTestCasesYaml).not.toHaveBeenCalled()
   })
 
   it('redirects students away from lecturer assignment management', async () => {
