@@ -16,6 +16,9 @@ import AdminPage from './pages/AdminPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
 import ProfilePage from './pages/ProfilePage.jsx'
+import RecapPage from './pages/RecapPage.jsx'
+import SubmissionCodePage from './pages/SubmissionCodePage.jsx'
+import SubmissionReportPage from './pages/SubmissionReportPage.jsx'
 
 const roleMenus = {
   mahasiswa: [
@@ -100,6 +103,18 @@ function LecturerAssignmentsRoute() {
   return <LecturerAssignmentsPage />
 }
 
+// The recap and the lecturer report are for the course lecturer and admins; the API enforces
+// ownership, this only keeps students off pages they cannot use.
+function GradingStaffRoute({ children }) {
+  const { user } = useAuth()
+
+  if (user.role !== 'dosen' && user.role !== 'admin') {
+    return <Navigate replace to="/assignments" />
+  }
+
+  return children
+}
+
 function AdminRoute() {
   const { user } = useAuth()
   if (user.role !== 'admin') {
@@ -122,6 +137,15 @@ function App() {
             <Route path="/lecturer/assignments" element={<LecturerAssignmentsRoute />} />
             <Route path="/admin" element={<AdminRoute />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route
+              path="/lecturer/assignments/:assignmentId/recap"
+              element={<GradingStaffRoute><RecapPage /></GradingStaffRoute>}
+            />
+            <Route
+              path="/submissions/:submissionId/report"
+              element={<GradingStaffRoute><SubmissionReportPage /></GradingStaffRoute>}
+            />
+            <Route path="/submissions/:submissionId/code" element={<SubmissionCodePage />} />
           </Route>
           <Route path="*" element={<Navigate replace to="/assignments" />} />
         </Routes>
