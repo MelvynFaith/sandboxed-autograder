@@ -17,9 +17,11 @@ describe('getSubmissionReport', () => {
     const payload = {
       submission_id: 'submission-1',
       total_score: 75,
+      max_score: 100,
       results: [
         {
           testcase_id: 'testcase-1',
+          external_id: 'tc_01',
           status: 'TIMEOUT',
           score: 0,
           exec_time_ms: 5000,
@@ -39,9 +41,11 @@ describe('getSubmissionReport', () => {
     await expect(getSubmissionReport('submission-1')).resolves.toEqual({
       submissionId: 'submission-1',
       totalScore: 75,
+      maxScore: 100,
       results: [
         {
           testCaseId: 'testcase-1',
+          externalId: 'tc_01',
           verdict: 'TIMEOUT',
           score: 0,
           executionTimeMs: 5000,
@@ -61,22 +65,98 @@ describe('getSubmissionReport', () => {
     )
   })
 
-  it('does not expose hidden testcase output or error messages in the UI model', async () => {
+  it('maps a hidden student result that has no testcase_id', async () => {
     vi.stubEnv('VITE_USE_MOCK', 'true')
 
     const report = await getSubmissionReport('submission-1')
     const hidden = report.results.find((result) => result.hidden)
 
-    expect(hidden).toMatchObject({
+    expect(report).toMatchObject({ totalScore: 85, maxScore: 100 })
+    expect(hidden).toEqual({
+      testCaseId: null,
+      externalId: null,
       verdict: 'SECURITY_VIOLATION',
       score: 0,
       executionTimeMs: 1,
       memoryKb: 1024,
+      hidden: true,
       errorMessage: null,
       actualOutput: null,
     })
-    expect(JSON.stringify(hidden)).not.toContain('OUTPUT-TERSEMBUNYI-MOCK')
-    expect(JSON.stringify(hidden)).not.toContain('Pesan tersembunyi')
+  })
+
+  it('drops hidden output and error messages even if the server sent them', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        submission_id: 'submission-1',
+        total_score: 0,
+        max_score: 10,
+        results: [
+          {
+            testcase_id: 9,
+            external_id: 'tc_secret',
+            status: 'FAILED',
+            score: 0,
+            exec_time_ms: 3,
+            memory_kb: 100,
+            is_hidden: true,
+            error_message: 'Pesan tersembunyi',
+            actual_output: 'OUTPUT-TERSEMBUNYI',
+          },
+        ],
+      }),
+    }))
+
+    const report = await getSubmissionReport('submission-1')
+
+    expect(report.results[0]).toMatchObject({
+      hidden: true,
+      testCaseId: null,
+      externalId: null,
+      errorMessage: null,
+      actualOutput: null,
+    })
+    expect(JSON.stringify(report)).not.toContain('OUTPUT-TERSEMBUNYI')
+    expect(JSON.stringify(report)).not.toContain('Pesan tersembunyi')
+    expect(JSON.stringify(report)).not.toContain('tc_secret')
+  })
+
+  it('accepts a report with no scores before the submission is graded', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ submission_id: 5, results: [] }),
+    }))
+
+    await expect(getSubmissionReport('5')).resolves.toEqual({
+      submissionId: '5',
+      totalScore: null,
+      maxScore: null,
+      results: [],
+    })
+  })
+
+  it('still requires testcase_id on a visible result', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        submission_id: 'submission-1',
+        total_score: 0,
+        results: [
+          {
+            status: 'FAILED',
+            score: 0,
+            exec_time_ms: 1,
+            memory_kb: 1,
+            is_hidden: false,
+          },
+        ],
+      }),
+    }))
+
+    await expect(getSubmissionReport('submission-1')).rejects.toThrow(
+      'Data hasil test case tidak sesuai format yang diharapkan.',
+    )
   })
 
   it('shows returned testcase details when visibility metadata is not in the SRS response', async () => {
@@ -102,6 +182,7 @@ describe('getSubmissionReport', () => {
       results: [
         {
           testCaseId: 'testcase-hidden',
+          externalId: null,
           hidden: false,
           errorMessage: null,
           actualOutput: 'secret output',
