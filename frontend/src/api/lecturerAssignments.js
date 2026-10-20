@@ -39,7 +39,9 @@ function readAssignment(payload) {
   }
 }
 
-export async function createLecturerAssignment(courseId, assignment) {
+// An assignment always has exactly one ResourceLimit (SRS 7.1): the API creates both in one
+// transaction and rejects a body without `resource_limit`.
+export async function createLecturerAssignment(courseId, assignment, resourceLimit) {
   let payload
 
   if (import.meta.env.VITE_USE_MOCK === 'true') {
@@ -52,9 +54,9 @@ export async function createLecturerAssignment(courseId, assignment) {
     const response = await apiRequest(
       `/courses/${encodeURIComponent(courseId)}/assignments`,
       {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(assignment),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...assignment, resource_limit: resourceLimit }),
       },
     )
     if (!response.ok) {
@@ -66,10 +68,12 @@ export async function createLecturerAssignment(courseId, assignment) {
   return readAssignment(payload)
 }
 
+// The body holds only the assignment fields; the API rejects unknown fields such as `course_id`.
+// Resource limits change through updateResourceLimit.
 export async function updateLecturerAssignment(assignmentId, assignment) {
   let payload
   if (import.meta.env.VITE_USE_MOCK === 'true') {
-    payload = { ...assignment, id: assignmentId }
+    payload = { id: assignmentId, course_id: 'course-1', ...assignment }
   } else {
     const response = await apiRequest(`/assignments/${encodeURIComponent(assignmentId)}`, {
       method: 'PUT',
