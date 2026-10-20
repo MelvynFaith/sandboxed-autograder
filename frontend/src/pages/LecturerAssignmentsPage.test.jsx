@@ -4,10 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App.jsx'
 import {
   createLecturerAssignment,
+  getResourceLimit,
   updateLecturerAssignment,
   updateResourceLimit,
 } from '../api/lecturerAssignments.js'
-import { createTestCase, getTestCases } from '../api/testcases.js'
+import {
+  createTestCase,
+  exportTestCasesYaml,
+  getTestCases,
+  importTestCasesYaml,
+} from '../api/testcases.js'
 
 vi.mock('../api/lecturerAssignments.js', () => ({
   createLecturerAssignment: vi.fn(),
@@ -20,7 +26,9 @@ vi.mock('../api/lecturerAssignments.js', () => ({
 vi.mock('../api/testcases.js', () => ({
   createTestCase: vi.fn(),
   deleteTestCase: vi.fn(),
+  exportTestCasesYaml: vi.fn(),
   getTestCases: vi.fn(),
+  importTestCasesYaml: vi.fn(),
   updateTestCase: vi.fn(),
 }))
 
@@ -81,7 +89,20 @@ beforeEach(() => {
     lateUntilAt: '2026-10-13T16:59:00.000Z',
   })
   createTestCase.mockResolvedValue({ id: 'testcase-1', assignmentId: 'assignment-1' })
+  exportTestCasesYaml.mockResolvedValue({
+    blob: new Blob(['schema_version: 1\n']),
+    filename: 'testcases-assignment-1.yaml',
+  })
   getTestCases.mockResolvedValue([])
+  getResourceLimit.mockResolvedValue({
+    cpu_time_ms: 1000,
+    memory_mb: 64,
+    max_processes: 4,
+    timeout_s: 5,
+    max_output_bytes: 1048576,
+    tmpfs_size_mb: 32,
+  })
+  importTestCasesYaml.mockResolvedValue({ created: 2, updated: 1 })
   updateResourceLimit.mockResolvedValue({})
   updateLecturerAssignment.mockResolvedValue({
     id: 'assignment-1',
@@ -300,6 +321,84 @@ describe('LecturerAssignmentsPage', () => {
       is_hidden: true,
       match_mode: 'WHITESPACE_INSENSITIVE',
     })
+  })
+
+  it('imports a YAML file and reports backend validation errors', async () => {
+    setUser()
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+    await screen.findByRole('heading', { name: 'Test case — Latihan Algoritma' })
+
+    const document = 'schema_version: 1\ntest_cases: []\n'
+    const file = new File([document], 'testcases.yaml', { type: 'application/yaml' })
+    Object.defineProperty(file, 'text', { value: async () => document })
+    fireEvent.change(screen.getByLabelText('Berkas YAML (maksimal 1 MiB)'), {
+      target: { files: [file] },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Impor YAML' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Impor YAML selesai: 2 dibuat, 1 diperbarui.',
+    )
+    expect(importTestCasesYaml).toHaveBeenCalledWith('assignment-1', document)
+
+    importTestCasesYaml.mockRejectedValueOnce(
+      new Error('test_cases[0].weight harus berupa bilangan positif.'),
+    )
+    const invalidFile = new File([document], 'invalid-testcases.yaml', {
+      type: 'application/yaml',
+    })
+    Object.defineProperty(invalidFile, 'text', { value: async () => document })
+    fireEvent.change(screen.getByLabelText('Berkas YAML (maksimal 1 MiB)'), {
+      target: { files: [invalidFile] },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Impor YAML' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'test_cases[0].weight harus berupa bilangan positif.',
+    )
+  })
+
+  it('downloads the exported YAML document for the selected assignment', async () => {
+    setUser()
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+    await screen.findByRole('heading', { name: 'Test case — Latihan Algoritma' })
+
+    const createObjectURL = vi.fn(() => 'blob:yaml-export')
+    const revokeObjectURL = vi.fn()
+    const MockURL = class extends URL {}
+    MockURL.createObjectURL = createObjectURL
+    MockURL.revokeObjectURL = revokeObjectURL
+    vi.stubGlobal('URL', MockURL)
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    fireEvent.click(screen.getByRole('button', { name: 'Ekspor YAML' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Test case berhasil diekspor sebagai YAML.',
+    )
+    expect(exportTestCasesYaml).toHaveBeenCalledWith('assignment-1')
+    expect(anchorClick).toHaveBeenCalledOnce()
+    expect(createObjectURL).toHaveBeenCalledOnce()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:yaml-export')
+  })
+
+  it('rejects YAML files larger than the backend request limit', async () => {
+    setUser()
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+    await screen.findByRole('heading', { name: 'Test case — Latihan Algoritma' })
+
+    const file = new File([new Uint8Array(1024 * 1024 + 1)], 'too-large.yaml')
+    fireEvent.change(screen.getByLabelText('Berkas YAML (maksimal 1 MiB)'), {
+      target: { files: [file] },
+    })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Berkas YAML maksimal 1 MiB.')
+    expect(importTestCasesYaml).not.toHaveBeenCalled()
   })
 
   it('redirects students away from lecturer assignment management', async () => {
