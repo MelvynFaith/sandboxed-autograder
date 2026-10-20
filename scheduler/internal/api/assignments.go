@@ -164,7 +164,7 @@ func (a *API) putResourceLimit(w http.ResponseWriter, r *http.Request, user auth
 		return
 	}
 	if !request.valid() {
-		writeError(w, http.StatusBadRequest, "invalid_resource_limit", "Semua batas harus bilangan bulat positif; tmpfs_size_mb + 16 harus <= memory_mb dan 2 * max_output_bytes harus < tmpfs_size_mb * 2^20.")
+		writeError(w, http.StatusBadRequest, "invalid_resource_limit", resourceLimitRulesMessage)
 		return
 	}
 
@@ -339,6 +339,9 @@ func decodeAssignmentRequest(w http.ResponseWriter, r *http.Request) (assignment
 	}, true
 }
 
+// resourceLimitRulesMessage states the rules that resourceLimitRequest.valid enforces.
+const resourceLimitRulesMessage = "Semua batas harus bilangan bulat positif; tmpfs_size_mb + 16 harus <= memory_mb dan 2 * max_output_bytes harus < tmpfs_size_mb * 2^20."
+
 type resourceLimitRequest struct {
 	CPUTimeMS      int `json:"cpu_time_ms"`
 	MemoryMB       int `json:"memory_mb"`
@@ -368,13 +371,25 @@ func decodeTestCaseRequest(w http.ResponseWriter, r *http.Request) (testCaseRequ
 		return testCaseRequest{}, false
 	}
 	request.ExternalID = strings.TrimSpace(request.ExternalID)
-	if strings.ContainsRune(request.ExternalID, '\x00') ||
-		request.Weight <= 0 ||
-		(request.MatchMode != "EXACT" && request.MatchMode != "WHITESPACE_INSENSITIVE") {
+	if invalidTestCaseField(request.ExternalID, request.Weight, request.MatchMode) != "" {
 		writeError(w, http.StatusBadRequest, "invalid_test_case", "external_id tidak boleh mengandung NUL; weight harus bilangan bulat positif dan match_mode harus EXACT atau WHITESPACE_INSENSITIVE.")
 		return testCaseRequest{}, false
 	}
 	return request, true
+}
+
+// invalidTestCaseField names the first field of a test case that breaks the rules shared by the JSON
+// endpoints and the YAML import, or returns "" when the test case is valid.
+func invalidTestCaseField(externalID string, weight int, matchMode string) string {
+	switch {
+	case strings.ContainsRune(externalID, '\x00'):
+		return "external_id"
+	case weight <= 0 || weight > math.MaxInt32: // the column is a 32-bit integer
+		return "weight"
+	case matchMode != "EXACT" && matchMode != "WHITESPACE_INSENSITIVE":
+		return "match_mode"
+	}
+	return ""
 }
 
 func validResourceLimit(cpuTimeMS, memoryMB, maxProcesses, timeoutS, maxOutputBytes, tmpfsSizeMB int) bool {

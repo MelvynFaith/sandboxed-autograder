@@ -532,7 +532,16 @@ func (s *Store) GetResourceLimit(ctx context.Context, assignmentID int64) (Resou
 }
 
 func (s *Store) UpdateResourceLimit(ctx context.Context, limit ResourceLimit) (ResourceLimit, error) {
-	err := s.pool.QueryRow(ctx, `
+	return updateResourceLimit(ctx, s.pool, limit)
+}
+
+// rowQuerier is what updateResourceLimit needs from a pool or a transaction.
+type rowQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+func updateResourceLimit(ctx context.Context, db rowQuerier, limit ResourceLimit) (ResourceLimit, error) {
+	err := db.QueryRow(ctx, `
 		UPDATE resource_limits SET
 			cpu_time_ms = $2,
 			memory_mb = $3,
