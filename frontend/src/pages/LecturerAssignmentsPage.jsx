@@ -192,23 +192,19 @@ function LecturerAssignmentsPage() {
     }
 
     try {
+      // A new assignment is created together with its limits; an existing one updates them
+      // through the resource-limit endpoint after its own fields are saved.
       const savedAssignment = isEditingAssignment
-        ? await updateLecturerAssignment(activeAssignment.id, {
-            ...assignmentPayload,
-            course_id: courseId,
-          })
-        : await createLecturerAssignment(courseId, assignmentPayload)
-      if (!isEditingAssignment) {
-        setAssignments((current) => [...current, savedAssignment])
-        setActiveAssignment(savedAssignment)
-        setIsEditingAssignment(true)
-      }
-      await updateResourceLimit(savedAssignment.id, limits)
+        ? await updateLecturerAssignment(activeAssignment.id, assignmentPayload)
+        : await createLecturerAssignment(courseId, assignmentPayload, limits)
       setAssignments((current) => {
         const remaining = current.filter((entry) => entry.id !== savedAssignment.id)
         return [...remaining, savedAssignment]
       })
       setActiveAssignment(savedAssignment)
+      if (isEditingAssignment) {
+        await updateResourceLimit(savedAssignment.id, limits)
+      }
       setIsEditingAssignment(false)
       setSuccess(isEditingAssignment ? 'Assignment berhasil diperbarui.' : 'Assignment berhasil dibuat.')
       if (!isEditingAssignment) {
