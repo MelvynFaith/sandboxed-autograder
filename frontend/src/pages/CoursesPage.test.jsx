@@ -9,7 +9,7 @@ function setUser(role) {
   localStorage.setItem(
     'user',
     JSON.stringify({
-      id: 'user-1',
+      id: role === 'mahasiswa' ? 'mock-student' : 'user-1',
       nama: 'Test User',
       email: 'mahasiswa@example.test',
       role,
@@ -47,6 +47,7 @@ describe('Course management and student assignment routes', () => {
     setUser('dosen')
     render(<App />)
 
+    expect(screen.queryByLabelText('Email dosen pengampu')).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Nama'), { target: { value: 'Basis Data' } })
     fireEvent.change(screen.getByLabelText('Kode'), { target: { value: 'CS220' } })
     fireEvent.change(screen.getByLabelText('Term'), { target: { value: '2026' } })
@@ -54,6 +55,67 @@ describe('Course management and student assignment routes', () => {
 
     expect(await screen.findByRole('status')).toHaveTextContent('Course berhasil dibuat.')
     expect(screen.getByRole('button', { name: /CS220 — Basis Data/ })).toBeInTheDocument()
+  })
+
+  it('requires an instructor email when an administrator creates a Course', async () => {
+    setUser('admin')
+    render(<App />)
+
+    const lecturerEmail = await screen.findByLabelText('Email dosen pengampu')
+    expect(lecturerEmail).toBeRequired()
+    fireEvent.change(screen.getByLabelText('Nama'), { target: { value: 'Basis Data' } })
+    fireEvent.change(screen.getByLabelText('Kode'), { target: { value: 'CS220' } })
+    fireEvent.change(screen.getByLabelText('Term'), { target: { value: '2026' } })
+    fireEvent.submit(screen.getByRole('button', { name: 'Simpan Course' }).closest('form'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Email dosen pengampu wajib diisi.',
+    )
+    fireEvent.change(lecturerEmail, { target: { value: 'invalid-email' } })
+    fireEvent.submit(screen.getByRole('button', { name: 'Simpan Course' }).closest('form'))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Format email dosen pengampu tidak valid.',
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('sends lecturer_email when an administrator creates a Course', async () => {
+    setUser('admin')
+    vi.stubEnv('VITE_USE_MOCK', 'false')
+    const createdCourse = { id: 2, code: 'CS220', name: 'Basis Data', term: '2026' }
+    const fetchMock = vi.fn((url, options = {}) => {
+      if (url === '/api/v1/courses' && options.method === 'POST') {
+        return Promise.resolve(jsonResponse(201, createdCourse))
+      }
+      if (url.startsWith('/api/v1/courses/')) {
+        return Promise.resolve(jsonResponse(200, paginated([])))
+      }
+      return Promise.resolve(jsonResponse(200, paginated([
+        { id: 1, code: 'CS101', name: 'Algoritma', term: '2026' },
+        createdCourse,
+      ])))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+
+    fireEvent.change(await screen.findByLabelText('Nama'), { target: { value: 'Basis Data' } })
+    fireEvent.change(screen.getByLabelText('Kode'), { target: { value: 'CS220' } })
+    fireEvent.change(screen.getByLabelText('Term'), { target: { value: '2026' } })
+    fireEvent.change(screen.getByLabelText('Email dosen pengampu'), {
+      target: { value: 'dosen@example.test' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan Course' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Course berhasil dibuat.')
+    const createRequest = fetchMock.mock.calls.find(
+      ([url, options]) => url === '/api/v1/courses' && options.method === 'POST',
+    )
+    expect(JSON.parse(createRequest[1].body)).toEqual({
+      name: 'Basis Data',
+      code: 'CS220',
+      term: '2026',
+      lecturer_email: 'dosen@example.test',
+    })
   })
 
   it('lets a lecturer enroll and remove a student from a Course', async () => {
@@ -137,6 +199,56 @@ describe('Course management and student assignment routes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Simpan Course' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Kode Course sudah digunakan.')
+    const createRequest = fetchMock.mock.calls.find(
+      ([url, options]) => url === '/api/v1/courses' && options.method === 'POST',
+    )
+    expect(JSON.parse(createRequest[1].body)).toEqual({
+      name: 'Algoritma Baru',
+      code: 'CS101',
+      term: '2026',
+    })
+    expect(JSON.parse(createRequest[1].body)).not.toHaveProperty('lecturer_email')
+  })
+
+  it.each([
+    [
+      404,
+      'user_not_found',
+      'Dosen dengan email tersebut tidak ditemukan.',
+    ],
+    [
+      400,
+      'invalid_request',
+      'Pengguna yang dipilih bukan dosen dengan peran LECTURER.',
+    ],
+  ])('shows administrator lecturer validation errors (%s %s)', async (status, code, message) => {
+    setUser('admin')
+    vi.stubEnv('VITE_USE_MOCK', 'false')
+    const fetchMock = vi.fn((url, options = {}) => {
+      if (url === '/api/v1/courses' && options.method === 'POST') {
+        return Promise.resolve(jsonResponse(status, {
+          error: { code, message },
+        }))
+      }
+      if (url.startsWith('/api/v1/courses/')) {
+        return Promise.resolve(jsonResponse(200, paginated([])))
+      }
+      return Promise.resolve(jsonResponse(200, paginated([
+        { id: 1, code: 'CS101', name: 'Algoritma', term: '2026' },
+      ])))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+
+    fireEvent.change(await screen.findByLabelText('Nama'), { target: { value: 'Basis Data' } })
+    fireEvent.change(screen.getByLabelText('Kode'), { target: { value: 'CS220' } })
+    fireEvent.change(screen.getByLabelText('Term'), { target: { value: '2026' } })
+    fireEvent.change(screen.getByLabelText('Email dosen pengampu'), {
+      target: { value: code === 'user_not_found' ? 'missing@example.test' : 'mahasiswa@example.test' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan Course' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
   })
 
   it('shows a 404 API message when the enrollment email is unknown', async () => {

@@ -6,6 +6,7 @@ import {
   getCourseEnrollmentsPage,
   getCoursesPage,
 } from '../api/courses.js'
+import { useAuth } from '../context/useAuth.js'
 
 const PAGE_SIZE = 10
 
@@ -34,6 +35,8 @@ function PageControls({ page, hasNext, onPageChange, label }) {
 }
 
 function CoursesPage() {
+  const { user } = useAuth()
+  const isAdmin = user.role === 'admin'
   const [coursesPage, setCoursesPage] = useState({
     items: [],
     page: 1,
@@ -49,7 +52,12 @@ function CoursesPage() {
     has_next: false,
   })
   const [enrollmentPage, setEnrollmentPage] = useState(1)
-  const [courseForm, setCourseForm] = useState({ name: '', code: '', term: '' })
+  const [courseForm, setCourseForm] = useState({
+    name: '',
+    code: '',
+    term: '',
+    lecturerEmail: '',
+  })
   const [enrollmentEmail, setEnrollmentEmail] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -120,15 +128,24 @@ function CoursesPage() {
       name: courseForm.name.trim(),
       code: courseForm.code.trim(),
       term: courseForm.term.trim(),
+      lecturerEmail: courseForm.lecturerEmail.trim(),
     }
     if (!course.name || !course.code || !course.term) {
       setError('Nama Course, kode, dan term wajib diisi.')
       return
     }
+    if (isAdmin && !course.lecturerEmail) {
+      setError('Email dosen pengampu wajib diisi.')
+      return
+    }
+    if (isAdmin && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(course.lecturerEmail)) {
+      setError('Format email dosen pengampu tidak valid.')
+      return
+    }
 
     try {
-      const created = await createCourse(course)
-      setCourseForm({ name: '', code: '', term: '' })
+      const created = await createCourse(course, user.role)
+      setCourseForm({ name: '', code: '', term: '', lecturerEmail: '' })
       setCoursePage(1)
       setSelectedCourseId(String(created.id))
       const result = await getCoursesPage({ page: 1, pageSize: PAGE_SIZE })
@@ -214,6 +231,21 @@ function CoursesPage() {
               value={courseForm.term}
             />
           </label>
+          {isAdmin && (
+            <label className="block text-sm font-medium text-slate-700">
+              Email dosen pengampu
+              <input
+                className="mt-1 block w-full min-w-0 rounded border border-slate-300 bg-white p-2"
+                autoComplete="email"
+                onChange={(event) =>
+                  setCourseForm((current) => ({ ...current, lecturerEmail: event.target.value }))
+                }
+                required
+                type="email"
+                value={courseForm.lecturerEmail}
+              />
+            </label>
+          )}
           <div className="md:col-span-3">
             <button
               className="w-full rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 sm:w-auto"

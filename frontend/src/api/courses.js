@@ -1,4 +1,4 @@
-import { apiRequest, throwApiError } from './client.js'
+import { apiRequest, throwApiError, throwMockApiError } from './client.js'
 
 const MOCK_PAGE_SIZE = 10
 const mockCourses = [
@@ -7,7 +7,12 @@ const mockCourses = [
 ]
 const mockEnrollments = {
   'course-1': [
-    { id: 'enroll-1', user_id: 'user-1', name: 'Mahasiswa Demo', email: 'mahasiswa@example.test' },
+    {
+      id: 'enroll-1',
+      user_id: 'mock-student',
+      name: 'Mahasiswa Demo',
+      email: 'mahasiswa@example.test',
+    },
   ],
   'course-2': [],
 }
@@ -155,13 +160,27 @@ function mockPage(items, page, pageSize) {
   }
 }
 
+function visibleMockCourses() {
+  const serializedUser = localStorage.getItem('user')
+  const user = serializedUser ? JSON.parse(serializedUser) : null
+  if (user?.role !== 'mahasiswa') {
+    return mockCourses
+  }
+
+  return mockCourses.filter((course) =>
+    (mockEnrollments[course.id] ?? []).some(
+      (enrollment) => String(enrollment.user_id) === String(user.id),
+    ),
+  )
+}
+
 function queryFor(page, pageSize) {
   return `page=${page}&page_size=${pageSize}`
 }
 
 export async function getCoursesPage({ page = 1, pageSize = MOCK_PAGE_SIZE } = {}) {
   if (import.meta.env.VITE_USE_MOCK === 'true') {
-    return readCourses(mockPage(mockCourses, page, pageSize))
+    return readCourses(mockPage(visibleMockCourses(), page, pageSize))
   }
 
   const response = await apiRequest(`/courses?${queryFor(page, pageSize)}`)
@@ -176,10 +195,32 @@ export async function getCourses() {
   return (await getCoursesPage({ pageSize: 50 })).items
 }
 
-export async function createCourse(course) {
+export async function createCourse(course, role) {
   if (import.meta.env.VITE_USE_MOCK === 'true') {
+    if (role === 'admin' && !course.lecturerEmail?.trim()) {
+      await throwMockApiError(
+        'invalid_request',
+        'Admin wajib menentukan email dosen pengampu.',
+      )
+    }
+    if (role === 'admin' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(course.lecturerEmail.trim())) {
+      await throwMockApiError('invalid_request', 'Alamat email dosen tidak valid.')
+    }
+    if (role === 'admin' && course.lecturerEmail.trim() !== 'dosen@example.test') {
+      if (course.lecturerEmail.trim() === 'mahasiswa@example.test') {
+        await throwMockApiError(
+          'invalid_request',
+          'Pengguna yang dipilih bukan dosen dengan peran LECTURER.',
+        )
+      }
+      await throwMockApiError(
+        'user_not_found',
+        'Dosen dengan email tersebut tidak ditemukan.',
+        404,
+      )
+    }
     if (mockCourses.some((existing) => existing.code === course.code)) {
-      throw new Error('Kode Course sudah digunakan.')
+      await throwMockApiError('course_code_exists', 'Kode Course sudah digunakan.', 409)
     }
     const created = {
       id: `course-${mockCourses.length + 1}`,
@@ -199,6 +240,7 @@ export async function createCourse(course) {
       name: course.name,
       code: course.code,
       term: course.term,
+      ...(role === 'admin' ? { lecturer_email: course.lecturerEmail } : {}),
     }),
   })
   if (!response.ok) {
@@ -243,7 +285,7 @@ export async function createEnrollment(courseId, { email }) {
 
     const created = {
       id: `enroll-${collection.length + 1}`,
-      user_id: `user-${collection.length + 1}`,
+      user_id: 'mock-student',
       name: 'Mahasiswa Demo',
       email,
     }
