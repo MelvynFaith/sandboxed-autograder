@@ -113,16 +113,24 @@ func (c *Checker) check(ctx context.Context) Report {
 		rep.Status, rep.Database = StatusUnhealthy, DatabaseUnreached
 		slog.Warn("health check: database unreachable", "err", err)
 	}
-	if c.workers != nil {
-		rep.Workers.Alive, rep.Workers.Configured = c.workers.Workers()
-		if rep.Workers.Alive < rep.Workers.Configured {
-			rep.Status = StatusUnhealthy
-		}
-	}
-	if c.queue != nil {
-		rep.QueueDepth = c.queue.Len()
+	rep.Workers, rep.QueueDepth = c.Capacity()
+	if rep.Workers.Alive < rep.Workers.Configured {
+		rep.Status = StatusUnhealthy
 	}
 
 	c.at, c.last = c.now(), rep
 	return rep
+}
+
+// Capacity returns the worker count and the queue depth as they are now, without the cache or the
+// database check. /healthz reports these two values; the admin queue panel (FR-13) reads them here
+// so that both always agree.
+func (c *Checker) Capacity() (workers WorkerCount, queueDepth int) {
+	if c.workers != nil {
+		workers.Alive, workers.Configured = c.workers.Workers()
+	}
+	if c.queue != nil {
+		queueDepth = c.queue.Len()
+	}
+	return workers, queueDepth
 }

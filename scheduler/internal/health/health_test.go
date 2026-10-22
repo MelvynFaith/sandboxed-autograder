@@ -134,6 +134,20 @@ func TestOneCheckPerSecond(t *testing.T) {
 	}
 }
 
+// Capacity reads the same workers and queue as /healthz, but neither pings nor waits for the cache.
+func TestCapacity(t *testing.T) {
+	db := &fakeDB{}
+	if w, depth := New(db, nil, nil).Capacity(); w != (WorkerCount{}) || depth != 0 {
+		t.Errorf("API-only process: %+v and depth %d, want zero", w, depth)
+	}
+	if w, depth := New(db, fakeWorkers{2, 3}, fakeQueue(5)).Capacity(); w != (WorkerCount{2, 3}) || depth != 5 {
+		t.Errorf("got %+v and depth %d, want {2 3} and 5", w, depth)
+	}
+	if n := db.pings.Load(); n != 0 {
+		t.Errorf("Capacity pinged the database %d times", n)
+	}
+}
+
 // A client that hangs up must not make the shared result say the database is unreachable.
 func TestCancelledRequestStillPingsToTheEnd(t *testing.T) {
 	c := New(&fakeDB{}, nil, nil)

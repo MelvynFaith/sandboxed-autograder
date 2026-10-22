@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/api"
+	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/audit"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/auth"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/courses"
 	"github.com/MelvynFaith/sandboxed-autograder/scheduler/internal/harness"
@@ -88,7 +89,7 @@ func run() error {
 	}
 
 	// grading is nil, and never ready, when the pool is off. So are the worker count and the queue
-	// depth that /healthz reports.
+	// depth that /healthz and the admin queue panel report.
 	var grading chan error
 	pipeline := store.NewPipeline(pool)
 	hub := progress.NewHub()
@@ -113,7 +114,8 @@ func run() error {
 	mux.Handle("GET /ws/v1/submissions/{id}", stream.New(ticketStore, pipeline, hub))
 	mux.Handle("/", api.NewHandler(
 		auth.NewStore(pool), tokens, ticketStore, courses.NewStore(pool),
-		submissions.NewStore(pool), settings.NewStore(pool), jobs, cfg.codeDir,
+		submissions.NewStore(pool), settings.NewStore(pool), audit.NewStore(pool), checker,
+		jobs, cfg.codeDir,
 	))
 	server := &http.Server{
 		Addr:              cfg.httpAddr,

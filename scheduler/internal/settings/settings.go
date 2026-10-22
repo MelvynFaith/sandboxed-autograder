@@ -17,8 +17,10 @@ const EventSettingsChanged = "SETTINGS_CHANGED"
 
 // Bounds the schema also enforces. A value of 0 switches a rule off.
 const (
-	maxCount    = 10000
-	maxInterval = 86400
+	// MaxCount bounds max_active_submissions and max_submissions_per_assignment.
+	MaxCount = 10000
+	// MaxInterval bounds min_submission_interval_s: one day.
+	MaxInterval = 86400
 )
 
 // ErrInvalid means a value is outside its bounds. Nothing was saved.
@@ -35,12 +37,12 @@ type Settings struct {
 // Validate checks the bounds, with a message the API can show to the administrator.
 func (s Settings) Validate() error {
 	switch {
-	case s.MaxActiveSubmissions < 0 || s.MaxActiveSubmissions > maxCount:
-		return fmt.Errorf("%w: max_active_submissions must be 0 to %d", ErrInvalid, maxCount)
-	case s.MinSubmissionIntervalS < 0 || s.MinSubmissionIntervalS > maxInterval:
-		return fmt.Errorf("%w: min_submission_interval_s must be 0 to %d", ErrInvalid, maxInterval)
-	case s.MaxSubmissionsPerAssignment < 0 || s.MaxSubmissionsPerAssignment > maxCount:
-		return fmt.Errorf("%w: max_submissions_per_assignment must be 0 to %d", ErrInvalid, maxCount)
+	case s.MaxActiveSubmissions < 0 || s.MaxActiveSubmissions > MaxCount:
+		return fmt.Errorf("%w: max_active_submissions must be 0 to %d", ErrInvalid, MaxCount)
+	case s.MinSubmissionIntervalS < 0 || s.MinSubmissionIntervalS > MaxInterval:
+		return fmt.Errorf("%w: min_submission_interval_s must be 0 to %d", ErrInvalid, MaxInterval)
+	case s.MaxSubmissionsPerAssignment < 0 || s.MaxSubmissionsPerAssignment > MaxCount:
+		return fmt.Errorf("%w: max_submissions_per_assignment must be 0 to %d", ErrInvalid, MaxCount)
 	}
 	return nil
 }
