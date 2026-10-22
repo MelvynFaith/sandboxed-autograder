@@ -1,4 +1,11 @@
-import { apiRequest, throwApiError } from './client.js'
+import { apiRequest, throwApiError, throwMockApiError } from './client.js'
+
+// Upper bounds of the FR-14 thresholds, as the API validates them. 0 switches a rule off.
+export const rateLimitMaximums = {
+  max_active_submissions: 10000,
+  min_submission_interval_s: 86400,
+  max_submissions_per_assignment: 10000,
+}
 
 const roles = new Set(['STUDENT', 'LECTURER', 'ADMIN'])
 const mockUsers = [
@@ -17,6 +24,20 @@ const mockAuditLogs = [
     created_at: '2026-10-14T08:00:00Z',
   },
 ]
+const mockQueueStatus = {
+  queue_depth: 1,
+  workers: { alive: 2, configured: 2 },
+  submissions: { queued: 1, running: 1 },
+}
+const mockRateLimits = {
+  max_active_submissions: 1,
+  min_submission_interval_s: 30,
+  max_submissions_per_assignment: 30,
+}
+
+function isCount(value) {
+  return Number.isInteger(value) && value >= 0
+}
 
 function readPage(payload, parser, message, requestedPage, requestedPageSize) {
   const entries = Array.isArray(payload) ? payload : payload?.items
@@ -136,4 +157,82 @@ export async function updateUserRole(userId, role) {
     await throwApiError(response, `Gagal mengubah peran pengguna (${response.status}).`)
   }
   return readUser(await response.json())
+}
+
+function readQueueStatus(payload) {
+  if (
+    !isCount(payload?.queue_depth) ||
+    !isCount(payload.workers?.alive) ||
+    !isCount(payload.workers.configured) ||
+    !isCount(payload.submissions?.queued) ||
+    !isCount(payload.submissions.running)
+  ) {
+    throw new Error('Respons status antrian tidak sesuai format yang diharapkan.')
+  }
+  return {
+    queueDepth: payload.queue_depth,
+    workersAlive: payload.workers.alive,
+    workersConfigured: payload.workers.configured,
+    queued: payload.submissions.queued,
+    running: payload.submissions.running,
+  }
+}
+
+export async function getQueueStatus() {
+  if (import.meta.env.VITE_USE_MOCK === 'true') {
+    return readQueueStatus(mockQueueStatus)
+  }
+  const response = await apiRequest('/admin/queue')
+  if (!response.ok) {
+    await throwApiError(response, `Gagal memuat status antrian (${response.status}).`)
+  }
+  return readQueueStatus(await response.json())
+}
+
+function isRateLimit(limits, name) {
+  return isCount(limits?.[name]) && limits[name] <= rateLimitMaximums[name]
+}
+
+// Returns only the three thresholds; other response fields are dropped.
+function readRateLimits(payload) {
+  const names = Object.keys(rateLimitMaximums)
+  if (!names.every((name) => isRateLimit(payload, name))) {
+    throw new Error('Respons batas laju tidak sesuai format yang diharapkan.')
+  }
+  return Object.fromEntries(names.map((name) => [name, payload[name]]))
+}
+
+export async function getRateLimits() {
+  if (import.meta.env.VITE_USE_MOCK === 'true') {
+    return readRateLimits(mockRateLimits)
+  }
+  const response = await apiRequest('/admin/rate-limits')
+  if (!response.ok) {
+    await throwApiError(response, `Gagal memuat batas laju (${response.status}).`)
+  }
+  return readRateLimits(await response.json())
+}
+
+// The body holds exactly the three thresholds: the API rejects unknown fields.
+export async function updateRateLimits(limits) {
+  const names = Object.keys(rateLimitMaximums)
+  const body = Object.fromEntries(names.map((name) => [name, limits[name]]))
+  if (import.meta.env.VITE_USE_MOCK === 'true') {
+    if (!names.every((name) => isRateLimit(body, name))) {
+      await throwMockApiError(
+        'invalid_settings',
+        'Nilai batas laju di luar rentang yang diizinkan.',
+      )
+    }
+    return readRateLimits(Object.assign(mockRateLimits, body))
+  }
+  const response = await apiRequest('/admin/rate-limits', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    await throwApiError(response, `Gagal menyimpan batas laju (${response.status}).`)
+  }
+  return readRateLimits(await response.json())
 }
