@@ -23,7 +23,10 @@ npm run build
 
 - Students can browse assignments, submit Python files, follow grading status,
   and view submission history and test-case reports.
-- Lecturers and administrators can manage Courses and student enrollments
+- Students see only their enrolled courses and course-grouped assignments;
+  course assignment access uses `GET /api/v1/courses/{id}/assignments`.
+- Lecturers create Courses for themselves; administrators assign a lecturer
+  when creating a Course. Both roles manage Courses and student enrollments
   (`/courses`), assignments, test cases, and resource limits. Course UI is in
   PR #99.
 - Lecturers can import and export an assignment's test cases as YAML from the
@@ -79,6 +82,7 @@ the frontend currently relies on; confirm exact payloads with the backend in
 
 | Area | Frontend contract |
 | --- | --- |
+| Courses and enrollments | FR-18: `GET /api/v1/courses` lists only the current user's visible courses; students cannot access the Course management page. Lecturers create courses with `{ name, code, term }`; the backend assigns the requesting lecturer as owner. Administrators must also send `lecturer_email` to identify the Course owner. Both roles manage enrollments with `{ email }`. Course, enrollment, and course-assignment lists use `{ items, page, page_size, has_next }`, and the UI pagination follows `has_next`. Students' grouped assignment lists use `GET /api/v1/courses/{id}/assignments`. |
 | Authentication | `POST /api/v1/auth/login` returns `access_token`, `refresh_token`, and a user with `id`, `name`, `email`, and uppercase `role`. Refresh uses `POST /api/v1/auth/refresh`; logout uses `POST /api/v1/auth/logout`. |
 | Registration and profile | FR-01/FR-15 define `POST /api/v1/auth/register`, `GET /api/v1/users/me`, `PUT /api/v1/users/me` (name), and `PUT /api/v1/users/me/password`. The SRS does not define the registration request body or the password-change body field names; the frontend assumes `{ name, email, password }` for registration and `{ current_password, new_password }` for password change. Password confirmation is checked in the browser and is not sent to the API. Registration request construction is isolated to the register function in `src/api/auth.js`; profile/password request adapters are in `src/api/profile.js`. Registration always creates a `STUDENT`; password changes clear the local session after success. In mock mode, registered accounts and profile/password changes are stored in browser `localStorage` so they persist across reloads. |
 | Course and assignments | Course-scoped assignment listing/creation uses `/api/v1/courses/{course_id}/assignments`. Assignment fields use the SRS names `title`, `description`, `deadline_at`, and `late_until_at`. Assignment edit/delete use `PUT`/`DELETE /api/v1/assignments/{id}`. |

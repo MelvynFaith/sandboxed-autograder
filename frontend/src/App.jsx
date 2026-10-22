@@ -10,6 +10,7 @@ import {
 import AuthProvider from './context/AuthContext.jsx'
 import { useAuth } from './context/useAuth.js'
 import AssignmentsPage from './pages/AssignmentsPage.jsx'
+import CoursesPage from './pages/CoursesPage.jsx'
 import HistoryPage from './pages/HistoryPage.jsx'
 import LecturerAssignmentsPage from './pages/LecturerAssignmentsPage.jsx'
 import AdminPage from './pages/AdminPage.jsx'
@@ -27,9 +28,11 @@ const roleMenus = {
   ],
   dosen: [
     { label: 'Daftar Assignment', to: '/assignments' },
+    { label: 'Course', to: '/courses' },
     { label: 'Kelola Assignment', to: '/lecturer/assignments' },
   ],
   admin: [
+    { label: 'Course', to: '/courses' },
     { label: 'Kelola Assignment', to: '/lecturer/assignments' },
     { label: 'Administrasi', to: '/admin' },
   ],
@@ -123,6 +126,16 @@ function AdminRoute() {
   return <AdminPage />
 }
 
+function CoursesRoute() {
+  const { user } = useAuth()
+
+  if (user.role === 'mahasiswa') {
+    return <Navigate replace to="/assignments" />
+  }
+
+  return <CoursesPage />
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -133,6 +146,7 @@ function App() {
           <Route element={<ProtectedLayout />}>
             <Route path="/" element={<Navigate replace to="/assignments" />} />
             <Route path="/assignments" element={<AssignmentsPage />} />
+            <Route path="/courses" element={<CoursesRoute />} />
             <Route path="/history" element={<StudentHistoryRoute />} />
             <Route path="/lecturer/assignments" element={<LecturerAssignmentsRoute />} />
             <Route path="/admin" element={<AdminRoute />} />
