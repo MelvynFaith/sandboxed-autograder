@@ -40,7 +40,7 @@ describe('test-case YAML API', () => {
       '/api/v1/assignments/42/testcases/export',
       expect.objectContaining({ headers: expect.any(Headers) }),
     )
-    expect(fetchMock.mock.calls[0][1].headers.get('Authorization')).toMatch(/^Bearer .+/)
+    expect(fetchMock.mock.calls[0][1].headers.get('Authorization')).toBe('Bearer yaml-token')
   })
 
   it('posts YAML to the assignment import endpoint and validates the result', async () => {
@@ -64,7 +64,7 @@ describe('test-case YAML API', () => {
       }),
     )
     expect(fetchMock.mock.calls[0][1].headers.get('Content-Type')).toBe('application/yaml')
-    expect(fetchMock.mock.calls[0][1].headers.get('Authorization')).toMatch(/^Bearer .+/)
+    expect(fetchMock.mock.calls[0][1].headers.get('Authorization')).toBe('Bearer yaml-token')
   })
 
   it('shows the backend validation message for invalid YAML', async () => {
