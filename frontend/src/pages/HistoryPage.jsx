@@ -1,114 +1,61 @@
 import { useEffect, useRef, useState } from 'react'
-import { getSubmissionHistory } from '../api/submissionHistory.js'
+import { Link } from 'react-router-dom'
+import { cancelSubmission, getSubmissionHistory } from '../api/submissionHistory.js'
 import { getSubmissionReport } from '../api/submissionReport.js'
+import StatusBadge from '../components/StatusBadge.jsx'
+import SubmissionReport from '../components/SubmissionReport.jsx'
+import {
+  dateFormatter,
+  formatScore,
+  submissionStatusLabels,
+  submissionStatusStyles,
+} from '../components/submissionLabels.js'
 
-const dateFormatter = new Intl.DateTimeFormat('id-ID', {
-  dateStyle: 'long',
-  timeStyle: 'short',
-  timeZone: 'Asia/Jakarta',
-})
+function CancelConfirmation({ assignmentTitle, isCancelling, onCancel, onDismiss }) {
+  const panel = useRef(null)
 
-const submissionStatusLabels = {
-  QUEUED: 'Antre',
-  RUNNING: 'Sedang berjalan',
-  COMPLETED: 'Selesai',
-  FAILED: 'Pipeline gagal',
-  CANCELLED: 'Dibatalkan',
-}
+  // Move focus into the panel so keyboard and screen reader users land on the question.
+  useEffect(() => {
+    panel.current?.focus()
+  }, [])
 
-const submissionStatusStyles = {
-  QUEUED: 'bg-amber-100 text-amber-900',
-  RUNNING: 'bg-blue-100 text-blue-900',
-  COMPLETED: 'bg-green-100 text-green-900',
-  FAILED: 'bg-red-100 text-red-900',
-  CANCELLED: 'bg-slate-200 text-slate-900',
-}
-
-const verdictStyles = {
-  PASSED: 'bg-green-100 text-green-900',
-  FAILED: 'bg-red-100 text-red-900',
-  TIMEOUT: 'bg-amber-100 text-amber-900',
-  MEMORY_LIMIT_EXCEEDED: 'bg-purple-100 text-purple-900',
-  RUNTIME_ERROR: 'bg-orange-100 text-orange-900',
-  SYNTAX_ERROR: 'bg-pink-100 text-pink-900',
-  SECURITY_VIOLATION: 'bg-slate-900 text-white',
-}
-
-function StatusBadge({ status, label, className }) {
   return (
-    <span
-      className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${className}`}
-      data-testid={verdictStyles[status] ? 'verdict-badge' : undefined}
+    <div
+      aria-label={`Konfirmasi pembatalan submission ${assignmentTitle}`}
+      className="mt-4 space-y-3 rounded-md border border-amber-300 bg-amber-50 p-4"
+      ref={panel}
+      role="group"
+      tabIndex={-1}
     >
-      {label ?? status}
-    </span>
-  )
-}
-
-function SubmissionReport({ report }) {
-  return (
-    <section aria-label={`Laporan submission ${report.submissionId}`} className="mt-5 space-y-4">
-      <h3 className="text-lg font-semibold">Laporan per test case</h3>
-      <p className="text-sm text-slate-700">Skor total: {report.totalScore}</p>
-      {report.results.length === 0 ? (
-        <p className="text-sm text-slate-600">Belum ada hasil test case.</p>
-      ) : (
-        <ul className="space-y-3">
-          {report.results.map((result) => (
-            <li
-              className="rounded-md border border-slate-200 bg-slate-50 p-4"
-              key={result.testCaseId}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h4 className="font-medium">Test case {result.testCaseId}</h4>
-                <StatusBadge
-                  className={verdictStyles[result.verdict]}
-                  status={result.verdict}
-                />
-              </div>
-              <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
-                <div>
-                  <dt className="text-slate-600">Skor</dt>
-                  <dd className="font-medium">{result.score}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-600">Waktu eksekusi</dt>
-                  <dd className="font-medium">{result.executionTimeMs} ms</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-600">Penggunaan memori</dt>
-                  <dd className="font-medium">{result.memoryKb} KB</dd>
-                </div>
-              </dl>
-              {!result.hidden && (
-                <div className="mt-3 space-y-2 text-sm">
-                  {result.errorMessage && (
-                    <p className="text-red-800">
-                      <span className="font-medium">Pesan error: </span>
-                      {result.errorMessage}
-                    </p>
-                  )}
-                  {result.actualOutput !== null && (
-                    <div>
-                      <h5 className="font-medium">Output aktual</h5>
-                      <pre className="mt-1 overflow-x-auto rounded bg-white p-3 text-slate-800">
-                        {result.actualOutput}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+      <p className="text-sm text-amber-950">
+        Batalkan submission ini? Submission yang dibatalkan tidak akan dinilai.
+      </p>
+      <div className="flex flex-wrap gap-3">
+        <button
+          className="rounded bg-red-700 px-4 py-2 font-medium text-white hover:bg-red-800 disabled:opacity-60"
+          disabled={isCancelling}
+          onClick={onCancel}
+          type="button"
+        >
+          {isCancelling ? 'Membatalkan...' : 'Ya, batalkan'}
+        </button>
+        <button
+          className="rounded border border-slate-300 bg-white px-4 py-2 font-medium disabled:opacity-60"
+          disabled={isCancelling}
+          onClick={onDismiss}
+          type="button"
+        >
+          Tidak
+        </button>
+      </div>
+    </div>
   )
 }
 
 function HistoryPage() {
   const [submissions, setSubmissions] = useState([])
   const [page, setPage] = useState(1)
+  const [reloadKey, setReloadKey] = useState(0)
   const [hasNextPage, setHasNextPage] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -116,6 +63,9 @@ function HistoryPage() {
   const [report, setReport] = useState(null)
   const [isReportLoading, setIsReportLoading] = useState(false)
   const [reportError, setReportError] = useState('')
+  const [confirmingId, setConfirmingId] = useState(null)
+  const [cancellingId, setCancellingId] = useState(null)
+  const [cancelNotice, setCancelNotice] = useState(null)
   const reportRequestId = useRef(0)
 
   useEffect(() => {
@@ -145,7 +95,7 @@ function HistoryPage() {
     return () => {
       isCurrent = false
     }
-  }, [page])
+  }, [page, reloadKey])
 
   async function toggleReport(submissionId) {
     if (selectedId === submissionId) {
@@ -177,6 +127,25 @@ function HistoryPage() {
       if (currentRequestId === reportRequestId.current) {
         setIsReportLoading(false)
       }
+    }
+  }
+
+  async function confirmCancel(submissionId) {
+    setCancellingId(submissionId)
+    setCancelNotice(null)
+    try {
+      const cancelled = await cancelSubmission(submissionId)
+      setSubmissions((current) =>
+        current.map((entry) => (entry.id === submissionId ? { ...entry, status: cancelled.status } : entry)),
+      )
+      setCancelNotice({ id: submissionId, type: 'success', text: 'Submission berhasil dibatalkan.' })
+    } catch (error) {
+      setCancelNotice({ id: submissionId, type: 'failure', text: error.message })
+      // The submission may have started or disappeared in the meantime; show the real state.
+      setReloadKey((current) => current + 1)
+    } finally {
+      setCancellingId(null)
+      setConfirmingId(null)
     }
   }
 
@@ -223,7 +192,7 @@ function HistoryPage() {
               <div>
                 <h2 className="text-lg font-semibold">{submission.assignmentTitle}</h2>
                 <p className="mt-2 text-sm text-slate-700">
-                  Skor: {submission.totalScore}
+                  Skor: {formatScore(submission.totalScore, submission.maxScore)}
                 </p>
                 {submission.isLate && (
                   <p className="mt-1 text-sm font-medium text-amber-800">Terlambat</p>
@@ -243,14 +212,57 @@ function HistoryPage() {
                 status={submission.status}
               />
             </div>
-            <button
-              aria-expanded={selectedId === submission.id}
-              className="mt-4 rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800"
-              onClick={() => toggleReport(submission.id)}
-              type="button"
-            >
-              {selectedId === submission.id ? 'Tutup laporan' : 'Lihat laporan'}
-            </button>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                aria-expanded={selectedId === submission.id}
+                className="rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800"
+                onClick={() => toggleReport(submission.id)}
+                type="button"
+              >
+                {selectedId === submission.id ? 'Tutup laporan' : 'Lihat laporan'}
+              </button>
+              {/* FR-20: the student may read their own submitted code. */}
+              <Link
+                aria-label={`Lihat kode ${submission.assignmentTitle}`}
+                className="rounded border border-slate-300 px-4 py-2 font-medium hover:bg-slate-100"
+                to={`/submissions/${encodeURIComponent(submission.id)}/code`}
+              >
+                Lihat kode
+              </Link>
+              {submission.status === 'QUEUED' && confirmingId !== submission.id && (
+                <button
+                  aria-label={`Batalkan submission ${submission.assignmentTitle}`}
+                  className="rounded border border-red-300 px-4 py-2 font-medium text-red-800 hover:bg-red-50"
+                  onClick={() => {
+                    setCancelNotice(null)
+                    setConfirmingId(submission.id)
+                  }}
+                  type="button"
+                >
+                  Batalkan
+                </button>
+              )}
+            </div>
+            {confirmingId === submission.id && (
+              <CancelConfirmation
+                assignmentTitle={submission.assignmentTitle}
+                isCancelling={cancellingId === submission.id}
+                onCancel={() => confirmCancel(submission.id)}
+                onDismiss={() => setConfirmingId(null)}
+              />
+            )}
+            {cancelNotice?.id === submission.id && (
+              <p
+                className={
+                  cancelNotice.type === 'success'
+                    ? 'mt-3 text-sm text-blue-800'
+                    : 'mt-3 text-sm text-red-700'
+                }
+                role={cancelNotice.type === 'success' ? 'status' : 'alert'}
+              >
+                {cancelNotice.text}
+              </p>
+            )}
             {selectedId === submission.id && (
               <div>
                 {isReportLoading && (

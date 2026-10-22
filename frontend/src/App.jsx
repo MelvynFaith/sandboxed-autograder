@@ -10,12 +10,16 @@ import {
 import AuthProvider from './context/AuthContext.jsx'
 import { useAuth } from './context/useAuth.js'
 import AssignmentsPage from './pages/AssignmentsPage.jsx'
+import CoursesPage from './pages/CoursesPage.jsx'
 import HistoryPage from './pages/HistoryPage.jsx'
 import LecturerAssignmentsPage from './pages/LecturerAssignmentsPage.jsx'
 import AdminPage from './pages/AdminPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
 import ProfilePage from './pages/ProfilePage.jsx'
+import RecapPage from './pages/RecapPage.jsx'
+import SubmissionCodePage from './pages/SubmissionCodePage.jsx'
+import SubmissionReportPage from './pages/SubmissionReportPage.jsx'
 
 const roleMenus = {
   mahasiswa: [
@@ -24,9 +28,11 @@ const roleMenus = {
   ],
   dosen: [
     { label: 'Daftar Assignment', to: '/assignments' },
+    { label: 'Course', to: '/courses' },
     { label: 'Kelola Assignment', to: '/lecturer/assignments' },
   ],
   admin: [
+    { label: 'Course', to: '/courses' },
     { label: 'Kelola Assignment', to: '/lecturer/assignments' },
     { label: 'Administrasi', to: '/admin' },
   ],
@@ -100,12 +106,34 @@ function LecturerAssignmentsRoute() {
   return <LecturerAssignmentsPage />
 }
 
+// The recap and the lecturer report are for the course lecturer and admins; the API enforces
+// ownership, this only keeps students off pages they cannot use.
+function GradingStaffRoute({ children }) {
+  const { user } = useAuth()
+
+  if (user.role !== 'dosen' && user.role !== 'admin') {
+    return <Navigate replace to="/assignments" />
+  }
+
+  return children
+}
+
 function AdminRoute() {
   const { user } = useAuth()
   if (user.role !== 'admin') {
     return <Navigate replace to="/assignments" />
   }
   return <AdminPage />
+}
+
+function CoursesRoute() {
+  const { user } = useAuth()
+
+  if (user.role === 'mahasiswa') {
+    return <Navigate replace to="/assignments" />
+  }
+
+  return <CoursesPage />
 }
 
 function App() {
@@ -118,10 +146,20 @@ function App() {
           <Route element={<ProtectedLayout />}>
             <Route path="/" element={<Navigate replace to="/assignments" />} />
             <Route path="/assignments" element={<AssignmentsPage />} />
+            <Route path="/courses" element={<CoursesRoute />} />
             <Route path="/history" element={<StudentHistoryRoute />} />
             <Route path="/lecturer/assignments" element={<LecturerAssignmentsRoute />} />
             <Route path="/admin" element={<AdminRoute />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route
+              path="/lecturer/assignments/:assignmentId/recap"
+              element={<GradingStaffRoute><RecapPage /></GradingStaffRoute>}
+            />
+            <Route
+              path="/submissions/:submissionId/report"
+              element={<GradingStaffRoute><SubmissionReportPage /></GradingStaffRoute>}
+            />
+            <Route path="/submissions/:submissionId/code" element={<SubmissionCodePage />} />
           </Route>
           <Route path="*" element={<Navigate replace to="/assignments" />} />
         </Routes>
