@@ -75,6 +75,10 @@ and user IDs; a worker calls `Dequeue`.
 
 ## Authentication API
 
+The OpenAPI subset for the submission upload, history, detail, and report endpoints is in
+[`docs/openapi.yaml`](../docs/openapi.yaml). It covers the endpoints implemented in PR #63; the
+remaining API routes are not yet described there.
+
 Run the API with Go 1.27.2 or newer. Configuration is supplied through environment variables:
 
 ```sh

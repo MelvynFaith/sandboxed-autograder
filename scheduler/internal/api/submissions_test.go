@@ -126,7 +126,9 @@ func TestSubmissionUploadLimitsQueueAndAccess(t *testing.T) {
 		t.Fatalf("upload exactly 256 KiB = %d, %#v; want 202", created.StatusCode, payload)
 	}
 	submissionID := int64Field(t, payload, "id")
-	if payload["status"] != "QUEUED" || payload["is_late"] != false ||
+	_, graded := payload["total_score"]
+	if payload["status"] != "QUEUED" || payload["is_late"] != false || graded ||
+		payload["assignment_title"] != "Submission assignment" ||
 		int64Field(t, payload, "size_bytes") != maxSubmissionBytes {
 		t.Fatalf("created submission = %#v", payload)
 	}
@@ -146,17 +148,16 @@ func TestSubmissionUploadLimitsQueueAndAccess(t *testing.T) {
 		t.Fatalf("queued jobs = %#v; want submission %d for user %d", jobs, submissionID, fixture.student.ID)
 	}
 
-	ownDetail, ownDetailPayload := env.request(t, http.MethodGet, fmt.Sprintf("/api/v1/submissions/%d", submissionID), nil, fixture.studentAccess)
-	if ownDetail.StatusCode != http.StatusOK || int64Field(t, ownDetailPayload, "id") != submissionID {
-		t.Fatalf("owner detail = %d, %#v", ownDetail.StatusCode, ownDetailPayload)
-	}
-	ownerDetail, ownerPayload := env.request(t, http.MethodGet, fmt.Sprintf("/api/v1/submissions/%d", submissionID), nil, fixture.lecturerAccess)
-	if ownerDetail.StatusCode != http.StatusOK || int64Field(t, ownerPayload, "id") != submissionID {
-		t.Fatalf("course owner detail = %d, %#v", ownerDetail.StatusCode, ownerPayload)
-	}
-	adminDetail, adminPayload := env.request(t, http.MethodGet, fmt.Sprintf("/api/v1/submissions/%d", submissionID), nil, fixture.adminAccess)
-	if adminDetail.StatusCode != http.StatusOK || int64Field(t, adminPayload, "id") != submissionID {
-		t.Fatalf("admin detail = %d, %#v", adminDetail.StatusCode, adminPayload)
+	for name, token := range map[string]string{
+		"owner":        fixture.studentAccess,
+		"course owner": fixture.lecturerAccess,
+		"admin":        fixture.adminAccess,
+	} {
+		response, detail := env.request(t, http.MethodGet, fmt.Sprintf("/api/v1/submissions/%d", submissionID), nil, token)
+		if response.StatusCode != http.StatusOK || int64Field(t, detail, "id") != submissionID ||
+			detail["assignment_title"] != "Submission assignment" {
+			t.Fatalf("%s detail = %d, %#v", name, response.StatusCode, detail)
+		}
 	}
 	for name, token := range map[string]string{
 		"another student": fixture.otherStudentAuth,
@@ -250,6 +251,11 @@ func TestSubmissionRateLimitAndHistoryPagination(t *testing.T) {
 	if pageTwo.StatusCode != http.StatusOK || len(pageItems(t, pageTwoPayload)) != 1 || pageTwoPayload["has_next"] != false {
 		t.Fatalf("submission history page two = %d, %#v", pageTwo.StatusCode, pageTwoPayload)
 	}
+	for _, raw := range append(pageItems(t, pageOnePayload), pageItems(t, pageTwoPayload)...) {
+		if item, _ := raw.(map[string]any); item["assignment_title"] != "Submission assignment" {
+			t.Fatalf("history item without the assignment title: %#v", raw)
+		}
+	}
 	secondAssignmentResponse, secondAssignment := env.request(t, http.MethodPost, fixture.coursePath+"/assignments", map[string]any{
 		"title": "Second submission assignment", "description": "Submit again.",
 		"deadline_at":   time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339Nano),
@@ -277,7 +283,8 @@ func TestSubmissionRateLimitAndHistoryPagination(t *testing.T) {
 	filteredSecond, filteredSecondPayload := env.request(t, http.MethodGet,
 		fmt.Sprintf("/api/v1/submissions?assignment_id=%d", secondAssignmentID), nil, fixture.studentAccess)
 	if filteredSecond.StatusCode != http.StatusOK || len(pageItems(t, filteredSecondPayload)) != 1 ||
-		int64Field(t, pageItems(t, filteredSecondPayload)[0].(map[string]any), "assignment_id") != secondAssignmentID {
+		int64Field(t, pageItems(t, filteredSecondPayload)[0].(map[string]any), "assignment_id") != secondAssignmentID ||
+		pageItems(t, filteredSecondPayload)[0].(map[string]any)["assignment_title"] != "Second submission assignment" {
 		t.Fatalf("history filtered by second assignment = %d, %#v", filteredSecond.StatusCode, filteredSecondPayload)
 	}
 	for _, query := range []string{"assignment_id=0", "assignment_id=not-a-number", fmt.Sprintf("assignment_id=%d&assignment_id=%d", fixture.assignmentID, secondAssignmentID)} {
@@ -422,18 +429,16 @@ func TestSubmissionReportRedactsHiddenCasesAndSurvivesConcurrentDelete(t *testin
 		}
 		assertError(t, payload, "not_found")
 	}
-	adminReportResponse, adminReport := env.request(t, http.MethodGet,
-		fmt.Sprintf("/api/v1/submissions/%d/report", submissionID), nil, fixture.adminAccess)
-	if adminReportResponse.StatusCode != http.StatusOK || len(pageItems(t, map[string]any{"items": adminReport["results"]})) != len(statuses) {
-		t.Fatalf("admin report = %d, %#v", adminReportResponse.StatusCode, adminReport)
-	}
 	for i, raw := range studentResults {
 		entry, ok := raw.(map[string]any)
-		if !ok || entry["status"] != statuses[i] {
+		if !ok || entry["status"] != statuses[i] || entry["is_hidden"] != (i == len(statuses)-1) {
 			t.Fatalf("student report entry %d = %#v", i, raw)
 		}
 		if i == len(statuses)-1 {
-			wantKeys := map[string]bool{"status": true, "score": true, "exec_time_ms": true, "memory_kb": true}
+			wantKeys := map[string]bool{
+				"status": true, "score": true, "exec_time_ms": true, "memory_kb": true,
+				"memory_source": true, "is_hidden": true,
+			}
 			for _, key := range []string{"actual_output", "error_message", "input", "expected_output"} {
 				if _, exists := entry[key]; exists {
 					t.Fatalf("student report entry %d leaks %q: %#v", i, key, entry)
@@ -444,11 +449,11 @@ func TestSubmissionReportRedactsHiddenCasesAndSurvivesConcurrentDelete(t *testin
 					t.Fatalf("hidden report entry includes unexpected field %q: %#v", key, entry)
 				}
 			}
-			if len(entry) != len(wantKeys) {
-				t.Fatalf("hidden report entry has fields %#v; want only status, score, time, and memory", entry)
+			if len(entry) != len(wantKeys) || entry["memory_source"] != "CGROUP_PEAK" {
+				t.Fatalf("hidden report entry has fields %#v; want only status, score, time, memory, and is_hidden", entry)
 			}
 		} else {
-			for _, key := range []string{"actual_output", "error_message", "input", "expected_output"} {
+			for _, key := range []string{"testcase_id", "external_id", "actual_output", "error_message", "input", "expected_output"} {
 				if _, exists := entry[key]; !exists {
 					t.Fatalf("visible student report entry %d is missing %q: %#v", i, key, entry)
 				}
@@ -475,22 +480,41 @@ func TestSubmissionReportRedactsHiddenCasesAndSurvivesConcurrentDelete(t *testin
 	}
 	promotedHiddenResults := pageItems(t, map[string]any{"items": promotedOwnerReport["results"]})
 	promotedHiddenEntry := promotedHiddenResults[len(promotedHiddenResults)-1].(map[string]any)
-	for _, key := range []string{"actual_output", "error_message", "input", "expected_output"} {
+	if promotedHiddenEntry["is_hidden"] != true {
+		t.Fatalf("promoted owner's hidden entry is not marked hidden: %#v", promotedHiddenEntry)
+	}
+	for _, key := range []string{"testcase_id", "external_id", "actual_output", "error_message", "input", "expected_output"} {
 		if _, exists := promotedHiddenEntry[key]; exists {
 			t.Fatalf("promoted owner can see hidden report field %q: %#v", key, promotedHiddenEntry)
 		}
 	}
 
-	lecturerReportResponse, lecturerReport := env.request(t, http.MethodGet,
-		fmt.Sprintf("/api/v1/submissions/%d/report", submissionID), nil, fixture.lecturerAccess)
-	if lecturerReportResponse.StatusCode != http.StatusOK {
-		t.Fatalf("lecturer report = %d, %#v", lecturerReportResponse.StatusCode, lecturerReport)
-	}
-	lecturerResults := pageItems(t, map[string]any{"items": lecturerReport["results"]})
-	hiddenLecturerResult := lecturerResults[len(lecturerResults)-1].(map[string]any)
-	for _, key := range []string{"actual_output", "error_message", "input", "expected_output"} {
-		if _, exists := hiddenLecturerResult[key]; !exists {
-			t.Fatalf("lecturer hidden report is missing %q: %#v", key, hiddenLecturerResult)
+	for name, token := range map[string]string{
+		"course lecturer": fixture.lecturerAccess,
+		"admin":           fixture.adminAccess,
+	} {
+		response, report := env.request(t, http.MethodGet,
+			fmt.Sprintf("/api/v1/submissions/%d/report", submissionID), nil, token)
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("%s report = %d, %#v", name, response.StatusCode, report)
+		}
+		results := pageItems(t, map[string]any{"items": report["results"]})
+		if len(results) != len(statuses) {
+			t.Fatalf("%s report has %d results; want %d", name, len(results), len(statuses))
+		}
+		for i, raw := range results {
+			entry, _ := raw.(map[string]any)
+			if entry["is_hidden"] != (i == len(statuses)-1) {
+				t.Fatalf("%s report entry %d has is_hidden %#v", name, i, entry["is_hidden"])
+			}
+			for _, key := range []string{
+				"testcase_id", "external_id", "actual_output", "error_message", "is_truncated",
+				"memory_source", "input", "expected_output",
+			} {
+				if _, exists := entry[key]; !exists {
+					t.Fatalf("%s report entry %d is missing %q: %#v", name, i, key, entry)
+				}
+			}
 		}
 	}
 

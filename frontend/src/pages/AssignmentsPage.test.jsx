@@ -9,7 +9,7 @@ function setUser(role) {
   localStorage.setItem(
     'user',
     JSON.stringify({
-      id: 'user-1',
+      id: role === 'mahasiswa' ? 'mock-student' : 'user-1',
       nama: 'Test User',
       email: 'test@example.test',
       role,
