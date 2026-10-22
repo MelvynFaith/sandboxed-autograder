@@ -50,7 +50,9 @@ function toLocalDateTime(value) {
 }
 
 function validateResourceLimits(limits) {
-  if (Object.values(limits).some((value) => !Number.isInteger(value) || value <= 0)) {
+  if (Object.values(limits).some(
+    (value) => !Number.isInteger(value) || value <= 0 || value > 2_147_483_647,
+  )) {
     return 'Semua batas sumber daya harus berupa bilangan bulat positif.'
   }
   if (limits.tmpfs_size_mb + 16 > limits.memory_mb) {
@@ -81,6 +83,26 @@ function LecturerAssignmentsPage() {
   const [isImportingYaml, setIsImportingYaml] = useState(false)
   const [isExportingYaml, setIsExportingYaml] = useState(false)
   const yamlFileInput = useRef(null)
+  const confirmDeleteButton = useRef(null)
+  const deleteTrigger = useRef(null)
+
+  useEffect(() => {
+    if (!pendingDelete) {
+      return undefined
+    }
+    confirmDeleteButton.current?.focus()
+
+    function handleDialogKeyDown(event) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setPendingDelete(null)
+        deleteTrigger.current?.focus()
+      }
+    }
+
+    window.addEventListener('keydown', handleDialogKeyDown)
+    return () => window.removeEventListener('keydown', handleDialogKeyDown)
+  }, [pendingDelete])
 
   useEffect(() => {
     let current = true
@@ -240,8 +262,8 @@ function LecturerAssignmentsPage() {
     setError('')
     setSuccess('')
     const weight = Number(testCaseForm.weight)
-    if (!Number.isFinite(weight) || weight <= 0 || !testCaseForm.external_id.trim()) {
-      setError('ID eksternal wajib diisi dan bobot harus berupa angka positif.')
+    if (!Number.isInteger(weight) || weight <= 0 || weight > 2_147_483_647) {
+      setError('Bobot harus berupa bilangan bulat positif.')
       return
     }
     const payload = { ...testCaseForm, external_id: testCaseForm.external_id.trim(), weight }
@@ -334,6 +356,16 @@ function LecturerAssignmentsPage() {
     }
   }
 
+  function requestDelete(type, id, event) {
+    deleteTrigger.current = event.currentTarget
+    setPendingDelete({ type, id })
+  }
+
+  function cancelDelete() {
+    setPendingDelete(null)
+    deleteTrigger.current?.focus()
+  }
+
   function editTestCase(testCase) {
     setEditingTestCaseId(testCase.id)
     setTestCaseForm({
@@ -396,7 +428,7 @@ function LecturerAssignmentsPage() {
                     </button>
                     <button
                       className="rounded border border-red-300 px-3 py-2 text-red-800"
-                      onClick={() => setPendingDelete({ type: 'assignment', id: assignment.id })}
+                      onClick={(event) => requestDelete('assignment', assignment.id, event)}
                       type="button"
                     >
                       Hapus
@@ -560,7 +592,7 @@ function LecturerAssignmentsPage() {
                         </button>
                         <button
                           className="rounded border border-red-300 px-3 py-2 text-red-800"
-                          onClick={() => setPendingDelete({ type: 'testcase', id: testCase.id })}
+                          onClick={(event) => requestDelete('testcase', testCase.id, event)}
                           type="button"
                         >
                           Hapus
@@ -575,7 +607,7 @@ function LecturerAssignmentsPage() {
                   {editingTestCaseId ? 'Ubah test case' : 'Tambah test case'}
                 </h3>
                 {[
-                  { name: 'external_id', label: 'ID eksternal' },
+                  { name: 'external_id', label: 'ID eksternal (opsional)' },
                   { name: 'input', label: 'Input', multiline: true },
                   { name: 'expected_output', label: 'Keluaran yang diharapkan', multiline: true },
                   { name: 'weight', label: 'Bobot', type: 'number' },
@@ -595,13 +627,13 @@ function LecturerAssignmentsPage() {
                     ) : (
                       <input
                         className="w-full rounded border border-slate-300 p-2"
-                        min={type === 'number' ? '0.01' : undefined}
+                        min={type === 'number' ? '1' : undefined}
                         name={name}
                         onChange={(event) =>
                           setTestCaseForm((current) => ({ ...current, [name]: event.target.value }))
                         }
-                        required
-                        step={type === 'number' ? 'any' : undefined}
+                        required={name === 'weight'}
+                        step={type === 'number' ? '1' : undefined}
                         type={type ?? 'text'}
                         value={testCaseForm[name]}
                       />
@@ -672,12 +704,13 @@ function LecturerAssignmentsPage() {
                   ? confirmDeleteAssignment
                   : confirmDeleteTestCase}
                 type="button"
+                ref={confirmDeleteButton}
               >
                 Hapus
               </button>
               <button
                 className="rounded border border-slate-300 px-4 py-2"
-                onClick={() => setPendingDelete(null)}
+                onClick={cancelDelete}
                 type="button"
               >
                 Batal

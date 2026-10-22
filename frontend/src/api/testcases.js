@@ -5,6 +5,7 @@ function isIdentifier(value) {
 }
 
 const matchModes = new Set(['EXACT', 'WHITESPACE_INSENSITIVE'])
+const MOCK_TEST_CASES_KEY = 'sandboxed_autograder_mock_test_cases'
 const mockTestCaseDocument = `schema_version: 1
 assignment: Demo assignment
 resource_limit:
@@ -17,6 +18,52 @@ resource_limit:
 test_cases: []
 `
 
+function readMockTestCases() {
+  const serialized = localStorage.getItem(MOCK_TEST_CASES_KEY)
+  if (!serialized) {
+    return []
+  }
+
+  let testCases
+  try {
+    testCases = JSON.parse(serialized)
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      throw error
+    }
+    throw new Error('Data test case mock tidak valid.')
+  }
+  if (!Array.isArray(testCases)) {
+    throw new Error('Data test case mock tidak valid.')
+  }
+  return testCases
+}
+
+function writeMockTestCases(testCases) {
+  localStorage.setItem(MOCK_TEST_CASES_KEY, JSON.stringify(testCases))
+}
+
+function nextMockTestCaseId(testCases) {
+  let nextId = testCases.length + 1
+  while (testCases.some((testCase) => testCase.id === `testcase-${nextId}`)) {
+    nextId += 1
+  }
+  return `testcase-${nextId}`
+}
+
+function generatedExternalId(testCases, assignmentId) {
+  for (let nextId = 1; ; nextId += 1) {
+    const candidate = `tc_${String(nextId).padStart(2, '0')}`
+    if (!testCases.some(
+      (testCase) =>
+        String(testCase.assignment_id) === String(assignmentId) &&
+        testCase.external_id === candidate,
+    )) {
+      return candidate
+    }
+  }
+}
+
 function readTestCase(payload) {
   if (
     !payload ||
@@ -26,7 +73,7 @@ function readTestCase(payload) {
     typeof payload.external_id !== 'string' ||
     typeof payload.input !== 'string' ||
     typeof payload.expected_output !== 'string' ||
-    !Number.isFinite(payload.weight) ||
+    !Number.isInteger(payload.weight) ||
     typeof payload.is_hidden !== 'boolean' ||
     !matchModes.has(payload.match_mode)
   ) {
@@ -47,28 +94,64 @@ function readTestCase(payload) {
 
 export async function getTestCases(assignmentId) {
   if (import.meta.env.VITE_USE_MOCK === 'true') {
-    return []
+    return readMockTestCases()
+      .filter((testCase) => String(testCase.assignment_id) === String(assignmentId))
+      .map(readTestCase)
   }
 
-  const response = await apiRequest(
-    `/assignments/${encodeURIComponent(assignmentId)}/testcases?page=1&page_size=50`,
-  )
-  if (!response.ok) {
-    await throwApiError(response, `Gagal memuat test case (${response.status}).`)
-  }
+  const results = []
+  for (let page = 1; ; page += 1) {
+    const response = await apiRequest(
+      `/assignments/${encodeURIComponent(assignmentId)}/testcases?page=${page}&page_size=50`,
+    )
+    if (!response.ok) {
+      await throwApiError(response, `Gagal memuat test case (${response.status}).`)
+    }
 
-  const payload = await response.json()
-  const testCases = Array.isArray(payload) ? payload : payload.items
-  if (!Array.isArray(testCases)) {
-    throw new Error('Respons daftar test case tidak sesuai format yang diharapkan.')
+    const payload = await response.json()
+    if (Array.isArray(payload)) {
+      results.push(...payload.map(readTestCase))
+      break
+    }
+    if (
+      !payload ||
+      !Array.isArray(payload.items) ||
+      typeof payload.has_next !== 'boolean' ||
+      payload.page !== page
+    ) {
+      throw new Error('Respons daftar test case tidak sesuai format yang diharapkan.')
+    }
+    results.push(...payload.items.map(readTestCase))
+    if (!payload.has_next) {
+      break
+    }
   }
-  return testCases.map(readTestCase)
+  return results
 }
 
 export async function createTestCase(assignmentId, testCase) {
   let payload
   if (import.meta.env.VITE_USE_MOCK === 'true') {
-    payload = { id: 'testcase-created-1', assignment_id: assignmentId, ...testCase }
+    const current = readMockTestCases()
+    const externalId = testCase.external_id?.trim() || generatedExternalId(current, assignmentId)
+    if (current.some(
+      (entry) =>
+        String(entry.assignment_id) === String(assignmentId) &&
+        entry.external_id === externalId,
+    )) {
+      await throwMockApiError(
+        'test_case_external_id_exists',
+        'ID eksternal test case sudah digunakan pada assignment ini.',
+        409,
+      )
+    }
+    payload = {
+      id: nextMockTestCaseId(current),
+      assignment_id: assignmentId,
+      ...testCase,
+      external_id: externalId,
+    }
+    writeMockTestCases([...current, payload])
   } else {
     const response = await apiRequest(
       `/assignments/${encodeURIComponent(assignmentId)}/testcases`,
@@ -90,7 +173,28 @@ export async function createTestCase(assignmentId, testCase) {
 export async function updateTestCase(testCaseId, testCase) {
   let payload
   if (import.meta.env.VITE_USE_MOCK === 'true') {
-    payload = { id: testCaseId, assignment_id: 'assignment-created-1', ...testCase }
+    const current = readMockTestCases()
+    const existing = current.find((entry) => String(entry.id) === String(testCaseId))
+    if (!existing) {
+      await throwMockApiError('not_found', 'Test case tidak ditemukan.', 404)
+    }
+    const externalId = testCase.external_id?.trim() || existing.external_id
+    if (current.some(
+      (entry) =>
+        String(entry.id) !== String(testCaseId) &&
+        String(entry.assignment_id) === String(existing.assignment_id) &&
+        entry.external_id === externalId,
+    )) {
+      await throwMockApiError(
+        'test_case_external_id_exists',
+        'ID eksternal test case sudah digunakan pada assignment ini.',
+        409,
+      )
+    }
+    payload = { ...existing, ...testCase, external_id: externalId }
+    writeMockTestCases(
+      current.map((entry) => (String(entry.id) === String(testCaseId) ? payload : entry)),
+    )
   } else {
     const response = await apiRequest(`/testcases/${encodeURIComponent(testCaseId)}`, {
       method: 'PUT',
@@ -107,6 +211,8 @@ export async function updateTestCase(testCaseId, testCase) {
 
 export async function deleteTestCase(testCaseId) {
   if (import.meta.env.VITE_USE_MOCK === 'true') {
+    const current = readMockTestCases()
+    writeMockTestCases(current.filter((entry) => String(entry.id) !== String(testCaseId)))
     return
   }
   const response = await apiRequest(`/testcases/${encodeURIComponent(testCaseId)}`, {

@@ -1,18 +1,21 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App.jsx'
 import {
   createLecturerAssignment,
+  deleteLecturerAssignment,
   getResourceLimit,
   updateLecturerAssignment,
   updateResourceLimit,
 } from '../api/lecturerAssignments.js'
 import {
   createTestCase,
+  deleteTestCase,
   exportTestCasesYaml,
   getTestCases,
   importTestCasesYaml,
+  updateTestCase,
 } from '../api/testcases.js'
 
 vi.mock('../api/lecturerAssignments.js', () => ({
@@ -302,7 +305,9 @@ describe('LecturerAssignmentsPage', () => {
       target: { value: '5' },
     })
     fireEvent.change(screen.getByLabelText('Bobot'), { target: { value: '10' } })
-    fireEvent.change(screen.getByLabelText('ID eksternal'), { target: { value: 'tc_01' } })
+    fireEvent.change(screen.getByLabelText('ID eksternal (opsional)'), {
+      target: { value: 'tc_01' },
+    })
     fireEvent.change(screen.getByLabelText('Mode pencocokan output'), {
       target: { value: 'WHITESPACE_INSENSITIVE' },
     })
@@ -321,6 +326,142 @@ describe('LecturerAssignmentsPage', () => {
       is_hidden: true,
       match_mode: 'WHITESPACE_INSENSITIVE',
     })
+  })
+
+  it('allows the server to generate an optional external ID', async () => {
+    setUser()
+    createTestCase.mockResolvedValue({
+      id: 'testcase-1',
+      assignmentId: 'assignment-1',
+      externalId: 'tc_01',
+      input: '1',
+      expectedOutput: '1',
+      weight: 1,
+      hidden: false,
+      matchMode: 'EXACT',
+    })
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+    await screen.findByRole('heading', { name: 'Tambah test case' })
+    fireEvent.change(screen.getByLabelText('Input'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Keluaran yang diharapkan'), {
+      target: { value: '1' },
+    })
+    fireEvent.change(screen.getByLabelText('Bobot'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah test case' }))
+
+    expect(await screen.findByText('Test case berhasil ditambahkan.')).toBeInTheDocument()
+    expect(createTestCase).toHaveBeenCalledWith('assignment-1', expect.objectContaining({
+      external_id: '',
+      weight: 1,
+    }))
+  })
+
+  it('shows duplicate external-ID errors from the backend', async () => {
+    setUser()
+    createTestCase.mockRejectedValueOnce(
+      new Error('ID eksternal test case sudah digunakan pada assignment ini.'),
+    )
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+    await screen.findByRole('heading', { name: 'Tambah test case' })
+    fireEvent.change(screen.getByLabelText('Input'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Keluaran yang diharapkan'), {
+      target: { value: '1' },
+    })
+    fireEvent.change(screen.getByLabelText('Bobot'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('ID eksternal (opsional)'), {
+      target: { value: 'tc_01' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah test case' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'ID eksternal test case sudah digunakan pada assignment ini.',
+    )
+  })
+
+  it('updates and deletes a test case with confirmation', async () => {
+    setUser()
+    createTestCase.mockResolvedValue({
+      id: 'testcase-1',
+      assignmentId: 'assignment-1',
+      externalId: 'tc_01',
+      input: '1',
+      expectedOutput: '1',
+      weight: 1,
+      hidden: false,
+      matchMode: 'EXACT',
+    })
+    updateTestCase.mockResolvedValue({
+      id: 'testcase-1',
+      assignmentId: 'assignment-1',
+      externalId: 'tc_01',
+      input: '2',
+      expectedOutput: '2',
+      weight: 2,
+      hidden: true,
+      matchMode: 'WHITESPACE_INSENSITIVE',
+    })
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+    await screen.findByRole('heading', { name: 'Tambah test case' })
+    fireEvent.change(screen.getByLabelText('Input'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Keluaran yang diharapkan'), {
+      target: { value: '1' },
+    })
+    fireEvent.change(screen.getByLabelText('Bobot'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah test case' }))
+    await screen.findByRole('heading', { name: 'tc_01' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ubah', exact: true }))
+    fireEvent.change(screen.getByLabelText('Input'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Keluaran yang diharapkan'), {
+      target: { value: '2' },
+    })
+    fireEvent.change(screen.getByLabelText('Bobot'), { target: { value: '2' } })
+    fireEvent.click(screen.getByLabelText('Test case tersembunyi'))
+    fireEvent.change(screen.getByLabelText('Mode pencocokan output'), {
+      target: { value: 'WHITESPACE_INSENSITIVE' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan test case' }))
+    expect(await screen.findByText('Test case berhasil diperbarui.')).toBeInTheDocument()
+    expect(updateTestCase).toHaveBeenCalledWith('testcase-1', expect.objectContaining({
+      input: '2',
+      expected_output: '2',
+      weight: 2,
+      is_hidden: true,
+      match_mode: 'WHITESPACE_INSENSITIVE',
+    }))
+
+    const testCaseCard = screen.getByRole('heading', { name: 'tc_01' }).closest('li')
+    fireEvent.click(within(testCaseCard).getByRole('button', { name: 'Hapus', exact: true }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: 'Hapus' })).toHaveFocus()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }))
+    expect(await screen.findByText('Test case berhasil dihapus.')).toBeInTheDocument()
+    expect(deleteTestCase).toHaveBeenCalledWith('testcase-1')
+    expect(screen.queryByRole('heading', { name: 'tc_01' })).not.toBeInTheDocument()
+  })
+
+  it('confirms assignment deletion and supports Escape to dismiss the dialog', async () => {
+    setUser()
+    render(<App />)
+    const deleteButton = await screen.findAllByRole('button', { name: 'Hapus', exact: true })
+    fireEvent.click(deleteButton[0])
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: 'Hapus' })).toHaveFocus()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(deleteButton[0]).toHaveFocus()
+
+    fireEvent.click(deleteButton[0])
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Hapus' }))
+    expect(await screen.findByText('Assignment berhasil dihapus.')).toBeInTheDocument()
+    expect(deleteLecturerAssignment).toHaveBeenCalledWith('assignment-1')
   })
 
   it('imports a YAML file and reports backend validation errors', async () => {
@@ -408,5 +549,6 @@ describe('LecturerAssignmentsPage', () => {
     expect(await screen.findByRole('heading', { name: 'Daftar Assignment' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Kelola Assignment' })).not.toBeInTheDocument()
     expect(createLecturerAssignment).not.toHaveBeenCalled()
+    expect(getTestCases).not.toHaveBeenCalled()
   })
 })
