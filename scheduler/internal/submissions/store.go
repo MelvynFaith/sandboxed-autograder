@@ -24,6 +24,7 @@ type Submission struct {
 	ID               int64      `json:"id"`
 	UserID           int64      `json:"user_id"`
 	AssignmentID     int64      `json:"assignment_id"`
+	AssignmentTitle  string     `json:"assignment_title"`
 	OriginalFilename string     `json:"original_filename"`
 	SizeBytes        int        `json:"size_bytes"`
 	Status           string     `json:"status"`
@@ -52,6 +53,7 @@ type Report struct {
 type ReportEntry struct {
 	TestCaseID   *int64  `json:"testcase_id,omitempty"`
 	ExternalID   *string `json:"external_id,omitempty"`
+	IsHidden     bool    `json:"is_hidden"`
 	Status       string  `json:"status"`
 	Score        int     `json:"score"`
 	ActualOutput *string `json:"actual_output,omitempty"`
@@ -103,14 +105,15 @@ func (s *Store) create(
 	}
 	defer tx.Rollback(ctx)
 
+	var title string
 	var deadlineAt, lateUntilAt time.Time
 	err = tx.QueryRow(ctx, `
-		SELECT a.deadline_at, a.late_until_at
+		SELECT a.title, a.deadline_at, a.late_until_at
 		FROM assignments a
 		WHERE a.id = $1 AND EXISTS (
 			SELECT 1 FROM enrollments e WHERE e.course_id = a.course_id AND e.user_id = $2
 		)
-	`, assignmentID, userID).Scan(&deadlineAt, &lateUntilAt)
+	`, assignmentID, userID).Scan(&title, &deadlineAt, &lateUntilAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Submission{}, ErrNotFound
 	}
@@ -150,6 +153,7 @@ func (s *Store) create(
 	if err != nil {
 		return Submission{}, fmt.Errorf("submission: insert: %w", err)
 	}
+	submission.AssignmentTitle = title
 	if err := tx.Commit(ctx); err != nil {
 		return Submission{}, fmt.Errorf("submission: commit create: %w", err)
 	}
@@ -166,10 +170,11 @@ func (s *Store) DeleteQueued(ctx context.Context, submissionID int64) (bool, err
 
 func (s *Store) ListByUser(ctx context.Context, userID, assignmentID int64, page, pageSize int) (Page, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, user_id, assignment_id, original_filename, size_bytes, status, is_late,
-			stale_grade, total_score, max_score, submitted_at, graded_at
-		FROM submissions WHERE user_id = $1 AND ($2 = 0 OR assignment_id = $2)
-		ORDER BY submitted_at DESC, id DESC LIMIT $3 OFFSET $4
+		SELECT s.id, s.user_id, s.assignment_id, s.original_filename, s.size_bytes, s.status, s.is_late,
+			s.stale_grade, s.total_score, s.max_score, s.submitted_at, s.graded_at, a.title
+		FROM submissions s JOIN assignments a ON a.id = s.assignment_id
+		WHERE s.user_id = $1 AND ($2 = 0 OR s.assignment_id = $2)
+		ORDER BY s.submitted_at DESC, s.id DESC LIMIT $3 OFFSET $4
 	`, userID, assignmentID, pageSize+1, (page-1)*pageSize)
 	if err != nil {
 		return Page{}, fmt.Errorf("submission: list: %w", err)
@@ -183,6 +188,7 @@ func (s *Store) ListByUser(ctx context.Context, userID, assignmentID int64, page
 			&submission.ID, &submission.UserID, &submission.AssignmentID, &submission.OriginalFilename,
 			&submission.SizeBytes, &submission.Status, &submission.IsLate, &submission.StaleGrade,
 			&submission.TotalScore, &submission.MaxScore, &submission.SubmittedAt, &submission.GradedAt,
+			&submission.AssignmentTitle,
 		); err != nil {
 			return Page{}, fmt.Errorf("submission: scan list row: %w", err)
 		}
@@ -203,7 +209,7 @@ func (s *Store) GetVisible(ctx context.Context, submissionID, userID int64, role
 	var canSeeHidden bool
 	err := s.pool.QueryRow(ctx, `
 		SELECT s.id, s.user_id, s.assignment_id, s.original_filename, s.size_bytes, s.status, s.is_late,
-			s.stale_grade, s.total_score, s.max_score, s.submitted_at, s.graded_at,
+			s.stale_grade, s.total_score, s.max_score, s.submitted_at, s.graded_at, a.title,
 			($3 = 'ADMIN' OR ($3 = 'LECTURER' AND c.lecturer_id = $2))
 		FROM submissions s
 		JOIN assignments a ON a.id = s.assignment_id
@@ -215,7 +221,7 @@ func (s *Store) GetVisible(ctx context.Context, submissionID, userID int64, role
 		&submission.ID, &submission.UserID, &submission.AssignmentID, &submission.OriginalFilename,
 		&submission.SizeBytes, &submission.Status, &submission.IsLate, &submission.StaleGrade,
 		&submission.TotalScore, &submission.MaxScore, &submission.SubmittedAt, &submission.GradedAt,
-		&canSeeHidden,
+		&submission.AssignmentTitle, &canSeeHidden,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Submission{}, false, ErrNotFound
@@ -263,6 +269,8 @@ func (s *Store) Report(ctx context.Context, submission Submission, canSeeHidden 
 		); err != nil {
 			return Report{}, fmt.Errorf("submission: scan report row: %w", err)
 		}
+		entry.IsHidden = hidden
+		entry.MemorySource = &memorySource
 		if !canSeeHidden && hidden {
 			report.Results = append(report.Results, entry)
 			continue
@@ -272,7 +280,6 @@ func (s *Store) Report(ctx context.Context, submission Submission, canSeeHidden 
 		entry.ActualOutput = actualOutput
 		entry.ErrorMessage = errorMessage
 		entry.IsTruncated = &isTruncated
-		entry.MemorySource = &memorySource
 		entry.Input = &input
 		entry.Expected = &expected
 		report.Results = append(report.Results, entry)
