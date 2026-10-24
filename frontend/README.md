@@ -53,48 +53,9 @@ npm run build
 
 The UI is expected to work at 360 px, 768 px, and 1280 px without horizontal
 scrolling. Forms expose accessible labels. Timestamps are stored in UTC and
-displayed in WIB (UTC+7). The NFR-11 audit results, including keyboard checks
-that remain unverified, are documented in
-[the NFR-11 report](../docs/nfr/nfr-11-report.md).
-
-#### NFR-11 responsive and accessibility results
-
-The measured value is `document/body scrollWidth / viewport width`; all measured
-pages passed the no-horizontal-document-scroll check. Public routes were tested
-without signing in; protected routes were tested with each listed role.
-
-| Route | Role | 360 px | 768 px | 1280 px |
-| --- | --- | --- | --- | --- |
-| `/login` | Public | 360/360 pass | 768/768 pass | 1280/1280 pass |
-| `/register` | Public | 360/360 pass | 768/768 pass | 1280/1280 pass |
-| `/assignments` | Student | 345/360 pass | 753/768 pass | 1265/1280 pass |
-| `/history` | Student | 345/360 pass | 768/768 pass | 1280/1280 pass |
-| `/profile` | Student | 345/360 pass | 768/768 pass | 1280/1280 pass |
-| `/submissions/:submissionId/code` | Student | 360/360 pass | 768/768 pass | 1280/1280 pass |
-| `/assignments` | Lecturer | 360/360 pass | 768/768 pass | 1280/1280 pass |
-| `/courses` | Lecturer | 345/360 pass | 753/768 pass | 1265/1280 pass |
-| `/lecturer/assignments` | Lecturer | 345/360 pass | 753/768 pass | 1265/1280 pass |
-| `/profile` | Lecturer | 345/360 pass | 768/768 pass | 1280/1280 pass |
-| `/lecturer/assignments/:assignmentId/recap` | Lecturer | 360/360 pass | 768/768 pass | 1280/1280 pass |
-| `/submissions/:submissionId/report` | Lecturer | 345/360 pass | 753/768 pass | 1265/1280 pass |
-| `/submissions/:submissionId/code` | Lecturer | 360/360 pass | 768/768 pass | 1280/1280 pass |
-| `/assignments` | Admin | 360/360 pass | 768/768 pass | 1280/1280 pass |
-| `/courses` | Admin | 345/360 pass | 753/768 pass | 1265/1280 pass |
-| `/lecturer/assignments` | Admin | 345/360 pass | 753/768 pass | 1265/1280 pass |
-| `/admin` | Admin | 345/360 pass | 753/768 pass | 1265/1280 pass |
-| `/profile` | Admin | 345/360 pass | 768/768 pass | 1280/1280 pass |
-| `/lecturer/assignments/:assignmentId/recap` | Admin | 360/360 pass | 768/768 pass | 1280/1280 pass |
-| `/submissions/:submissionId/report` | Admin | 345/360 pass | 753/768 pass | 1265/1280 pass |
-| `/submissions/:submissionId/code` | Admin | 360/360 pass | 768/768 pass | 1280/1280 pass |
-
-| Accessibility check | Result |
-| --- | --- |
-| Labels and names | All measured fields have labels and all measured links/buttons have accessible names. |
-| Keyboard Tab order and visible focus in browser | Not verified: Playwright keyboard input did not move focus from `#email`. |
-| Escape dismissal and focus restoration | Not verified in browser; the React test exercises the Escape handler and focus restoration with `fireEvent`. |
-| Status text | Submission statuses and verdicts have text labels in addition to color. |
-| Touch target size | Buttons and links meet 24 × 24 CSS px except inline Login/Register links (35 × 19 px and 52 × 19 px), which use the WCAG inline exception. |
-| Scrollable tables | Recap and admin tables use their own `overflow-x-auto` wrappers; both scroll within the wrapper at 360 px. |
+displayed in WIB (UTC+7). The detailed responsive and accessibility audit,
+including the manual keyboard checklist and the unverified browser checks, is
+kept in [the NFR-11 report](../docs/nfr/nfr-11-report.md).
 
 ## Authentication and session limitations
 
