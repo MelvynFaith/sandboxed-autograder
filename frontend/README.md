@@ -57,8 +57,10 @@ Some routes and integrations are in open PRs and are not available from the
 current `develop` branch until those PRs are merged.
 
 The UI is expected to work at 360 px, 768 px, and 1280 px without horizontal
-scrolling. Forms have keyboard support and accessible labels. Timestamps are
-stored in UTC and displayed in WIB (UTC+7).
+scrolling. Forms expose accessible labels. Timestamps are stored in UTC and
+displayed in WIB (UTC+7). The NFR-11 audit results, including keyboard checks
+that remain unverified, are documented in
+[the NFR-11 report](../docs/nfr/nfr-11-report.md).
 
 #### NFR-11 responsive and accessibility results
 
@@ -92,12 +94,12 @@ without signing in; protected routes were tested with each listed role.
 
 | Accessibility check | Result |
 | --- | --- |
-| Labels for form fields | All measured fields have an associated or accessible label. |
-| Buttons and links | All measured actions have `tabIndex >= 0`. |
+| Labels and names | All measured fields have labels and all measured links/buttons have accessible names. |
+| Keyboard Tab order and visible focus in browser | Not verified: Playwright keyboard input did not move focus from `#email`. |
+| Escape dismissal and focus restoration | Not verified in browser; the React test exercises the Escape handler and focus restoration with `fireEvent`. |
 | Status text | Submission statuses and verdicts have text labels in addition to color. |
-| Scrollable tables | Recap and admin tables scroll within their own `overflow-x-auto` container. |
-| Keyboard Tab order and visible focus in browser | Not verified: the integrated browser did not dispatch Tab key events. |
-| Escape dismissal and focus restoration | Browser input not verified; the `LecturerAssignmentsPage` Vitest covers Escape dismissal and focus restoration. |
+| Touch target size | Buttons and links meet 24 × 24 CSS px except inline Login/Register links (35 × 19 px and 52 × 19 px), which use the WCAG inline exception. |
+| Scrollable tables | Recap and admin tables use their own `overflow-x-auto` wrappers; both scroll within the wrapper at 360 px. |
 
 ## Authentication and session limitations
 
