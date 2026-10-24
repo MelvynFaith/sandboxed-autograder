@@ -4,6 +4,7 @@
 |---|---|---|
 | [`progress/`](progress/) | Weekly progress notes, `minggu-NN.md` | Every week |
 | [`sprint/`](sprint/) | Sprint review and retrospective, `sprint-N.md` | End of each sprint |
+| [`uat/`](uat/) | Lecturer workflow guide and UAT scenarios | When the UAT flow changes |
 
 Start new notes by copying the `_template.md` in each folder.
 
