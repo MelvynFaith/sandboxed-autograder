@@ -1,8 +1,10 @@
 # Laporan audit NFR-11: responsif dan aksesibilitas
 
 - Tanggal audit: 2026-10-24
-- Commit yang diukur: `fd20f4a` (`git rev-parse HEAD` saat pengukuran)
-- Lingkungan: frontend mock `VITE_USE_MOCK=true`, Vite `http://127.0.0.1:5175`
+- Commit viewport yang diukur: `fd20f4a`
+- Commit dialog yang diuji dengan keyboard browser: `b3108a0`
+- Lingkungan viewport: frontend mock `VITE_USE_MOCK=true`, Vite `http://127.0.0.1:5175`
+- Lingkungan keyboard: frontend mock `VITE_USE_MOCK=true`, Vite `http://127.0.0.1:5176`
 - Viewport: 360 × 900, 768 × 900, 1280 × 900 CSS px
 - Issue: [#112](https://github.com/MelvynFaith/sandboxed-autograder/issues/112)
 
@@ -13,13 +15,18 @@ overflow horizontal dokumen, field tanpa label, atau tautan/tombol tanpa nama.
 Tabel rekap dan administrasi memakai wadah `overflow-x-auto`; pada 360 px
 keduanya dapat menggulir di dalam wadah tanpa memperlebar dokumen.
 
-Pemeriksaan keyboard browser tidak dapat dinyatakan lulus: `page.keyboard.press`
-dan `locator.press` pada browser terintegrasi tidak memindahkan fokus dari
-`#email`, dan percobaan Escape tidak mengirim event keydown. Karena itu urutan
-Tab, indikator fokus saat navigasi keyboard, serta Escape dan pemulihan fokus
-di browser dicatat **belum diverifikasi**. Tes React yang menggunakan
-`fireEvent.keyDown` tetap memeriksa handler Escape dan pemulihan fokus; tes ini
-bukan pengganti input keyboard browser.
+Keyboard diuji memakai managed browser pada sebagian alur: login, register,
+Course/enrollment, assignment/test-case, kontrol peran admin, ekspor CSV, dan
+dialog hapus, pembatalan submission, serta regrade-all. Browser menerima Tab,
+Shift+Tab, Enter, dan Escape pada pemeriksaan tersebut. Ini bukan pemeriksaan
+manual lengkap pada setiap kontrol atau perangkat fisik; item yang belum diuji
+tetap ditandai `BELUM DIVERIFIKASI, perlu pengecekan manual`.
+
+Chromium Playwright mandiri berhasil diunduh, tetapi tidak dapat dijalankan
+karena host tidak memiliki `libnspr4.so`, `libnss3.so`, dan `libasound.so.2`.
+Instalasi paket sistem terhalang karena akses sudo interaktif tidak tersedia.
+Karena itu hasil keyboard di bawah berasal dari managed browser, bukan dari
+Chromium mandiri.
 
 ## Rute dan peran
 
@@ -85,18 +92,23 @@ Audit DOM pada 63 kombinasi route/peran/viewport menemukan:
 
 - 0 field tanpa label terasosiasi atau nama aksesibel.
 - 0 tombol/tautan tanpa nama aksesibel.
-- Semua elemen tautan/tombol yang terlihat dan aktif berada dalam urutan fokus
-  bawaan DOM (`tabIndex` nonnegatif); urutan tersebut tidak diuji dengan Tab
-  fisik karena input keyboard browser tidak berfungsi.
+- Elemen fokus pada alur yang diuji dapat dicapai dengan Tab; urutan seluruh
+  kontrol di semua rute/peran belum diuji tuntas.
 
 ### Fokus, urutan Tab, dan dialog
 
 | Pemeriksaan | Hasil |
 | --- | --- |
-| Menekan Tab memindahkan fokus dalam browser | **Belum diverifikasi.** `page.keyboard.press('Tab')` dan `locator.press('Tab')` tidak memindahkan fokus dari `#email` pada browser terintegrasi. |
-| Tampilan fokus ketika navigasi keyboard | **Belum diverifikasi.** Tanpa input Tab yang terkirim, indikator fokus keyboard tidak dapat diamati dengan benar. |
-| Escape menutup dialog melalui keyboard browser | **Belum diverifikasi.** Browser tidak mengirim event Escape/keydown. |
-| Fokus awal dialog dan pemulihan fokus melalui handler | Tes `LecturerAssignmentsPage.test.jsx` memeriksa fokus awal, `fireEvent.keyDown(window, { key: 'Escape' })`, penutupan dialog, serta fokus kembali ke pemicu. Ini membuktikan handler React, bukan input keyboard browser. |
+| Tab pada login/register | Managed browser: Tab pertama pada login memfokuskan email; register menelusuri nama, email, password, konfirmasi password, tombol daftar, dan tautan login. |
+| Tab pada Course/enrollment dan assignment/test-case | Managed browser: field Course, enrollment, assignment, batas sumber daya, dan test-case terjangkau; urutan setiap kontrol belum dicatat satu per satu. |
+| Tab pada kontrol peran admin | Managed browser menelusuri kontrol pilihan peran pengguna tanpa mengubah nilai peran. |
+| Aktivasi Enter pada ekspor CSV | Managed browser menekan Enter pada tombol ekspor; status menyatakan `Rekap nilai diunduh sebagai rekap-assignment-4.csv`. Isi byte CSV belum diperiksa pada sesi keyboard ini. |
+| Tampilan fokus yang terlihat | **BELUM DIVERIFIKASI, perlu pengecekan manual.** Pemeriksaan ini membutuhkan penilaian visual pada browser normal. |
+| Dialog hapus | Managed browser: fokus awal `Batal`; Tab/Shift+Tab berputar antara `Hapus` dan `Batal`; Escape menutup dialog dan fokus kembali ke tombol pemicu. |
+| Dialog batalkan submission | Managed browser: fokus awal `Tidak`; Tab/Shift+Tab berputar dengan `Ya, batalkan`; Escape menutup dialog dan fokus kembali ke pemicu. |
+| Dialog regrade-all | Managed browser: fokus awal `Batal`; Tab/Shift+Tab berputar dengan `Ya, nilai ulang semua`; Escape menutup dialog dan fokus kembali ke pemicu. |
+| Upload submission dengan file | **BELUM DIVERIFIKASI, perlu pengecekan manual.** Alur memilih file dan mengirim submission tidak dijalankan pada sesi browser ini. |
+| Fokus trap dalam tes otomatis | RTL memeriksa Tab/Shift+Tab, Escape, dan pemulihan fokus untuk dialog hapus, pembatalan submission, serta regrade-all. |
 
 ### Status, target sentuh, dan tabel
 
@@ -120,17 +132,18 @@ Validasi yang dijalankan pada branch laporan:
 | `cd frontend && npm test -- src/pages/LecturerAssignmentsPage.test.jsx -t "confirms assignment deletion and supports Escape to dismiss the dialog"` | Lulus; 1 tes |
 | Mutasi sementara kondisi Escape menjadi `Escape-mutation`, lalu jalankan tes Escape | Gagal sesuai harapan karena dialog tetap terbuka; setelah kondisi dipulihkan, tes lulus dan `git diff --exit-code -- frontend/src/pages/LecturerAssignmentsPage.jsx` lulus. |
 
-Browser: halaman publik dan rute terlindungi diukur pada 360, 768, dan 1280 px;
-hasil tiap halaman ada pada tabel di atas. Input keyboard browser untuk Tab
-dan Escape **belum diverifikasi**, bukan dinyatakan lulus.
+Viewport: halaman publik dan rute terlindungi diukur pada 360, 768, dan 1280 px;
+hasil tiap halaman ada pada tabel di atas. Pemeriksaan browser keyboard untuk
+dialog dan alur yang disebutkan di atas berhasil pada managed browser; Chromium
+mandiri gagal diluncurkan karena dependensi sistem tidak tersedia.
 
 ## Kesimpulan
 
 Tidak ditemukan kegagalan terukur untuk overflow dokumen, label, nama kontrol,
 status tekstual, atau scrolling tabel dalam wadah pada pengukuran yang dapat
-diverifikasi. Hasil ini tidak membenarkan klaim bahwa seluruh pengalaman
-keyboard sudah lulus, karena pemeriksaan Tab/fokus terlihat dan Escape melalui
-keyboard browser tetap menjadi batas verifikasi dan dinyatakan terbuka sebagai
-**belum diverifikasi**. Sebelum menyatakan lulus penuh untuk NFR-11, perlu
-verifikasi manual tambahan di browser nyata pada dialog dan alur keyboard yang
-menggunakan fokus serta Escape.
+diverifikasi. Dialog konfirmasi yang diuji berfungsi dengan keyboard pada
+managed browser, tetapi laporan ini tidak menyatakan seluruh pengalaman
+keyboard lulus. Fokus terlihat, upload submission, pemeriksaan setiap kontrol,
+dan pemeriksaan manual pada perangkat fisik tetap
+**BELUM DIVERIFIKASI, perlu pengecekan manual** sebelum menyatakan lulus penuh
+NFR-11.
