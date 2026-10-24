@@ -154,8 +154,7 @@ paths:
       description: |
         This endpoint does not require an access token. If `refresh_token` is provided, it is
         revoked, along with the user's other active refresh tokens. An empty, omitted, invalid, or
-        expired token is a successful no-op. The request must still be a JSON object. The SRS does
-        not define this request body.
+        expired token is a successful no-op. The request must still be a JSON object.
       security: []
       requestBody:
         required: true
