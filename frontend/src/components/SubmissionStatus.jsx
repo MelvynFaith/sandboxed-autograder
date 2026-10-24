@@ -56,19 +56,21 @@ function SubmissionStatus({ submissionId }) {
           </span>
         )}
       </div>
-      <div
-        aria-label="Progress pengujian"
-        aria-valuemax={status.total_tests || 1}
-        aria-valuemin={0}
-        aria-valuenow={status.current_test}
-        className="h-2 overflow-hidden rounded-full bg-slate-200"
-        role="progressbar"
-      >
+      {status.total_tests !== null && (
         <div
-          className="h-full rounded-full bg-blue-700 transition-all"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
+          aria-label="Progress pengujian"
+          aria-valuemax={status.total_tests || 1}
+          aria-valuemin={0}
+          aria-valuenow={status.current_test}
+          className="h-2 overflow-hidden rounded-full bg-slate-200"
+          role="progressbar"
+        >
+          <div
+            className="h-full rounded-full bg-blue-700 transition-all"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
       {fallbackMessage && (
         <p className="text-sm text-amber-800" role="status">
           {fallbackMessage}

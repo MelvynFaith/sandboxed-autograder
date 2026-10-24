@@ -51,6 +51,16 @@ describe('SubmissionStatus', () => {
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '4')
   })
 
+  it('hides progress when the polling API only reports the submission status', () => {
+    render(<SubmissionStatus submissionId="submission-1" />)
+
+    act(() => handlers.onStatus({ status: 'RUNNING', current_test: null, total_tests: null }))
+
+    expect(screen.getByTestId('submission-status-badge')).toHaveTextContent('Sedang berjalan')
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Test \d+ dari \d+/)).not.toBeInTheDocument()
+  })
+
   it('explains when polling is used after the WebSocket disconnects', () => {
     render(<SubmissionStatus submissionId="submission-1" />)
 
