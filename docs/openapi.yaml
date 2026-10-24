@@ -3,8 +3,14 @@ info:
   title: Sandboxed Autograder API
   version: 1.0.0
   description: |
-    OpenAPI subset for implemented authentication, user, Course, enrollment, and submission
-    endpoints. Request bodies not specified by the SRS are documented as implementation contracts.
+    Contract for all 45 explicitly registered HTTP method/path patterns in the scheduler. This
+    includes `/healthz` and the ticket-authenticated WebSocket handshake at
+    `/ws/v1/submissions/{id}`. Go's `GET` patterns also match `HEAD`; HEAD is an implicit
+    net/http behavior, not a separate router registration. The WebSocket sends JSON progress state
+    frames and is described on its operation; obtain its one-time query ticket from
+    `POST /api/v1/ws-tickets`. The private SRS is not in this repository, so comparison with SRS
+    6.3.1 is not verified. Request details not specified by available requirements are identified
+    as implementation contracts rather than inferred.
 servers:
   - url: /api/v1
 security:
@@ -21,7 +27,19 @@ tags:
   - name: Enrollments
     description: Enrollment management by the Course owner or an administrator.
   - name: Submissions
-    description: Submission upload, owner history, detail, and report.
+    description: Submission upload, history, details, code, reports, cancellation, and regrading.
+  - name: Assignments
+    description: Assignment access and management, resource limits, and assignment-wide regrading.
+  - name: Test cases
+    description: Test-case CRUD and schema-versioned YAML import/export.
+  - name: Results
+    description: Instructor/admin grade recaps and CSV export.
+  - name: Administration
+    description: Admin audit, queue, and submission rate-limit operations.
+  - name: WebSocket
+    description: One-time-ticket authenticated submission progress stream.
+  - name: Health
+    description: Unauthenticated aggregate process, database, worker, and queue health.
 paths:
   /auth/register:
     post:
@@ -466,6 +484,42 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Assignments]
+      operationId: createAssignment
+      summary: Create an assignment in a Course
+      description: Only the current Course owner or ADMIN may create assignments; other callers receive 404.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignmentCreateRequest'
+      responses:
+        '201':
+          description: Assignment created with its required resource limits.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Course is missing or not manageable by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A related-data constraint prevented creation from completing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /courses/{id}/enrollments:
     parameters:
       - $ref: '#/components/parameters/CourseId'
@@ -614,7 +668,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
-          description: Submission window has closed.
+          description: Submission window has closed or a related submission constraint conflicts.
           content:
             application/json:
               schema:
@@ -693,6 +747,39 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Submissions]
+      operationId: cancelSubmission
+      summary: Cancel a queued submission
+      description: |
+        Only the student who owns the submission may cancel it, and only while its status is
+        `QUEUED`. The submission row remains and changes to `CANCELLED`; a visible submission owned
+        by another caller returns 403, while an inaccessible submission returns 404.
+      responses:
+        '200':
+          description: The submission after cancellation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Submission is missing or not visible to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Submission is running or is not in the QUEUED state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /submissions/{id}/report:
     parameters:
       - $ref: '#/components/parameters/SubmissionId'
@@ -722,6 +809,754 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
+  /ws-tickets:
+    post:
+      tags: [WebSocket]
+      operationId: createSubmissionWebSocketTicket
+      summary: Issue a one-time ticket for a submission progress stream
+      description: The authenticated student may request a ticket only for their own submission.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebSocketTicketRequest'
+      responses:
+        '201':
+          description: Single-use ticket bound to the authenticated user and submission.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ticket]
+                properties:
+                  ticket:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Submission does not exist or is not owned by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /submissions/{id}/regrade:
+    parameters:
+      - $ref: '#/components/parameters/SubmissionId'
+    post:
+      tags: [Submissions]
+      operationId: regradeSubmission
+      summary: Regrade one submission
+      description: |
+        Only the current Course owner or ADMIN may regrade a visible submission. Its status must be
+        `COMPLETED` or `FAILED`, and the retained source file must still exist. The owning student
+        receives 403; callers who cannot see the submission receive 404.
+      responses:
+        '202':
+          description: Submission queued for regrading.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Submission is missing or not visible to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Submission status does not allow regrading.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '410':
+          description: The retained source file has been deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /submissions/{id}/code:
+    parameters:
+      - $ref: '#/components/parameters/SubmissionId'
+    get:
+      tags: [Submissions]
+      operationId: getSubmissionCode
+      summary: Read the source file of a submission
+      description: |
+        Available to the submission owner, the current Course owner, and ADMIN. Other callers
+        receive 404. Source files removed by retention return 410.
+      responses:
+        '200':
+          description: Stored source code and its original filename.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionCode'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Submission is missing or not visible to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '410':
+          description: The retained source file has been deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /assignments:
+    get:
+      tags: [Assignments]
+      operationId: listAssignments
+      summary: List assignments visible to the authenticated user
+      description: Students see assignments from Courses they are enrolled in; lecturers see assignments in their Courses; ADMIN can see all. Results are paginated.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: A page of visible assignments.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /assignments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/AssignmentId'
+    get:
+      tags: [Assignments]
+      operationId: getAssignment
+      summary: Get an assignment visible to the authenticated user
+      description: Students enrolled in the Course, its current lecturer, and ADMIN may view it; other users receive 404.
+      responses:
+        '200':
+          description: Assignment details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Assignment is missing or not visible to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Assignments]
+      operationId: updateAssignment
+      summary: Update assignment details
+      description: Only the current Course owner or ADMIN may update an assignment; other users receive 404.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignmentUpdateRequest'
+      responses:
+        '200':
+          description: Updated assignment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Assignment is missing or not manageable by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Assignments]
+      operationId: deleteAssignment
+      summary: Delete an assignment
+      description: Only the current Course owner or ADMIN may delete an assignment; other users receive 404.
+      responses:
+        '204':
+          description: Assignment deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Assignment is missing or not manageable by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Related data prevents deletion.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /assignments/{id}/regrade:
+    parameters:
+      - $ref: '#/components/parameters/AssignmentId'
+    post:
+      tags: [Assignments]
+      operationId: regradeAssignment
+      summary: Queue regrading for an assignment
+      description: |
+        Only the current Course owner or ADMIN may request regrading. Visible students receive 403;
+        callers who cannot see the assignment receive 404. Eligible submissions with retained code
+        are queued and ineligible submissions are counted as skipped.
+      responses:
+        '202':
+          description: Counts of queued and skipped submissions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentRegradeResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Assignment is missing or not visible to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /assignments/{id}/resource-limit:
+    parameters:
+      - $ref: '#/components/parameters/AssignmentId'
+    get:
+      tags: [Assignments]
+      operationId: getAssignmentResourceLimit
+      summary: Get assignment resource limits
+      description: Students enrolled in the Course, its current lecturer, and ADMIN may view limits; other users receive 404.
+      responses:
+        '200':
+          description: The assignment's resource limits.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceLimit'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Assignment is missing or not visible to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Assignments]
+      operationId: updateAssignmentResourceLimit
+      summary: Update assignment resource limits
+      description: Only the current Course owner or ADMIN may update limits; other users receive 404.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceLimitRequest'
+      responses:
+        '200':
+          description: Updated resource limits.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceLimit'
+        '400':
+          description: Invalid values; all six fields must be positive and satisfy the memory/tmpfs/output invariants.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Assignment is missing or not manageable by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /assignments/{id}/results:
+    parameters:
+      - $ref: '#/components/parameters/AssignmentId'
+    get:
+      tags: [Results]
+      operationId: listAssignmentResults
+      summary: List an assignment grade recap
+      description: Only the current Course owner or ADMIN may view class results. A visible student receives 403; invisible users receive 404. Every enrolled student appears, including students without submissions.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Paginated grade recap.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentResultPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Assignment is missing or not visible to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /assignments/{id}/results/export:
+    parameters:
+      - $ref: '#/components/parameters/AssignmentId'
+    get:
+      tags: [Results]
+      operationId: exportAssignmentResults
+      summary: Export an assignment grade recap as CSV
+      description: Only the current Course owner or ADMIN may export the full class recap; visible students receive 403 and invisible users receive 404.
+      responses:
+        '200':
+          description: RFC 4180 CSV with header `name,email,submission_id,status,total_score,max_score,is_late,stale_grade,submitted_at`; cells are protected against spreadsheet formula evaluation.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: Attachment filename `rekap-assignment-{id}.csv`.
+          content:
+            text/csv:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Assignment is missing or not visible to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /assignments/{id}/testcases:
+    parameters:
+      - $ref: '#/components/parameters/AssignmentId'
+    get:
+      tags: [Test cases]
+      operationId: listTestCases
+      summary: List test cases for an assignment
+      description: |
+        Students enrolled in the Course, its current lecturer, and ADMIN may list test cases.
+        Hidden test cases are excluded from the list for students; only the current Course owner
+        and ADMIN receive hidden cases.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Paginated test cases visible to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestCasePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Assignment is missing or not visible to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Test cases]
+      operationId: createTestCase
+      summary: Create a test case
+      description: Only the current Course owner or ADMIN may create test cases; other users receive 404.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestCaseRequest'
+      responses:
+        '201':
+          description: Created test case.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestCase'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Assignment is missing or not manageable by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The external ID is already used on this assignment or a related-data constraint conflicts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /assignments/{id}/testcases/export:
+    parameters:
+      - $ref: '#/components/parameters/AssignmentId'
+    get:
+      tags: [Test cases]
+      operationId: exportTestCases
+      summary: Export test cases and resource limits as YAML
+      description: Only the current Course owner or ADMIN may export the document because it includes hidden test cases.
+      responses:
+        '200':
+          description: Schema-version 1 YAML document.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: Attachment filename `testcases-assignment-{id}.yaml`.
+          content:
+            application/yaml:
+              schema:
+                $ref: '#/components/schemas/TestCaseExportDocument'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Assignment is missing or not manageable by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /assignments/{id}/testcases/import:
+    parameters:
+      - $ref: '#/components/parameters/AssignmentId'
+    post:
+      tags: [Test cases]
+      operationId: importTestCases
+      summary: Import test cases and optional resource limits from YAML
+      description: |
+        Only the current Course owner or ADMIN may import. The entire document is validated before
+        a single transaction applies the resource limits and test cases. Exactly one YAML document
+        with schema_version 1 is accepted; unknown fields are rejected.
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/TestCaseDocument'
+      responses:
+        '200':
+          description: Number of created and updated test cases.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestCaseImportResult'
+        '400':
+          description: Invalid YAML, schema version, resource limit, test case, or request body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Assignment is missing or not manageable by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A related-data constraint prevented the import from completing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: YAML body exceeds 1 MiB.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /testcases/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TestCaseId'
+    put:
+      tags: [Test cases]
+      operationId: updateTestCase
+      summary: Update a test case
+      description: Only the current Course owner or ADMIN may update the test case; other users receive 404.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestCaseRequest'
+      responses:
+        '200':
+          description: Updated test case.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestCase'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Test case is missing or not manageable by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The external ID is already used on this assignment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Test cases]
+      operationId: deleteTestCase
+      summary: Delete a test case
+      description: Only the current Course owner or ADMIN may delete the test case; other users receive 404.
+      responses:
+        '204':
+          description: Test case deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Test case is missing or not manageable by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Related data prevents deletion.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/audit-logs:
+    get:
+      tags: [Administration]
+      operationId: listAuditLogs
+      summary: List audit events
+      description: Only ADMIN may read the append-only audit log. Results are paginated newest first.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: A page of audit events.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/queue:
+    get:
+      tags: [Administration]
+      operationId: getAdminQueue
+      summary: Read queue, worker, and active submission counts
+      description: Only ADMIN may read the aggregate queue status.
+      responses:
+        '200':
+          description: Current in-memory queue and worker capacity plus database active counts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/rate-limits:
+    get:
+      tags: [Administration]
+      operationId: getRateLimits
+      summary: Read submission rate-limit settings
+      description: Only ADMIN may read these settings.
+      responses:
+        '200':
+          description: Current configured thresholds.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimits'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Administration]
+      operationId: updateRateLimits
+      summary: Update submission rate-limit settings
+      description: |
+        Only ADMIN may update these thresholds. A value of zero disables that rule. The update
+        takes effect on subsequent submission requests and writes an audit event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RateLimitsRequest'
+      responses:
+        '200':
+          description: Saved thresholds.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimits'
+        '400':
+          description: Missing or out-of-range settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /healthz:
+    get:
+      servers:
+        - url: /
+      tags: [Health]
+      operationId: getHealth
+      summary: Read aggregate service health
+      description: |
+        Unauthenticated infrastructure health check. Returns database reachability, configured
+        and alive worker counts, and queue depth only; it does not expose user or host details.
+        A GET route also accepts HEAD through Go's net/http ServeMux.
+      security: []
+      responses:
+        '200':
+          description: Database is reachable and all configured workers are alive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthReport'
+        '503':
+          description: Database is unreachable or fewer workers are alive than configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthReport'
+  /ws/v1/submissions/{id}:
+    get:
+      servers:
+        - url: /
+      tags: [WebSocket]
+      operationId: streamSubmissionProgress
+      summary: Open the submission progress WebSocket
+      description: |
+        This GET upgrades to WebSocket; it is not an ordinary JSON API response. First obtain a
+        one-time ticket by calling `POST /api/v1/ws-tickets` with a Bearer access token and the
+        submission ID. Connect to `/ws/v1/submissions/{id}?ticket={ticket}`; the ticket is consumed
+        whether or not the handshake succeeds and must match the path submission ID. The browser
+        sends no Authorization header or application data. The server sends JSON frames with
+        `status`, `current_test`, and `total_tests`, beginning with the latest full state. It closes
+        with code 1000 after `COMPLETED`, `FAILED`, or `CANCELLED`,         or 1001 during server shutdown. Each frame conforms to the `WebSocketProgress` schema.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/SubmissionId'
+        - name: ticket
+          in: query
+          required: true
+          description: Single-use ticket returned by POST /api/v1/ws-tickets.
+          schema:
+            type: string
+      responses:
+        '101':
+          description: WebSocket connection upgraded; subsequent JSON messages follow the stream description.
+        '400':
+          description: Request is not a WebSocket upgrade.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ticket is invalid, expired, or already consumed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Submission ID is invalid or does not match the ticket.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: The server could not read the submission's current progress.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   securitySchemes:
     bearerAuth:
@@ -780,6 +1615,24 @@ components:
       in: path
       required: true
       description: Positive student user ID.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    AssignmentId:
+      name: id
+      in: path
+      required: true
+      description: Positive assignment ID.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    TestCaseId:
+      name: id
+      in: path
+      required: true
+      description: Positive test-case ID.
       schema:
         type: integer
         format: int64
@@ -971,6 +1824,7 @@ components:
         - id
         - user_id
         - assignment_id
+        - assignment_title
         - original_filename
         - size_bytes
         - status
@@ -987,6 +1841,8 @@ components:
         assignment_id:
           type: integer
           format: int64
+        assignment_title:
+          type: string
         original_filename:
           type: string
         size_bytes:
@@ -1040,8 +1896,10 @@ components:
             $ref: '#/components/schemas/ReportEntry'
     ReportEntry:
       type: object
-      required: [status, score, exec_time_ms, memory_kb]
+      required: [is_hidden, status, score, exec_time_ms, memory_kb]
       properties:
+        is_hidden:
+          type: boolean
         testcase_id:
           type: integer
           format: int64
@@ -1081,3 +1939,503 @@ components:
         expected_output:
           type: string
           description: Omitted for hidden cases when the viewer is not authorized to see their content.
+    Assignment:
+      type: object
+      required: [id, course_id, title, description, deadline_at, late_until_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        course_id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        description:
+          type: string
+        deadline_at:
+          type: string
+          format: date-time
+        late_until_at:
+          type: string
+          format: date-time
+    AssignmentPage:
+      type: object
+      required: [items, page, page_size, has_next]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Assignment'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        has_next:
+          type: boolean
+    AssignmentCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [title, deadline_at, late_until_at, resource_limit]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        deadline_at:
+          type: string
+          format: date-time
+        late_until_at:
+          type: string
+          format: date-time
+          description: Must be equal to or later than deadline_at.
+        resource_limit:
+          $ref: '#/components/schemas/ResourceLimitRequest'
+    AssignmentUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [title, deadline_at, late_until_at]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        deadline_at:
+          type: string
+          format: date-time
+        late_until_at:
+          type: string
+          format: date-time
+          description: Must be equal to or later than deadline_at.
+        resource_limit:
+          $ref: '#/components/schemas/ResourceLimitIgnored'
+          description: Accepted by the decoder but not applied by this operation; update limits separately.
+    ResourceLimit:
+      type: object
+      required: [assignment_id, cpu_time_ms, memory_mb, max_processes, timeout_s, max_output_bytes, tmpfs_size_mb]
+      properties:
+        assignment_id:
+          type: integer
+          format: int64
+        cpu_time_ms:
+          type: integer
+        memory_mb:
+          type: integer
+        max_processes:
+          type: integer
+        timeout_s:
+          type: integer
+        max_output_bytes:
+          type: integer
+        tmpfs_size_mb:
+          type: integer
+    ResourceLimitRequest:
+      type: object
+      additionalProperties: false
+      required: [cpu_time_ms, memory_mb, max_processes, timeout_s, max_output_bytes, tmpfs_size_mb]
+      properties:
+        cpu_time_ms:
+          type: integer
+          minimum: 1
+        memory_mb:
+          type: integer
+          minimum: 1
+        max_processes:
+          type: integer
+          minimum: 1
+        timeout_s:
+          type: integer
+          minimum: 1
+        max_output_bytes:
+          type: integer
+          minimum: 1
+        tmpfs_size_mb:
+          type: integer
+          minimum: 1
+      description: |
+        Every value must be a positive integer. The handler also enforces
+        `tmpfs_size_mb + 16 <= memory_mb` and `2 * max_output_bytes < tmpfs_size_mb * 2^20`.
+    ResourceLimitIgnored:
+      type: object
+      additionalProperties: false
+      properties:
+        cpu_time_ms:
+          type: integer
+        memory_mb:
+          type: integer
+        max_processes:
+          type: integer
+        timeout_s:
+          type: integer
+        max_output_bytes:
+          type: integer
+        tmpfs_size_mb:
+          type: integer
+      description: Optional accepted object on assignment updates; its fields are not applied.
+    TestCase:
+      type: object
+      required: [id, assignment_id, external_id, input, expected_output, weight, is_hidden, match_mode]
+      properties:
+        id:
+          type: integer
+          format: int64
+        assignment_id:
+          type: integer
+          format: int64
+        external_id:
+          type: string
+        input:
+          type: string
+        expected_output:
+          type: string
+        weight:
+          type: integer
+          minimum: 1
+        is_hidden:
+          type: boolean
+        match_mode:
+          type: string
+          enum: [EXACT, WHITESPACE_INSENSITIVE]
+    TestCasePage:
+      type: object
+      required: [items, page, page_size, has_next]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TestCase'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        has_next:
+          type: boolean
+    TestCaseRequest:
+      type: object
+      additionalProperties: false
+      required: [weight, match_mode]
+      properties:
+        external_id:
+          type: string
+          description: Optional; blank IDs are generated by the API.
+        input:
+          type: string
+        expected_output:
+          type: string
+        weight:
+          type: integer
+          minimum: 1
+        is_hidden:
+          type: boolean
+        match_mode:
+          type: string
+          enum: [EXACT, WHITESPACE_INSENSITIVE]
+    TestCaseImportResult:
+      type: object
+      required: [created, updated]
+      properties:
+        created:
+          type: integer
+        updated:
+          type: integer
+    AssignmentResultPage:
+      type: object
+      required: [assignment_id, assignment_title, items, page, page_size, has_next]
+      properties:
+        assignment_id:
+          type: integer
+          format: int64
+        assignment_title:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssignmentResult'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        has_next:
+          type: boolean
+    AssignmentResult:
+      type: object
+      required: [user_id, name, email, submission_count, latest_submission]
+      properties:
+        user_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        email:
+          type: string
+        submission_count:
+          type: integer
+        latest_submission:
+          oneOf:
+            - $ref: '#/components/schemas/LatestSubmission'
+            - type: 'null'
+    LatestSubmission:
+      type: object
+      required: [id, status, is_late, stale_grade, submitted_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [QUEUED, RUNNING, COMPLETED, FAILED]
+        total_score:
+          type: integer
+        max_score:
+          type: integer
+        is_late:
+          type: boolean
+        stale_grade:
+          type: boolean
+        submitted_at:
+          type: string
+          format: date-time
+    AssignmentRegradeResult:
+      type: object
+      required: [assignment_id, queued, skipped]
+      properties:
+        assignment_id:
+          type: integer
+          format: int64
+        queued:
+          type: integer
+        skipped:
+          type: integer
+    SubmissionCode:
+      type: object
+      required: [submission_id, original_filename, code]
+      properties:
+        submission_id:
+          type: integer
+          format: int64
+        original_filename:
+          type: string
+        code:
+          type: string
+    AuditLogPage:
+      type: object
+      required: [items, page, page_size, has_next]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLogEntry'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        has_next:
+          type: boolean
+    AuditLogEntry:
+      type: object
+      required: [id, user_id, submission_id, event_type, syscall_nr, detail, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        submission_id:
+          oneOf:
+            - type: integer
+              format: int64
+            - type: 'null'
+        event_type:
+          type: string
+        syscall_nr:
+          oneOf:
+            - type: integer
+            - type: 'null'
+        detail:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    QueueStatus:
+      type: object
+      required: [queue_depth, workers, submissions]
+      properties:
+        queue_depth:
+          type: integer
+        workers:
+          $ref: '#/components/schemas/WorkerCount'
+        submissions:
+          $ref: '#/components/schemas/ActiveSubmissionCounts'
+    WorkerCount:
+      type: object
+      required: [alive, configured]
+      properties:
+        alive:
+          type: integer
+        configured:
+          type: integer
+    ActiveSubmissionCounts:
+      type: object
+      required: [queued, running]
+      properties:
+        queued:
+          type: integer
+        running:
+          type: integer
+    RateLimits:
+      type: object
+      required: [max_active_submissions, min_submission_interval_s, max_submissions_per_assignment]
+      properties:
+        max_active_submissions:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        min_submission_interval_s:
+          type: integer
+          minimum: 0
+          maximum: 86400
+        max_submissions_per_assignment:
+          type: integer
+          minimum: 0
+          maximum: 10000
+    RateLimitsRequest:
+      type: object
+      additionalProperties: false
+      required: [max_active_submissions, min_submission_interval_s, max_submissions_per_assignment]
+      properties:
+        max_active_submissions:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        min_submission_interval_s:
+          type: integer
+          minimum: 0
+          maximum: 86400
+        max_submissions_per_assignment:
+          type: integer
+          minimum: 0
+          maximum: 10000
+      description: Zero disables the corresponding rate-limit rule.
+    HealthReport:
+      type: object
+      required: [status, database, workers, queue_depth]
+      properties:
+        status:
+          type: string
+          enum: [ok, unhealthy]
+        database:
+          type: string
+          enum: [ok, unreachable]
+        workers:
+          $ref: '#/components/schemas/WorkerCount'
+        queue_depth:
+          type: integer
+    WebSocketProgress:
+      type: object
+      required: [status, current_test, total_tests]
+      properties:
+        status:
+          type: string
+          enum: [QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED]
+        current_test:
+          type: integer
+          minimum: 0
+          description: 1-based current test, or zero before testing begins.
+        total_tests:
+          type: integer
+          minimum: 0
+          description: Total test cases in the grading run.
+    WebSocketTicketRequest:
+      type: object
+      additionalProperties: false
+      required: [submission_id]
+      properties:
+        submission_id:
+          oneOf:
+            - type: integer
+              format: int64
+              minimum: 1
+            - type: string
+              pattern: '^[1-9][0-9]*$'
+          description: Positive submission ID; the handler accepts an integer or decimal string.
+    TestCaseDocument:
+      type: object
+      additionalProperties: false
+      required: [schema_version]
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        assignment:
+          type: string
+          description: Included on export; import does not use this field to select the target assignment.
+        resource_limit:
+          $ref: '#/components/schemas/YAMLResourceLimit'
+        test_cases:
+          type: array
+          items:
+            $ref: '#/components/schemas/YAMLTestCase'
+      description: UTF-8 YAML document; the API accepts one document up to 1 MiB.
+    TestCaseExportDocument:
+      allOf:
+        - $ref: '#/components/schemas/TestCaseDocument'
+        - type: object
+          required: [schema_version, assignment, resource_limit, test_cases]
+          properties:
+            test_cases:
+              type: array
+              items:
+                $ref: '#/components/schemas/YAMLTestCaseExport'
+    YAMLResourceLimit:
+      type: object
+      additionalProperties: false
+      required: [cpu_time_ms, memory_mb, tmpfs_size_mb, max_processes, timeout_s, max_output_bytes]
+      properties:
+        cpu_time_ms:
+          type: integer
+          minimum: 1
+        memory_mb:
+          type: integer
+          minimum: 1
+        tmpfs_size_mb:
+          type: integer
+          minimum: 1
+        max_processes:
+          type: integer
+          minimum: 1
+        timeout_s:
+          type: integer
+          minimum: 1
+        max_output_bytes:
+          type: integer
+          minimum: 1
+      description: The resource-limit validation also enforces the memory/tmpfs/output invariants.
+    YAMLTestCase:
+      type: object
+      additionalProperties: false
+      required: [external_id, weight, match_mode]
+      properties:
+        external_id:
+          type: string
+          minLength: 1
+        input:
+          type: string
+        expected_output:
+          type: string
+        weight:
+          type: integer
+          minimum: 1
+        is_hidden:
+          type: boolean
+        match_mode:
+          type: string
+          enum: [EXACT, WHITESPACE_INSENSITIVE]
+      description: Input and expected_output must not contain a NUL character.
+    YAMLTestCaseExport:
+      allOf:
+        - $ref: '#/components/schemas/YAMLTestCase'
+        - type: object
+          required: [external_id, input, expected_output, weight, is_hidden, match_mode]
