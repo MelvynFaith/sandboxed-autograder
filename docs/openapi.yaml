@@ -1,16 +1,571 @@
 openapi: 3.1.0
 info:
-  title: Sandboxed Autograder Submission API
+  title: Sandboxed Autograder API
   version: 1.0.0
-  description: OpenAPI documentation for the submission endpoints implemented in PR #63.
+  description: |
+    OpenAPI subset for implemented authentication, user, Course, enrollment, and submission
+    endpoints. Request bodies not specified by the SRS are documented as implementation contracts.
 servers:
   - url: /api/v1
 security:
   - bearerAuth: []
 tags:
+  - name: Authentication
+    description: Registration, login, refresh, and logout.
+  - name: Users
+    description: The authenticated user's profile and password.
+  - name: Admin users
+    description: Administrator-only user listing and role changes.
+  - name: Courses
+    description: Visible Course listing and Course creation.
+  - name: Enrollments
+    description: Enrollment management by the Course owner or an administrator.
   - name: Submissions
     description: Submission upload, owner history, detail, and report.
 paths:
+  /auth/register:
+    post:
+      tags: [Authentication]
+      operationId: registerUser
+      summary: Register a student account
+      description: |
+        Registration always creates a STUDENT. The `name`, `email`, and `password` request fields
+        are the implemented contract; the SRS does not define this request body. Unknown fields
+        are rejected.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, email, password]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                email:
+                  type: string
+                  description: Server-validated and normalized to lowercase; maximum 254 UTF-8 bytes.
+                password:
+                  type: string
+                  minLength: 1
+                  description: Maximum 1024 UTF-8 bytes.
+      responses:
+        '201':
+          description: Student account created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email is already registered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Sign in and issue a token pair
+      description: Invalid credentials return the same 401 response.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  description: Trimmed and normalized to lowercase before lookup.
+                password:
+                  type: string
+                  minLength: 1
+                  description: Maximum 1024 UTF-8 bytes; invalid or oversized credentials return 401.
+      responses:
+        '200':
+          description: Access and refresh tokens with the authenticated user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Email or password is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      operationId: refreshTokens
+      summary: Rotate a refresh token
+      description: The supplied refresh token is revoked and replaced with a new token pair.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+                  minLength: 1
+      responses:
+        '200':
+          description: New access and refresh tokens.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Refresh token is missing, invalid, expired, or already used.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logout
+      summary: Revoke a refresh token
+      description: |
+        This endpoint does not require an access token. If `refresh_token` is provided, it is
+        revoked, along with the user's other active refresh tokens. An empty, omitted, invalid, or
+        expired token is a successful no-op. The request must still be a JSON object. The SRS does
+        not define this request body.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '204':
+          description: Token revoked, or no token was provided.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /users/me:
+    get:
+      tags: [Users]
+      operationId: getCurrentUser
+      summary: Get the authenticated user's profile
+      description: Requires a valid Bearer access token.
+      responses:
+        '200':
+          description: Current user profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Users]
+      operationId: updateCurrentUser
+      summary: Update the authenticated user's display name
+      description: The name is trimmed and must contain 1–200 Unicode characters.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+      responses:
+        '200':
+          description: Updated user profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Authenticated user no longer exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /users/me/password:
+    put:
+      tags: [Users]
+      operationId: changeCurrentUserPassword
+      summary: Change the authenticated user's password
+      description: |
+        The request field names are the implemented contract; the SRS does not define them.
+        A successful change revokes all refresh tokens for the user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [current_password, new_password]
+              properties:
+                current_password:
+                  type: string
+                  minLength: 1
+                new_password:
+                  type: string
+                  minLength: 1
+                  description: Maximum 1024 UTF-8 bytes.
+      responses:
+        '204':
+          description: Password changed; all of the user's refresh tokens were revoked.
+        '400':
+          description: Invalid request, invalid new password, or current password does not match.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Authenticated user no longer exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/users:
+    get:
+      tags: [Admin users]
+      operationId: listAdminUsers
+      summary: List users as an administrator
+      description: Only ADMIN may call this operation. Results are paginated.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: A page of users.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/users/{id}/role:
+    parameters:
+      - $ref: '#/components/parameters/AdminUserId'
+    put:
+      tags: [Admin users]
+      operationId: updateUserRole
+      summary: Change a user's role
+      description: Only ADMIN may change a user's role; active refresh tokens are revoked.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [STUDENT, LECTURER, ADMIN]
+      responses:
+        '200':
+          description: User with the updated role.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Target user was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A related-data constraint prevented the role change from being committed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /courses:
+    get:
+      tags: [Courses]
+      operationId: listCourses
+      summary: List Courses visible to the authenticated user
+      description: |
+        STUDENT sees enrolled Courses, LECTURER sees owned Courses, and ADMIN sees all Courses.
+        Results are paginated.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: A page of visible Courses.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoursePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Courses]
+      operationId: createCourse
+      summary: Create a Course
+      description: |
+        Only LECTURER and ADMIN may create a Course. A lecturer becomes its owner and may omit
+        `lecturer_email` or provide their own email. ADMIN must provide the email of an existing
+        LECTURER. These request fields are implementation-specific because FR-18 does not define
+        the request body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, code, term]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: Trimmed; the server rejects NUL and whitespace-only values.
+                code:
+                  type: string
+                  minLength: 1
+                  maxLength: 32
+                  description: Trimmed; the server rejects NUL and whitespace-only values.
+                term:
+                  type: string
+                  minLength: 1
+                  maxLength: 20
+                  description: Trimmed; the server rejects NUL and whitespace-only values.
+                lecturer_email:
+                  type: string
+                  description: |
+                    Server-validated email address, maximum 254 UTF-8 bytes. Required for ADMIN;
+                    if supplied by LECTURER, must match the caller's email.
+      responses:
+        '201':
+          description: Course created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller is not a LECTURER or ADMIN.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: The lecturer email does not identify an existing user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Course code is already in use.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /courses/{id}/assignments:
+    parameters:
+      - $ref: '#/components/parameters/CourseId'
+    get:
+      tags: [Courses]
+      operationId: listCourseAssignments
+      summary: List assignments visible in a Course
+      description: |
+        Enrolled students, the current Course owner, and ADMIN may list assignments. Other users
+        receive 404. Results are paginated.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: A page of Course assignments.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseAssignmentPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Course is missing or not visible to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /courses/{id}/enrollments:
+    parameters:
+      - $ref: '#/components/parameters/CourseId'
+    get:
+      tags: [Enrollments]
+      operationId: listCourseEnrollments
+      summary: List a Course's enrollments
+      description: |
+        Only the current Course owner or ADMIN may list enrollments; other users receive 404.
+        Results are paginated.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: A page of Course enrollments.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrollmentPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Course is missing or not manageable by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Enrollments]
+      operationId: createCourseEnrollment
+      summary: Enroll a student in a Course
+      description: |
+        Only the current Course owner or ADMIN may add an enrollment. The email request field is
+        implementation-specific because FR-18 does not define the request body. The target user
+        must have the STUDENT role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  description: Trimmed, normalized to lowercase, and server-validated; maximum 254 UTF-8 bytes.
+      responses:
+        '204':
+          description: Enrollment created.
+        '400':
+          description: Invalid email or target user is not a STUDENT.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Course is missing/not manageable, or user email is unknown.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Student is already enrolled in the Course.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /courses/{id}/enrollments/{user_id}:
+    parameters:
+      - $ref: '#/components/parameters/CourseId'
+      - $ref: '#/components/parameters/EnrollmentUserId'
+    delete:
+      tags: [Enrollments]
+      operationId: deleteCourseEnrollment
+      summary: Remove a student from a Course
+      description: Only the current Course owner or ADMIN may remove enrollments; other users receive 404.
+      responses:
+        '204':
+          description: Enrollment deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Course, caller's management access, or enrollment was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /submissions:
     post:
       tags: [Submissions]
@@ -203,9 +758,48 @@ components:
         type: integer
         format: int64
         minimum: 1
+    CourseId:
+      name: id
+      in: path
+      required: true
+      description: Positive Course ID.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    AdminUserId:
+      name: id
+      in: path
+      required: true
+      description: Positive user ID.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    EnrollmentUserId:
+      name: user_id
+      in: path
+      required: true
+      description: Positive student user ID.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
   responses:
     Unauthorized:
       description: Missing or invalid Bearer access token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Invalid request body, parameter, or pagination value.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The authenticated user does not have the required role.
       content:
         application/json:
           schema:
@@ -229,6 +823,149 @@ components:
               type: string
             message:
               type: string
+    User:
+      type: object
+      required: [id, name, email, role]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [STUDENT, LECTURER, ADMIN]
+    UserPage:
+      type: object
+      required: [items, page, page_size, has_next]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        has_next:
+          type: boolean
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+    LoginResponse:
+      allOf:
+        - $ref: '#/components/schemas/TokenPair'
+        - type: object
+          required: [user]
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+    Course:
+      type: object
+      required: [id, name, code, term, lecturer_id]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        code:
+          type: string
+        term:
+          type: string
+        lecturer_id:
+          type: integer
+          format: int64
+    CoursePage:
+      type: object
+      required: [items, page, page_size, has_next]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Course'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        has_next:
+          type: boolean
+    CourseAssignment:
+      type: object
+      required: [id, course_id, title, description, deadline_at, late_until_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        course_id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        description:
+          type: string
+        deadline_at:
+          type: string
+          format: date-time
+        late_until_at:
+          type: string
+          format: date-time
+    CourseAssignmentPage:
+      type: object
+      required: [items, page, page_size, has_next]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CourseAssignment'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        has_next:
+          type: boolean
+    Enrollment:
+      type: object
+      required: [id, course_id, user_id, name, email, enrolled_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        course_id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        enrolled_at:
+          type: string
+          format: date-time
+    EnrollmentPage:
+      type: object
+      required: [items, page, page_size, has_next]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Enrollment'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        has_next:
+          type: boolean
     Submission:
       type: object
       required:
