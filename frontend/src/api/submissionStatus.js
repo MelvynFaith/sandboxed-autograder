@@ -25,6 +25,24 @@ function readStatusMessage(payload) {
   }
 }
 
+function readPollingStatus(payload, submissionId) {
+  if (
+    !payload ||
+    typeof payload !== 'object' ||
+    (typeof payload.id !== 'string' && typeof payload.id !== 'number') ||
+    String(payload.id) !== String(submissionId) ||
+    !VALID_STATUSES.has(payload.status)
+  ) {
+    throw new Error('Respons status submission tidak sesuai format yang diharapkan.')
+  }
+
+  return {
+    status: payload.status,
+    current_test: null,
+    total_tests: null,
+  }
+}
+
 async function getSubmissionStatus(submissionId) {
   const response = await apiRequest(`/submissions/${encodeURIComponent(submissionId)}`)
   if (!response.ok) {
@@ -32,14 +50,7 @@ async function getSubmissionStatus(submissionId) {
   }
 
   const payload = await response.json()
-  if (
-    (typeof payload?.id !== 'string' && typeof payload?.id !== 'number') ||
-    String(payload.id) !== String(submissionId)
-  ) {
-    throw new Error('Respons status submission tidak sesuai format yang diharapkan.')
-  }
-
-  return payload
+  return readPollingStatus(payload, submissionId)
 }
 
 async function getWebSocketTicket(submissionId) {
@@ -111,8 +122,7 @@ export function subscribeToSubmissionStatus(submissionId, handlers) {
     }
   }
 
-  function receiveStatus(payload) {
-    const status = readStatusMessage(payload)
+  function publishStatus(status) {
     onStatus(status)
     if (TERMINAL_STATUSES.has(status.status)) {
       terminal = true
@@ -120,9 +130,13 @@ export function subscribeToSubmissionStatus(submissionId, handlers) {
     }
   }
 
+  function receiveStatus(payload) {
+    publishStatus(readStatusMessage(payload))
+  }
+
   async function poll() {
     try {
-      receiveStatus(await getSubmissionStatus(submissionId))
+      publishStatus(await getSubmissionStatus(submissionId))
     } catch (error) {
       if (!disposed && !terminal) {
         onError(error.message)

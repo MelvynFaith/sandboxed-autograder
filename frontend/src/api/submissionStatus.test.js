@@ -73,8 +73,6 @@ describe('subscribeToSubmissionStatus', () => {
       .mockResolvedValue({ ok: true, json: async () => ({
           id: 'submission-1',
           status: 'RUNNING',
-          current_test: 1,
-          total_tests: 3,
         }) })
     vi.stubGlobal('fetch', fetchMock)
     const cleanup = subscribeToSubmissionStatus('submission-1', {
@@ -97,10 +95,11 @@ describe('subscribeToSubmissionStatus', () => {
     await vi.waitFor(() => {
       expect(onStatus).toHaveBeenCalledWith({
         status: 'RUNNING',
-        current_test: 1,
-        total_tests: 3,
+        current_test: null,
+        total_tests: null,
       })
     })
+    expect(onError).not.toHaveBeenCalled()
     cleanup()
   })
 
@@ -111,8 +110,6 @@ describe('subscribeToSubmissionStatus', () => {
       .mockResolvedValue({ ok: true, json: async () => ({
           id: 'submission-1',
           status: 'COMPLETED',
-          current_test: 3,
-          total_tests: 3,
         }) })
     vi.stubGlobal('fetch', fetchMock)
     const cleanup = subscribeToSubmissionStatus('submission-1', {
@@ -127,8 +124,8 @@ describe('subscribeToSubmissionStatus', () => {
     await vi.waitFor(() => {
       expect(onStatus).toHaveBeenCalledWith({
         status: 'COMPLETED',
-        current_test: 3,
-        total_tests: 3,
+        current_test: null,
+        total_tests: null,
       })
     })
     cleanup()
