@@ -1,50 +1,32 @@
 # Week 10 progress (20 Oct - 26 Oct 2026)
 
-**Phase / sprint:** Backend critical path to submission flow and UAT preparation
+**Phase / sprint:** Sprint 2: grading workflow, dashboard integration, and UAT preparation
+
+> Status recorded through 24 Oct 2026. Only work and decisions with a repository or GitHub record are included.
 
 ## Done
 
-- B3 assignment and test-case APIs merged in [PR #59](https://github.com/MelvynFaith/sandboxed-autograder/pull/59) on 19 Oct; issue #58 is closed. The API requires all six resource limits when creating an assignment and preserves test cases used by any submission.
-- B4 submission upload, history, detail, and report APIs merged in [PR #63](https://github.com/MelvynFaith/sandboxed-autograder/pull/63) on 19 Oct; issue #61 is closed. It is no longer awaiting review.
-- Authentication and profile UI/API work in [PR #54](https://github.com/MelvynFaith/sandboxed-autograder/pull/54) and [PR #35](https://github.com/MelvynFaith/sandboxed-autograder/pull/35) merged on 19 and 17 Oct.
-- Course/enrollment API [PR #51](https://github.com/MelvynFaith/sandboxed-autograder/pull/51) merged on 19 Oct; Course UI [PR #99](https://github.com/MelvynFaith/sandboxed-autograder/pull/99) merged on 22 Oct.
-- Lecturer assignment and test-case UI [PR #104](https://github.com/MelvynFaith/sandboxed-autograder/pull/104) merged on 22 Oct. YAML import/export API [PR #87](https://github.com/MelvynFaith/sandboxed-autograder/pull/87) and UI [PR #100](https://github.com/MelvynFaith/sandboxed-autograder/pull/100) merged on 20 Oct.
-- [PR #68](https://github.com/MelvynFaith/sandboxed-autograder/pull/68), [PR #69](https://github.com/MelvynFaith/sandboxed-autograder/pull/69), and [PR #73](https://github.com/MelvynFaith/sandboxed-autograder/pull/73) were reviewed by Erlangga31 on 22 Oct 2026 and subsequently merged. Erlangga31 has no review recorded on [PR #87](https://github.com/MelvynFaith/sandboxed-autograder/pull/87); that PR was merged on 20 Oct after a review by whosblub.
-- GitHub reports no open PRs authored by Erlangga31. All of the author's PRs returned by `gh pr list --author Erlangga31 --state all` are merged:
-  - #104 — lecturer assignment and test-case screens — 22 Oct 2026.
-  - #101 — Erlangga-owned frontend and API documentation — 20 Oct 2026.
-  - #100 — YAML test-case UI — 20 Oct 2026.
-  - #99 — Course and enrollment UI — 22 Oct 2026.
-  - #63 — submission API — 19 Oct 2026.
-  - #59 — assignment and test-case API — 19 Oct 2026.
-  - #54 — registration, profile, and logout UI — 19 Oct 2026.
-  - #51 — Course and enrollment API — 19 Oct 2026.
-  - #40 — Week 10 progress note — 18 Oct 2026.
-  - #35 — authentication and session API — 17 Oct 2026.
-  - #32 — registration and profile UI — 17 Oct 2026.
-  - #22 — frontend submission contract fixes — 17 Oct 2026.
-  - #20 — Week 09 progress note — 16 Oct 2026.
-  - #19 — admin dashboard UI — 15 Oct 2026.
-  - #16 — lecturer assignment management UI — 13 Oct 2026.
-  - #14 — submission history and report UI — 5 Oct 2026.
-  - #12 — live submission status UI — 5 Oct 2026.
-  - #10 — student assignment list and upload UI — 5 Oct 2026.
-  - #7 — login and role-based routing UI — 4 Oct 2026.
-  - #4 — frontend scaffold — 4 Oct 2026.
+- The lecturer workflow for Courses and enrollments is available in the dashboard. Lecturers can manage Courses and enroll students; students see their enrolled Courses and course assignments (FR-18, NFR-10; [PR #99](https://github.com/MelvynFaith/sandboxed-autograder/pull/99)).
+- Lecturer assignment and test-case management is integrated, including required resource limits, CRUD, and paginated test-case lists (FR-02, FR-03, FR-06; [PR #104](https://github.com/MelvynFaith/sandboxed-autograder/pull/104)).
+- Test-case YAML import/export is available through the API and lecturer dashboard using schema version 1 (FR-03 Must; [PR #87](https://github.com/MelvynFaith/sandboxed-autograder/pull/87), [PR #100](https://github.com/MelvynFaith/sandboxed-autograder/pull/100)).
+- Submission history and reports use the API; lecturers and administrators can view assignment grade recaps and export CSV, access submission code, and request regrades (FR-08, FR-09, FR-11, FR-17, FR-20; [PR #69](https://github.com/MelvynFaith/sandboxed-autograder/pull/69), [PR #72](https://github.com/MelvynFaith/sandboxed-autograder/pull/72), [PR #74](https://github.com/MelvynFaith/sandboxed-autograder/pull/74), [PR #98](https://github.com/MelvynFaith/sandboxed-autograder/pull/98)).
+- The admin dashboard now includes audit-log and rate-limit controls (FR-12, FR-14; [PR #71](https://github.com/MelvynFaith/sandboxed-autograder/pull/71), [PR #73](https://github.com/MelvynFaith/sandboxed-autograder/pull/73)).
+- Erlangga31 reviewed PRs #68, #69, and #73 on 22 Oct; each was subsequently merged. No review by Erlangga31 is recorded on PR #87, which was merged after review by whosblub.
 
 ## In progress / carried over
 
-- No open PR by Erlangga31 is reported by GitHub. Issue [#60](https://github.com/MelvynFaith/sandboxed-autograder/issues/60) remains open although YAML import/export is implemented in merged PRs #87 and #100; review its remaining acceptance criteria before deciding whether to close it.
-- Issue [#9](https://github.com/MelvynFaith/sandboxed-autograder/issues/9) remains open for confirmation of temporary frontend API-contract assumptions.
+- The frontend polling fallback for status-only submission responses is under review in [PR #110](https://github.com/MelvynFaith/sandboxed-autograder/pull/110).
+- [Issue #60](https://github.com/MelvynFaith/sandboxed-autograder/issues/60) remains open although YAML import/export is implemented; confirm whether any acceptance criteria remain before closing it.
+- [Issue #9](https://github.com/MelvynFaith/sandboxed-autograder/issues/9) remains open for agreement on frontend API contracts. Its temporary login response differs from the current API response; update or close the assumption after agreement.
 
 ## Blockers and risks
 
-- R6: the proposed UAT window is 27 Oct–9 Nov, but no schedule confirmation is recorded. The PM must confirm the schedule or decide whether to use the SRS fallback; the status remains unresolved.
-- R4/R7: replacement sandbox-backup and Module C reviewer coverage has not been confirmed in the latest project record; status is **belum diverifikasi**.
-- Feature freeze is 26 Oct. There is no recorded decision on which remaining Should/Could requirements, if any, will be deferred; resolve this before freeze. The former FR-11 ownership/API decision is no longer listed as a blocker: the backend and dashboard PRs #69 and #98 have merged.
+- R6: the proposed UAT window of 27 Oct - 9 Nov is not confirmed. The PM must confirm the schedule or decide whether to use the SRS fallback before UAT starts.
+- R4/R7: replacement sandbox-backup and Module C reviewer coverage has not been confirmed in the project records reviewed for this update.
+- Feature freeze is 26 Oct. No decision on deferring remaining Should/Could scope is recorded; agree and communicate any cuts before the freeze.
 
 ## Next week
 
 - Confirm the UAT schedule and prepare role-based test accounts and assignment scenarios.
-- Resolve the open contract questions in issue #9 and reconcile the remaining acceptance criteria of issue #60 with the merged YAML implementation.
-- Confirm whether R4/R7 replacement coverage is needed and, if so, assign it before UAT.
+- Resolve the outstanding contract and YAML acceptance questions in issues #9 and #60.
+- Confirm reviewer and backup coverage for UAT and record any agreed scope deferrals.
