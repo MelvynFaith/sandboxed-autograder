@@ -1,7 +1,7 @@
 # Laporan audit NFR-11: responsif dan aksesibilitas
 
 - Tanggal audit: 2026-10-24
-- Branch aplikasi: `fix/frontend-a11y-responsive`
+- Commit yang diukur: `fd20f4a` (`git rev-parse HEAD` saat pengukuran)
 - Lingkungan: frontend mock `VITE_USE_MOCK=true`, Vite `http://127.0.0.1:5175`
 - Viewport: 360 × 900, 768 × 900, 1280 × 900 CSS px
 - Issue: [#112](https://github.com/MelvynFaith/sandboxed-autograder/issues/112)
@@ -127,7 +127,10 @@ dan Escape **belum diverifikasi**, bukan dinyatakan lulus.
 ## Kesimpulan
 
 Tidak ditemukan kegagalan terukur untuk overflow dokumen, label, nama kontrol,
-status tekstual, atau scrolling tabel dalam wadah. Tidak ada perbaikan UI yang
-diperlukan dari hasil tersebut. Pemeriksaan Tab/fokus terlihat dan Escape
-melalui keyboard browser tetap menjadi batas verifikasi, dinyatakan secara
-terbuka sebagai **belum diverifikasi**.
+status tekstual, atau scrolling tabel dalam wadah pada pengukuran yang dapat
+diverifikasi. Hasil ini tidak membenarkan klaim bahwa seluruh pengalaman
+keyboard sudah lulus, karena pemeriksaan Tab/fokus terlihat dan Escape melalui
+keyboard browser tetap menjadi batas verifikasi dan dinyatakan terbuka sebagai
+**belum diverifikasi**. Sebelum menyatakan lulus penuh untuk NFR-11, perlu
+verifikasi manual tambahan di browser nyata pada dialog dan alur keyboard yang
+menggunakan fokus serta Escape.
