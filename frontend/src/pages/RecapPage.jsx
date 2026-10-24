@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import {
   downloadRecapCsv,
   getAssignmentRecap,
@@ -59,6 +59,8 @@ function RegradeAllConfirmation({ isBusy, onConfirm, onDismiss }) {
 
 function RecapPage() {
   const { assignmentId } = useParams()
+  const [searchParams] = useSearchParams()
+  const courseId = searchParams.get('courseId')
   const [recap, setRecap] = useState(null)
   const [page, setPage] = useState(1)
   const [reloadKey, setReloadKey] = useState(0)
@@ -152,6 +154,29 @@ function RecapPage() {
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
       <h1 className="text-2xl font-semibold">Rekap Nilai</h1>
+      <nav aria-label="Alur dosen" className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+        <ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <li>
+            <Link
+              className="font-medium text-blue-700 underline"
+              to={`/courses${courseId ? `?courseId=${encodeURIComponent(courseId)}` : ''}`}
+            >
+              1. Course &amp; enrollment
+            </Link>
+          </li>
+          <li>
+            <Link
+              className="font-medium text-blue-700 underline"
+              to={`/lecturer/assignments${courseId ? `?courseId=${encodeURIComponent(courseId)}` : ''}`}
+            >
+              2. Assignment &amp; test case
+            </Link>
+          </li>
+          <li aria-current="step" className="font-semibold text-blue-800">
+            3. Rekap nilai &amp; CSV
+          </li>
+        </ol>
+      </nav>
       {recap && <p className="mt-1 text-slate-700">{recap.assignmentTitle}</p>}
       {isLoading && <p className="mt-4 text-slate-600">Memuat rekap nilai...</p>}
       {loadError && (

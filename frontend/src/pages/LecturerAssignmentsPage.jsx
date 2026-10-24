@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { getAssignments } from '../api/assignments.js'
 import { getCourses } from '../api/courses.js'
 import {
@@ -65,8 +66,10 @@ function validateResourceLimits(limits) {
 }
 
 function LecturerAssignmentsPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedCourseId = searchParams.get('courseId')
   const [courses, setCourses] = useState([])
-  const [courseId, setCourseId] = useState('')
+  const [courseId, setCourseId] = useState(() => requestedCourseId ?? '')
   const [assignments, setAssignments] = useState([])
   const [activeAssignment, setActiveAssignment] = useState(null)
   const [testCases, setTestCases] = useState([])
@@ -110,7 +113,10 @@ function LecturerAssignmentsPage() {
       .then((results) => {
         if (current) {
           setCourses(results)
-          setCourseId(results[0]?.id ?? '')
+          const requestedCourse = results.find(
+            (course) => String(course.id) === requestedCourseId,
+          )
+          setCourseId(String(requestedCourse?.id ?? results[0]?.id ?? ''))
         }
       })
       .catch((loadError) => {
@@ -126,7 +132,7 @@ function LecturerAssignmentsPage() {
     return () => {
       current = false
     }
-  }, [])
+  }, [requestedCourseId])
 
   useEffect(() => {
     let current = true
@@ -381,6 +387,22 @@ function LecturerAssignmentsPage() {
   return (
     <main className="mx-auto max-w-5xl space-y-8 px-6 py-10">
       <h1 className="text-2xl font-semibold">Kelola Assignment</h1>
+      <nav aria-label="Alur dosen" className="rounded-lg border border-slate-200 bg-white p-4">
+        <ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <li>
+            <Link
+              className="font-medium text-blue-700 underline"
+              to={`/courses${courseId ? `?courseId=${encodeURIComponent(courseId)}` : ''}`}
+            >
+              1. Course &amp; enrollment
+            </Link>
+          </li>
+          <li aria-current="step" className="font-semibold text-blue-800">
+            2. Assignment &amp; test case
+          </li>
+          <li className="text-slate-600">3. Rekap nilai &amp; CSV (pilih assignment)</li>
+        </ol>
+      </nav>
       {error && <p className="text-red-700" role="alert">{error}</p>}
       {success && <p className="text-blue-800" role="status">{success}</p>}
       {isLoading ? (
@@ -396,6 +418,7 @@ function LecturerAssignmentsPage() {
               id="course-select"
               onChange={(event) => {
                 setCourseId(event.target.value)
+                setSearchParams({ courseId: event.target.value })
                 setActiveAssignment(null)
                 setAssignments([])
               }}
@@ -426,6 +449,12 @@ function LecturerAssignmentsPage() {
                     >
                       Kelola
                     </button>
+                    <Link
+                      className="rounded border border-slate-300 px-3 py-2 font-medium text-blue-700 hover:bg-slate-100"
+                      to={`/lecturer/assignments/${encodeURIComponent(assignment.id)}/recap?courseId=${encodeURIComponent(courseId)}`}
+                    >
+                      Rekap nilai &amp; CSV
+                    </Link>
                     <button
                       className="rounded border border-red-300 px-3 py-2 text-red-800"
                       onClick={(event) => requestDelete('assignment', assignment.id, event)}
