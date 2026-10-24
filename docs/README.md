@@ -5,6 +5,7 @@
 | [`progress/`](progress/) | Weekly progress notes, `minggu-NN.md` | Every week |
 | [`sprint/`](sprint/) | Sprint review and retrospective, `sprint-N.md` | End of each sprint |
 | [`qa/`](qa/) | Test reports: adversarial and failure injection | When a test round is run |
+| [`uat/`](uat/) | Lecturer workflow guide and UAT scenarios | When the UAT flow changes |
 
 Start new notes by copying the `_template.md` in each folder.
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   createCourse,
   createEnrollment,
@@ -36,6 +37,8 @@ function PageControls({ page, hasNext, onPageChange, label }) {
 
 function CoursesPage() {
   const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedCourseId = searchParams.get('courseId')
   const isAdmin = user.role === 'admin'
   const [coursesPage, setCoursesPage] = useState({
     items: [],
@@ -79,6 +82,10 @@ function CoursesPage() {
       .then((result) => {
         if (!isCurrent) return
         setCoursesPage(result)
+        const requestedCourse = result.items.find(
+          (course) => String(course.id) === requestedCourseId,
+        )
+        setSelectedCourseId(String(requestedCourse?.id ?? result.items[0]?.id ?? ''))
       })
       .catch((loadError) => {
         if (isCurrent) setError(loadError.message)
@@ -90,7 +97,7 @@ function CoursesPage() {
     return () => {
       isCurrent = false
     }
-  }, [coursePage])
+  }, [coursePage, requestedCourseId])
 
   useEffect(() => {
     if (!activeCourseId) return undefined
@@ -148,6 +155,7 @@ function CoursesPage() {
       setCourseForm({ name: '', code: '', term: '', lecturerEmail: '' })
       setCoursePage(1)
       setSelectedCourseId(String(created.id))
+      setSearchParams({ courseId: String(created.id) })
       const result = await getCoursesPage({ page: 1, pageSize: PAGE_SIZE })
       setCoursesPage(result)
       setSuccess('Course berhasil dibuat.')
@@ -193,6 +201,22 @@ function CoursesPage() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
       <h1 className="text-2xl font-semibold">Course</h1>
+      <nav aria-label="Alur dosen" className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+        <ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <li aria-current="step" className="font-semibold text-blue-800">
+            1. Course &amp; enrollment
+          </li>
+          <li>
+            <Link
+              className="font-medium text-blue-700 underline"
+              to={`/lecturer/assignments${activeCourseId ? `?courseId=${encodeURIComponent(activeCourseId)}` : ''}`}
+            >
+              2. Assignment &amp; test case
+            </Link>
+          </li>
+          <li className="text-slate-600">3. Rekap nilai &amp; CSV</li>
+        </ol>
+      </nav>
       {error && (
         <p className="mt-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-red-700" role="alert">
           {error}
@@ -278,6 +302,7 @@ function CoursesPage() {
                     onClick={() => {
                       setError('')
                       setSelectedCourseId(String(course.id))
+                      setSearchParams({ courseId: String(course.id) })
                       setEnrollmentPage(1)
                     }}
                     type="button"
