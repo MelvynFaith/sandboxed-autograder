@@ -60,6 +60,45 @@ The UI is expected to work at 360 px, 768 px, and 1280 px without horizontal
 scrolling. Forms have keyboard support and accessible labels. Timestamps are
 stored in UTC and displayed in WIB (UTC+7).
 
+#### NFR-11 responsive and accessibility results
+
+The measured value is `document/body scrollWidth / viewport width`; all measured
+pages passed the no-horizontal-document-scroll check. Public routes were tested
+without signing in; protected routes were tested with each listed role.
+
+| Route | Role | 360 px | 768 px | 1280 px |
+| --- | --- | --- | --- | --- |
+| `/login` | Public | 360/360 pass | 768/768 pass | 1280/1280 pass |
+| `/register` | Public | 360/360 pass | 768/768 pass | 1280/1280 pass |
+| `/assignments` | Student | 345/360 pass | 753/768 pass | 1265/1280 pass |
+| `/history` | Student | 345/360 pass | 768/768 pass | 1280/1280 pass |
+| `/profile` | Student | 345/360 pass | 768/768 pass | 1280/1280 pass |
+| `/submissions/:submissionId/code` | Student | 360/360 pass | 768/768 pass | 1280/1280 pass |
+| `/assignments` | Lecturer | 360/360 pass | 768/768 pass | 1280/1280 pass |
+| `/courses` | Lecturer | 345/360 pass | 753/768 pass | 1265/1280 pass |
+| `/lecturer/assignments` | Lecturer | 345/360 pass | 753/768 pass | 1265/1280 pass |
+| `/profile` | Lecturer | 345/360 pass | 768/768 pass | 1280/1280 pass |
+| `/lecturer/assignments/:assignmentId/recap` | Lecturer | 360/360 pass | 768/768 pass | 1280/1280 pass |
+| `/submissions/:submissionId/report` | Lecturer | 345/360 pass | 753/768 pass | 1265/1280 pass |
+| `/submissions/:submissionId/code` | Lecturer | 360/360 pass | 768/768 pass | 1280/1280 pass |
+| `/assignments` | Admin | 360/360 pass | 768/768 pass | 1280/1280 pass |
+| `/courses` | Admin | 345/360 pass | 753/768 pass | 1265/1280 pass |
+| `/lecturer/assignments` | Admin | 345/360 pass | 753/768 pass | 1265/1280 pass |
+| `/admin` | Admin | 345/360 pass | 753/768 pass | 1265/1280 pass |
+| `/profile` | Admin | 345/360 pass | 768/768 pass | 1280/1280 pass |
+| `/lecturer/assignments/:assignmentId/recap` | Admin | 360/360 pass | 768/768 pass | 1280/1280 pass |
+| `/submissions/:submissionId/report` | Admin | 345/360 pass | 753/768 pass | 1265/1280 pass |
+| `/submissions/:submissionId/code` | Admin | 360/360 pass | 768/768 pass | 1280/1280 pass |
+
+| Accessibility check | Result |
+| --- | --- |
+| Labels for form fields | All measured fields have an associated or accessible label. |
+| Buttons and links | All measured actions have `tabIndex >= 0`. |
+| Status text | Submission statuses and verdicts have text labels in addition to color. |
+| Scrollable tables | Recap and admin tables scroll within their own `overflow-x-auto` container. |
+| Keyboard Tab order and visible focus in browser | Not verified: the integrated browser did not dispatch Tab key events. |
+| Escape dismissal and focus restoration | Browser input not verified; the `LecturerAssignmentsPage` Vitest covers Escape dismissal and focus restoration. |
+
 ## Authentication and session limitations
 
 Login stores the access token, refresh token, and user in browser storage.
