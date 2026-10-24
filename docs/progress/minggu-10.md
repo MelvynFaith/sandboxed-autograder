@@ -1,33 +1,32 @@
 # Week 10 progress (20 Oct - 26 Oct 2026)
 
-**Phase / sprint:** Backend critical path to submission flow and UAT preparation
+**Phase / sprint:** Sprint 2: grading workflow, dashboard integration, and UAT preparation
+
+> Status recorded through 24 Oct 2026. Only work and decisions with a repository or GitHub record are included.
 
 ## Done
 
-- B3 (FR-02, FR-03, FR-06; Must) merged in [PR #59](https://github.com/MelvynFaith/sandboxed-autograder/pull/59), squash commit `d45c556`; issue #58 is closed.
-- [Issue #60](https://github.com/MelvynFaith/sandboxed-autograder/issues/60) tracks the remaining FR-03 Must work for YAML test-case import/export.
-- [Issue #61](https://github.com/MelvynFaith/sandboxed-autograder/issues/61) tracks B4 submission and report endpoints (FR-04, FR-08, FR-09 Must; FR-10 Should).
-- B3 covers assignment CRUD, resource limits, test-case lifecycle, stale-grade marking, and exclusion of soft-deleted cases from grading. Assignment creation now requires and atomically stores all six resource-limit fields. Test cases are soft-deleted whenever their assignment has any submission, including a running submission; assignment/test-case writes return 404 for non-owners, including an owner demoted to `STUDENT`.
-- After the review fixes, `gofmt -l .` returned no files, `go vet ./...` passed, and `go test -race -count=1 -v ./...` passed with `scheduler/.env`; the suite had one intentional skip (`TestHelperProcess`). Coverage was measured through API integration tests by running `go test -coverpkg=./internal/api -cover ./internal/api -count=1`, then repeating with `./internal/auth` and `./internal/courses`; results were API 72.0%, auth 72.9%, and courses 76.7%.
-- The demoted-owner test fails when the lecturer-role predicate is removed from either assignment or test-case ownership SQL; both mutations were restored and checked.
-- Review-fix mutation checks also passed: removing create-time resource-limit invariant validation made the invalid-limit API tests fail; reverting test-case deletion to check existing results made the no-result and `RUNNING` tests fail; disabling the hidden-case filter exposed the hidden item and failed the student assertion. Each mutation was restored and verified with `git diff --exit-code`.
-- B4 review fixes are pushed to [PR #63](https://github.com/MelvynFaith/sandboxed-autograder/pull/63): upload returns 202 per SRS Appendix B; hidden report fields are limited to administrators and current Course owners; history supports `assignment_id`; rate-limit errors are user-facing Indonesian messages; invalid filenames are rejected as 400.
-- B4 validation passed on current `origin/develop`: `gofmt -l .` returned no files, `go vet ./...` passed, and `go test -race -count=1 -v ./...` passed with `scheduler/.env` (one intentional skip, `TestHelperProcess`). Coverage measured with `go test -coverpkg=./... -coverprofile=/tmp/b4-coverage.out ./...` was 75.7% total.
-- B4 mutation checks passed: changing hidden-report authorization back to role-only made the promoted-lecturer owner test fail by exposing hidden input/output; changing upload success from 202 back to 201 made the API contract test fail. Both mutations were restored before final gates.
+- The lecturer workflow for Courses and enrollments is available in the dashboard. Lecturers can manage Courses and enroll students; students see their enrolled Courses and course assignments (FR-18, NFR-10; [PR #99](https://github.com/MelvynFaith/sandboxed-autograder/pull/99)).
+- Lecturer assignment and test-case management is integrated, including required resource limits, CRUD, and paginated test-case lists (FR-02, FR-03, FR-06; [PR #104](https://github.com/MelvynFaith/sandboxed-autograder/pull/104)).
+- Test-case YAML import/export is available through the API and lecturer dashboard using schema version 1 (FR-03 Must; [PR #87](https://github.com/MelvynFaith/sandboxed-autograder/pull/87), [PR #100](https://github.com/MelvynFaith/sandboxed-autograder/pull/100)).
+- Submission history and reports use the API; lecturers and administrators can view assignment grade recaps and export CSV, access submission code, and request regrades (FR-08, FR-09, FR-11, FR-17, FR-20; [PR #69](https://github.com/MelvynFaith/sandboxed-autograder/pull/69), [PR #72](https://github.com/MelvynFaith/sandboxed-autograder/pull/72), [PR #74](https://github.com/MelvynFaith/sandboxed-autograder/pull/74), [PR #98](https://github.com/MelvynFaith/sandboxed-autograder/pull/98)).
+- The admin dashboard now includes audit-log and rate-limit controls (FR-12, FR-14; [PR #71](https://github.com/MelvynFaith/sandboxed-autograder/pull/71), [PR #73](https://github.com/MelvynFaith/sandboxed-autograder/pull/73)).
+- Erlangga31 reviewed PRs #68, #69, and #73 on 22 Oct; each was subsequently merged. No review by Erlangga31 is recorded on PR #87, which was merged after review by whosblub.
 
 ## In progress / carried over
 
-- B4 awaits review on PR #63; do not merge before approval.
-- B4 reuses the existing settings-backed FR-14 limiter and the `JobQueue.Enqueue(ctx, queue.Job{SubmissionID, UserID})` contract. Multipart fields `assignment_id` and `file` follow SRS Appendix B.
-- Confirm the UAT window of 27 Oct–9 Nov with Pak Peter; no confirmation has been recorded yet.
+- The frontend polling fallback for status-only submission responses is under review in [PR #110](https://github.com/MelvynFaith/sandboxed-autograder/pull/110).
+- [Issue #60](https://github.com/MelvynFaith/sandboxed-autograder/issues/60) remains open although YAML import/export is implemented; confirm whether any acceptance criteria remain before closing it.
+- [Issue #9](https://github.com/MelvynFaith/sandboxed-autograder/issues/9) remains open for agreement on frontend API contracts. Its temporary login response differs from the current API response; update or close the assumption after agreement.
 
 ## Blockers and risks
 
-- The B4 endpoints are not available on `develop` until the PR is reviewed and merged.
-- R6: the UAT schedule confirmation is overdue. The 27 Oct–9 Nov window is still a proposal, not a confirmed schedule.
-- Feature freeze is 26 Oct. Prioritize B4 and UAT-critical requirements over unstarted frontend work if the schedule slips.
+- R6: the proposed UAT window of 27 Oct - 9 Nov is not confirmed. The PM must confirm the schedule or decide whether to use the SRS fallback before UAT starts.
+- R4/R7: replacement sandbox-backup and Module C reviewer coverage has not been confirmed in the project records reviewed for this update.
+- Feature freeze is 26 Oct. No decision on deferring remaining Should/Could scope is recorded; agree and communicate any cuts before the freeze.
 
 ## Next week
 
-- Respond to PR #63 review; implement the separate YAML Must issue before declaring FR-03 complete.
 - Confirm the UAT schedule and prepare role-based test accounts and assignment scenarios.
+- Resolve the outstanding contract and YAML acceptance questions in issues #9 and #60.
+- Confirm reviewer and backup coverage for UAT and record any agreed scope deferrals.
