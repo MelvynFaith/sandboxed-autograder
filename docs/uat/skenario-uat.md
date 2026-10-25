@@ -3,6 +3,13 @@
 Skenario ini mencakup kriteria 1 dan 2 SRS 11.5. Catat hasil aktual setiap
 langkah; skenario tertulis bukan bukti bahwa UAT sudah dijalankan.
 
+## Keterlacakan kriteria
+
+| Kriteria | Langkah yang dijalankan |
+| --- | --- |
+| 2: buat Course, enroll mahasiswa, buat assignment dan test case, lihat rekap, ekspor CSV | Alur end-to-end 1–3 dan 7; Course dibuat pada langkah 1, bukan diasumsikan sudah tersedia. |
+| 1: uji sedikitnya 10 submission, baca kode, bandingkan skor manual/otomatis, perbaiki test case dan regrade | Alur end-to-end 3–6; tinjauan kode mengacu FR-20 dan perbaikan/regrade mengacu FR-17. |
+
 ## Gerbang sebelum mulai
 
 - Buat database khusus yang baru untuk run ini, misalnya `uat_run_20261025`.
