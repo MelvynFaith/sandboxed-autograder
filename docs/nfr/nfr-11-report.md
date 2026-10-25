@@ -1,9 +1,10 @@
 # Laporan audit NFR-11: responsif dan aksesibilitas
 
-- Tanggal audit: 2026-10-24
-- Commit viewport yang diukur: `fd20f4a`
+- Tanggal audit: 2026-10-25
+- Commit viewport dan target sentuh yang diukur: `9f44d9f`
+- Commit axe-core yang dipindai: `9f44d9f`
 - Commit dialog yang diuji dengan keyboard browser: `b3108a0`
-- Lingkungan viewport: frontend mock `VITE_USE_MOCK=true`, Vite `http://127.0.0.1:5175`
+- Lingkungan viewport: frontend mock `VITE_USE_MOCK=true`, Vite `http://127.0.0.1:5177`
 - Lingkungan keyboard: frontend mock `VITE_USE_MOCK=true`, Vite `http://127.0.0.1:5176`
 - Viewport: 360 × 900, 768 × 900, 1280 × 900 CSS px
 - Issue: [#112](https://github.com/MelvynFaith/sandboxed-autograder/issues/112)
@@ -12,6 +13,9 @@
 
 Di antara 63 kombinasi halaman konten, peran, dan lebar viewport, tidak ada
 overflow horizontal dokumen, field tanpa label, atau tautan/tombol tanpa nama.
+Tombol, field, pilihan, tautan navigasi dan aksi, serta label checkbox yang
+diukur memenuhi ukuran target minimum 44 × 44 CSS px. Pemindaian axe-core
+untuk 21 kombinasi halaman/peran menemukan 0 pelanggaran WCAG 2.0/2.1 A/AA.
 Tabel rekap dan administrasi memakai wadah `overflow-x-auto`; pada 360 px
 keduanya dapat menggulir di dalam wadah tanpa memperlebar dokumen.
 
@@ -95,6 +99,36 @@ Audit DOM pada 63 kombinasi route/peran/viewport menemukan:
 - Elemen fokus pada alur yang diuji dapat dicapai dengan Tab; urutan seluruh
   kontrol di semua rute/peran belum diuji tuntas.
 
+### Pemindaian axe-core
+
+axe-core 4.10.3 dijalankan pada viewport 360 × 900 CSS px di managed browser,
+untuk tag WCAG 2.0 A/AA dan WCAG 2.1 A/AA. Jumlah pelanggaran mencakup semua
+tingkat dampak; masing-masing baris berikut menghasilkan 0 pelanggaran.
+
+| Rute | Peran | Pelanggaran |
+| --- | --- | ---: |
+| `/login` | Publik | 0 |
+| `/register` | Publik | 0 |
+| `/assignments` | Mahasiswa | 0 |
+| `/history` | Mahasiswa | 0 |
+| `/profile` | Mahasiswa | 0 |
+| `/submissions/submission-1/code` | Mahasiswa | 0 |
+| `/assignments` | Dosen | 0 |
+| `/courses` | Dosen | 0 |
+| `/lecturer/assignments` | Dosen | 0 |
+| `/profile` | Dosen | 0 |
+| `/lecturer/assignments/4/recap` | Dosen | 0 |
+| `/submissions/101/report` | Dosen | 0 |
+| `/submissions/101/code` | Dosen | 0 |
+| `/assignments` | Admin | 0 |
+| `/courses` | Admin | 0 |
+| `/lecturer/assignments` | Admin | 0 |
+| `/admin` | Admin | 0 |
+| `/profile` | Admin | 0 |
+| `/lecturer/assignments/4/recap` | Admin | 0 |
+| `/submissions/101/report` | Admin | 0 |
+| `/submissions/101/code` | Admin | 0 |
+
 ### Fokus, urutan Tab, dan dialog
 
 | Pemeriksaan | Hasil |
@@ -115,7 +149,7 @@ Audit DOM pada 63 kombinasi route/peran/viewport menemukan:
 | Pemeriksaan | Hasil |
 | --- | --- |
 | Status/verdict selain warna | Lulus pemeriksaan implementasi dan DOM: status submission, verdict, dan status pada rekap ditampilkan dengan teks label selain warna. |
-| Target sentuh | Semua tombol dan tautan terukur berukuran minimal 24 × 24 CSS px, kecuali tautan `Register` (52 × 19 px) dan `Login` (35 × 19 px). Keduanya tautan inline dalam kalimat dan termasuk pengecualian inline pada WCAG 2.2 SC 2.5.8; ukuran aktual dicatat agar tidak disalahartikan sebagai target 24 × 24. |
+| Target sentuh | Pada 63 kombinasi halaman/peran/lebar (360/768/1280 px), semua tombol, field non-checkbox/radio, select, textarea, tautan navigasi, tautan aksi, dan label checkbox yang diukur berukuran minimal 44 × 44 CSS px. Tautan inline `Register` (52 × 19 px) dan `Login` (35 × 19 px) tetap berupa tautan di dalam kalimat dan termasuk pengecualian inline WCAG 2.2 SC 2.5.8. |
 | Tabel rekap | Wrapper tabel memiliki `overflow-x-auto`; pada 360 px tabel menggulir di wadahnya sendiri tanpa overflow dokumen. |
 | Tabel administrasi | Wrapper daftar pengguna memiliki `overflow-x-auto`; pada 360 px tabel menggulir di wadahnya sendiri tanpa overflow dokumen. |
 
@@ -133,17 +167,19 @@ Validasi yang dijalankan pada branch laporan:
 | Mutasi sementara kondisi Escape menjadi `Escape-mutation`, lalu jalankan tes Escape | Gagal sesuai harapan karena dialog tetap terbuka; setelah kondisi dipulihkan, tes lulus dan `git diff --exit-code -- frontend/src/pages/LecturerAssignmentsPage.jsx` lulus. |
 
 Viewport: halaman publik dan rute terlindungi diukur pada 360, 768, dan 1280 px;
-hasil tiap halaman ada pada tabel di atas. Pemeriksaan browser keyboard untuk
-dialog dan alur yang disebutkan di atas berhasil pada managed browser; Chromium
-mandiri gagal diluncurkan karena dependensi sistem tidak tersedia.
+63 dari 63 kombinasi tidak menunjukkan overflow dokumen atau kontrol terukur
+di bawah 44 × 44 px. Pemindaian axe-core 4.10.3 pada 21 kombinasi halaman/peran
+mencatat 0 pelanggaran. Pemeriksaan browser keyboard untuk dialog dan alur yang
+disebutkan di atas berhasil pada managed browser; Chromium mandiri gagal
+diluncurkan karena dependensi sistem tidak tersedia.
 
 ## Kesimpulan
 
-Tidak ditemukan kegagalan terukur untuk overflow dokumen, label, nama kontrol,
-status tekstual, atau scrolling tabel dalam wadah pada pengukuran yang dapat
-diverifikasi. Dialog konfirmasi yang diuji berfungsi dengan keyboard pada
-managed browser, tetapi laporan ini tidak menyatakan seluruh pengalaman
-keyboard lulus. Fokus terlihat, upload submission, pemeriksaan setiap kontrol,
-dan pemeriksaan manual pada perangkat fisik tetap
-**BELUM DIVERIFIKASI, perlu pengecekan manual** sebelum menyatakan lulus penuh
-NFR-11.
+Tidak ditemukan kegagalan terukur untuk overflow dokumen, target sentuh yang
+diukur, label, nama kontrol, status tekstual, atau scrolling tabel dalam wadah.
+axe-core tidak menemukan pelanggaran pada rute/peran yang dipindai. Dialog
+konfirmasi yang diuji berfungsi dengan keyboard pada managed browser, tetapi
+laporan ini tidak menyatakan seluruh pengalaman keyboard lulus. Fokus terlihat,
+upload submission melalui file chooser keyboard, pemeriksaan seluruh kontrol,
+dan pemeriksaan manual pada perangkat fisik tetap **BELUM DIVERIFIKASI, perlu
+pengecekan manual** sebelum menyatakan lulus penuh NFR-11.
