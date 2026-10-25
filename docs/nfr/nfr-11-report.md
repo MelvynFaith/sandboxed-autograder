@@ -134,14 +134,16 @@ tingkat dampak; masing-masing baris berikut menghasilkan 0 pelanggaran.
 | Pemeriksaan | Hasil |
 | --- | --- |
 | Tab pada login/register | Managed browser: Tab pertama pada login memfokuskan email; register menelusuri nama, email, password, konfirmasi password, tombol daftar, dan tautan login. |
-| Tab pada Course/enrollment dan assignment/test-case | Managed browser: field Course, enrollment, assignment, batas sumber daya, dan test-case terjangkau; urutan setiap kontrol belum dicatat satu per satu. |
-| Tab pada kontrol peran admin | Managed browser menelusuri kontrol pilihan peran pengguna tanpa mengubah nilai peran. |
-| Aktivasi Enter pada ekspor CSV | Managed browser menekan Enter pada tombol ekspor; status menyatakan `Rekap nilai diunduh sebagai rekap-assignment-4.csv`. Isi byte CSV belum diperiksa pada sesi keyboard ini. |
-| Tampilan fokus yang terlihat | **BELUM DIVERIFIKASI, perlu pengecekan manual.** Pemeriksaan ini membutuhkan penilaian visual pada browser normal. |
+| Tab pada Course/enrollment | Pemeriksaan lanjutan pada 2026-10-25, managed browser, mock, 360 px: Course menelusuri Nama → Kode → Term → Simpan Course; enrollment menelusuri Email mahasiswa → Tambah enrollment. Enter pada kedua form kosong hanya menampilkan validasi. |
+| Tab pada assignment dan resource limit | Pemeriksaan lanjutan pada 2026-10-25, managed browser, mock, 360 px: Judul, Deskripsi dan Deadline tercapai; urutan Tab dari input tanggal tidak dapat dipastikan karena managed browser tidak menunjukkan perubahan fokus. Keenam spinbutton dan tombol assignment dapat dicapai berurutan. Enter pada form kosong memfokuskan field wajib tanpa membuat data. |
+| Tab pada form test-case | Pemeriksaan lanjutan pada 2026-10-25, managed browser, mock, 360 px: ID eksternal, Input, Keluaran, Bobot, Mode pencocokan, checkbox tersembunyi, dan tombol tambah dapat difokuskan berurutan. Enter pada form kosong memicu validasi dan tidak membuat data. |
+| Tab pada kontrol peran admin | Pemeriksaan terdahulu mencatat select dapat ditelusuri tanpa perubahan peran. Percobaan ulang 2026-10-25 hanya dapat memfokuskan select melalui klik; Tab tidak menunjukkan perpindahan fokus di managed browser. Hasil penuh tetap **BELUM DIVERIFIKASI**. |
+| Aktivasi Enter pada ekspor CSV | Managed browser terdahulu menekan Enter pada tombol ekspor; status menyatakan `Rekap nilai diunduh sebagai rekap-assignment-4.csv`. Pemeriksaan lanjutan belum menelusuri seluruh tabel; isi byte CSV belum diperiksa. |
+| Tampilan fokus yang terlihat | Login: `:focus-visible` aktif dan browser menampilkan outline 1 px pada field, tombol, dan tautan yang difokuskan. Penilaian visual lengkap untuk seluruh kontrol membutuhkan pengecekan manual di browser normal dan tetap **BELUM DIVERIFIKASI**. |
 | Dialog hapus | Managed browser: fokus awal `Batal`; Tab/Shift+Tab berputar antara `Hapus` dan `Batal`; Escape menutup dialog dan fokus kembali ke tombol pemicu. |
 | Dialog batalkan submission | Managed browser: fokus awal `Tidak`; Tab/Shift+Tab berputar dengan `Ya, batalkan`; Escape menutup dialog dan fokus kembali ke pemicu. |
 | Dialog regrade-all | Managed browser: fokus awal `Batal`; Tab/Shift+Tab berputar dengan `Ya, nilai ulang semua`; Escape menutup dialog dan fokus kembali ke pemicu. |
-| Upload submission dengan file | **BELUM DIVERIFIKASI, perlu pengecekan manual.** Alur memilih file dan mengirim submission tidak dijalankan pada sesi browser ini. |
+| Upload submission dengan file | Managed browser memfokuskan tombol pemilih berkas untuk kedua assignment. **BELUM DIVERIFIKASI, perlu pengecekan manual** untuk membuka file chooser, memilih file, dan mengirim submission. |
 | Fokus trap dalam tes otomatis | RTL memeriksa Tab/Shift+Tab, Escape, dan pemulihan fokus untuk dialog hapus, pembatalan submission, serta regrade-all. |
 
 ### Status, target sentuh, dan tabel
