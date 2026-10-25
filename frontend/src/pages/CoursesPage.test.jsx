@@ -297,4 +297,64 @@ describe('Course management and student assignment routes', () => {
     expect(await screen.findByRole('button', { name: /CS102 — Struktur Data/ })).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/courses?page=2&page_size=10', expect.any(Object))
   })
+
+  it('finds a deep-linked Course on a later page and keeps the URL selection in sync', async () => {
+    setUser('dosen')
+    vi.stubEnv('VITE_USE_MOCK', 'false')
+    window.history.pushState({}, '', '/courses?courseId=11')
+    const firstPage = Array.from({ length: 10 }, (_, index) => ({
+      id: index + 1,
+      code: `CS${String(index + 1).padStart(3, '0')}`,
+      name: `Course ${index + 1}`,
+      term: '2026',
+    }))
+    const secondPage = [{ id: 11, code: 'CS011', name: 'Course 11', term: '2026' }]
+    const fetchMock = vi.fn((url) => {
+      if (url === '/api/v1/courses?page=1&page_size=10') {
+        return Promise.resolve(jsonResponse(200, paginated(firstPage, 1, 10, true)))
+      }
+      if (url === '/api/v1/courses?page=2&page_size=10') {
+        return Promise.resolve(jsonResponse(200, paginated(secondPage, 2, 10, false)))
+      }
+      if (url.startsWith('/api/v1/courses/11/enrollments')) {
+        return Promise.resolve(jsonResponse(200, paginated([])))
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+
+    const deepLinkedCourse = await screen.findByRole('button', { name: /CS011 — Course 11/ })
+
+    expect(deepLinkedCourse).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('Halaman 2')).toBeInTheDocument()
+    expect(window.location.search).toBe('?courseId=11')
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/courses?page=2&page_size=10', expect.any(Object))
+  })
+
+  it('does not reload the Course list when changing the selected Course', async () => {
+    setUser('dosen')
+    vi.stubEnv('VITE_USE_MOCK', 'false')
+    const fetchMock = vi.fn((url) => {
+      if (url === '/api/v1/courses?page=1&page_size=10') {
+        return Promise.resolve(jsonResponse(200, paginated([
+          { id: 1, code: 'CS101', name: 'Algoritma', term: '2026' },
+          { id: 2, code: 'CS102', name: 'Struktur Data', term: '2026' },
+        ])))
+      }
+      if (url.startsWith('/api/v1/courses/')) {
+        return Promise.resolve(jsonResponse(200, paginated([])))
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+
+    const secondCourse = await screen.findByRole('button', { name: /CS102 — Struktur Data/ })
+    fireEvent.click(secondCourse)
+
+    await waitFor(() => expect(window.location.search).toBe('?courseId=2'))
+    expect(fetchMock.mock.calls.filter(([url]) => url.startsWith('/api/v1/courses?page=')).length)
+      .toBe(1)
+  })
 })

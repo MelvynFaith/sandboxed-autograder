@@ -5,6 +5,7 @@ import {
   deleteEnrollment,
   getCourseAssignmentsPage,
   getCourseEnrollmentsPage,
+  getCourses,
   getCoursesPage,
 } from './courses.js'
 
@@ -39,6 +40,44 @@ describe('course API adapters', () => {
       has_next: true,
     })
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/courses?page=2&page_size=10', expect.any(Object))
+  })
+
+  it('loads all Course pages for the lecturer assignment selector', async () => {
+    const firstPage = Array.from({ length: 50 }, (_, index) => ({
+      id: index + 1,
+      code: `CS${String(index + 1).padStart(3, '0')}`,
+      name: `Course ${index + 1}`,
+      term: '2026',
+    }))
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          items: firstPage,
+          page: 1,
+          page_size: 50,
+          has_next: true,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          items: [{ id: 51, code: 'CS051', name: 'Course 51', term: '2026' }],
+          page: 2,
+          page_size: 50,
+          has_next: false,
+        }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const courses = await getCourses()
+
+    expect(courses).toHaveLength(51)
+    expect(courses.at(-1)).toMatchObject({ id: '51', code: 'CS051' })
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/v1/courses?page=1&page_size=50',
+      '/api/v1/courses?page=2&page_size=50',
+    ])
   })
 
   it('limits mock student Course listings to the current user enrollments', async () => {

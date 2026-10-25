@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   createCourse,
@@ -39,6 +39,9 @@ function CoursesPage() {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedCourseId = searchParams.get('courseId')
+  const initialCourseId = useRef(requestedCourseId)
+  const requestedCourseIdRef = useRef(requestedCourseId)
+  const initialCourseSelectionPending = useRef(Boolean(requestedCourseId))
   const isAdmin = user.role === 'admin'
   const [coursesPage, setCoursesPage] = useState({
     items: [],
@@ -65,12 +68,12 @@ function CoursesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const selectedCourse = coursesPage.items.find(
-    (course) => String(course.id) === selectedCourseId,
+  const activeCourseId = String(
+    coursesPage.items.find((course) => String(course.id) === requestedCourseId)?.id ??
+    coursesPage.items.find((course) => String(course.id) === selectedCourseId)?.id ??
+    coursesPage.items[0]?.id ??
+    '',
   )
-  const activeCourseId = selectedCourse
-    ? selectedCourseId
-    : String(coursesPage.items[0]?.id ?? '')
   const activeCourse = coursesPage.items.find(
     (course) => String(course.id) === activeCourseId,
   )
@@ -78,15 +81,42 @@ function CoursesPage() {
   useEffect(() => {
     let isCurrent = true
 
-    getCoursesPage({ page: coursePage, pageSize: PAGE_SIZE })
-      .then((result) => {
-        if (!isCurrent) return
-        setCoursesPage(result)
-        const requestedCourse = result.items.find(
-          (course) => String(course.id) === requestedCourseId,
+    async function loadCourses() {
+      let result = await getCoursesPage({ page: coursePage, pageSize: PAGE_SIZE })
+      let requestedCourse = null
+
+      if (initialCourseSelectionPending.current && initialCourseId.current) {
+        const requestedCourseIdForPage = initialCourseId.current
+        requestedCourse = result.items.find(
+          (course) => String(course.id) === requestedCourseIdForPage,
         )
-        setSelectedCourseId(String(requestedCourse?.id ?? result.items[0]?.id ?? ''))
-      })
+        const firstPage = result
+        while (!requestedCourse && result.has_next) {
+          result = await getCoursesPage({ page: result.page + 1, pageSize: PAGE_SIZE })
+          requestedCourse = result.items.find(
+            (course) => String(course.id) === requestedCourseIdForPage,
+          )
+        }
+        if (!requestedCourse) {
+          result = firstPage
+          initialCourseSelectionPending.current = false
+        } else if (result.page === coursePage) {
+          initialCourseSelectionPending.current = false
+        }
+      } else {
+        requestedCourse = result.items.find(
+          (course) => String(course.id) === requestedCourseIdRef.current,
+        )
+      }
+
+      if (!isCurrent) return
+      const selectedId = String(requestedCourse?.id ?? result.items[0]?.id ?? '')
+      setCoursesPage(result)
+      setCoursePage(result.page)
+      setSelectedCourseId(selectedId)
+    }
+
+    loadCourses()
       .catch((loadError) => {
         if (isCurrent) setError(loadError.message)
       })
@@ -97,7 +127,11 @@ function CoursesPage() {
     return () => {
       isCurrent = false
     }
-  }, [coursePage, requestedCourseId])
+  }, [coursePage])
+
+  useEffect(() => {
+    requestedCourseIdRef.current = requestedCourseId
+  }, [requestedCourseId])
 
   useEffect(() => {
     if (!activeCourseId) return undefined
@@ -155,6 +189,7 @@ function CoursesPage() {
       setCourseForm({ name: '', code: '', term: '', lecturerEmail: '' })
       setCoursePage(1)
       setSelectedCourseId(String(created.id))
+      requestedCourseIdRef.current = String(created.id)
       setSearchParams({ courseId: String(created.id) })
       const result = await getCoursesPage({ page: 1, pageSize: PAGE_SIZE })
       setCoursesPage(result)
@@ -302,6 +337,7 @@ function CoursesPage() {
                     onClick={() => {
                       setError('')
                       setSelectedCourseId(String(course.id))
+                      requestedCourseIdRef.current = String(course.id)
                       setSearchParams({ courseId: String(course.id) })
                       setEnrollmentPage(1)
                     }}

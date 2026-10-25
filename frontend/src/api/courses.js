@@ -192,7 +192,18 @@ export async function getCoursesPage({ page = 1, pageSize = MOCK_PAGE_SIZE } = {
 }
 
 export async function getCourses() {
-  return (await getCoursesPage({ pageSize: 50 })).items
+  const courses = []
+  let page = 1
+  let hasNext = true
+
+  while (hasNext) {
+    const result = await getCoursesPage({ page, pageSize: 50 })
+    courses.push(...result.items)
+    hasNext = result.has_next
+    page += 1
+  }
+
+  return courses
 }
 
 export async function createCourse(course, role) {
