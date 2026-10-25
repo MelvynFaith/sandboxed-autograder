@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App.jsx'
 import {
@@ -175,13 +175,32 @@ describe('lecturer workflow navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
     expect(await screen.findByRole('heading', { name: 'Test case — Latihan UAT' })).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('Input'), { target: { value: '1\n' } })
-    fireEvent.change(screen.getByLabelText('Keluaran yang diharapkan'), {
-      target: { value: '2\n' },
-    })
-    fireEvent.change(screen.getByLabelText('Bobot'), { target: { value: '1' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Tambah test case' }))
-    expect(await screen.findByText('Test case berhasil ditambahkan.')).toBeInTheDocument()
+    createTestCase.mockImplementation(async (_assignmentId, payload) => ({
+      id: `testcase-${payload.external_id}`,
+      assignmentId: 'assignment-1',
+      externalId: payload.external_id,
+      input: payload.input,
+      expectedOutput: payload.expected_output,
+      weight: payload.weight,
+      hidden: false,
+      matchMode: 'EXACT',
+    }))
+    for (let index = 1; index <= 5; index += 1) {
+      fireEvent.change(screen.getByLabelText('ID eksternal (opsional)'), {
+        target: { value: `tc_0${index}` },
+      })
+      fireEvent.change(screen.getByLabelText('Input'), {
+        target: { value: `${index}\n` },
+      })
+      fireEvent.change(screen.getByLabelText('Keluaran yang diharapkan'), {
+        target: { value: `${index * 2}\n` },
+      })
+      fireEvent.change(screen.getByLabelText('Bobot'), { target: { value: '1' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Tambah test case' }))
+      await waitFor(() => expect(createTestCase).toHaveBeenCalledTimes(index))
+      await waitFor(() => expect(screen.getByLabelText('Input')).toHaveValue(''))
+    }
+    expect(screen.getByRole('heading', { name: 'tc_05' })).toBeInTheDocument()
     expect(createTestCase).toHaveBeenCalledWith('assignment-1', expect.objectContaining({
       input: '1\n',
       expected_output: '2\n',
@@ -212,5 +231,59 @@ describe('lecturer workflow navigation', () => {
     )
     fireEvent.click(screen.getByRole('link', { name: '2. Assignment & test case' }))
     expect(await screen.findByLabelText('Course')).toHaveValue('course-1')
+  }, 15_000)
+
+  it('does not reload Courses when the selected Course query changes', async () => {
+    setLecturer()
+    getCourses.mockResolvedValue([
+      { id: 'course-1', code: 'CS101', name: 'Algoritma', term: '2026' },
+      { id: 'course-2', code: 'CS102', name: 'Struktur Data', term: '2026' },
+    ])
+    window.history.pushState({}, '', '/lecturer/assignments?courseId=course-2')
+    render(<App />)
+
+    const courseSelect = await screen.findByLabelText('Course')
+    expect(courseSelect).toHaveValue('course-2')
+    fireEvent.change(courseSelect, { target: { value: 'course-1' } })
+
+    await waitFor(() => expect(window.location.search).toBe('?courseId=course-1'))
+    expect(getCourses).toHaveBeenCalledTimes(1)
   })
+
+  it('creates five test cases before opening the recap flow', async () => {
+    setLecturer()
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('link', { name: '2. Assignment & test case' }))
+    await fillAssignmentForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+    await screen.findByRole('heading', { name: 'Test case — Latihan UAT' })
+
+    createTestCase.mockImplementation(async (_assignmentId, payload) => ({
+      id: `testcase-${payload.external_id}`,
+      assignmentId: 'assignment-1',
+      externalId: payload.external_id,
+      input: payload.input,
+      expectedOutput: payload.expected_output,
+      weight: payload.weight,
+      hidden: false,
+      matchMode: 'EXACT',
+    }))
+    for (let index = 1; index <= 5; index += 1) {
+      fireEvent.change(screen.getByLabelText('ID eksternal (opsional)'), {
+        target: { value: `tc_0${index}` },
+      })
+      fireEvent.change(screen.getByLabelText('Input'), { target: { value: `${index}\n` } })
+      fireEvent.change(screen.getByLabelText('Keluaran yang diharapkan'), {
+        target: { value: `${index * 2}\n` },
+      })
+      fireEvent.change(screen.getByLabelText('Bobot'), { target: { value: '1' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Tambah test case' }))
+      await waitFor(() => expect(createTestCase).toHaveBeenCalledTimes(index))
+      await waitFor(() => expect(screen.getByLabelText('Input')).toHaveValue(''))
+    }
+
+    expect(screen.getByRole('heading', { name: 'tc_05' })).toBeInTheDocument()
+    expect(createTestCase).toHaveBeenCalledTimes(5)
+  }, 15_000)
 })

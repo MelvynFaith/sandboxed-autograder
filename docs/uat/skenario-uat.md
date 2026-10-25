@@ -1,46 +1,108 @@
-# Skenario UAT alur dosen
+# Skenario UAT penuh SRS 11.5
 
-## Prasyarat
+Skenario ini mencakup kriteria 1 dan 2 SRS 11.5. Catat hasil aktual setiap
+langkah; skenario tertulis bukan bukti bahwa UAT sudah dijalankan.
 
-- Gunakan akun dosen atau admin yang sah dan data Course khusus UAT.
-- Untuk pengujian frontend otomatis, jalankan perintah pada dokumentasi frontend tanpa
-  menghubungkan browser ke backend.
-- Jika pengujian backend nyata diperlukan, siapkan database terisolasi baru bernama
-  `uat_run` dengan prosedur seed internal yang aman. Jangan menjalankan backend atau
-  seed terhadap `autograder_dev`, database bersama, atau produksi. Jika database baru
-  tidak dapat dibuat dan diverifikasi dengan aman, hentikan pengujian backend dan tandai
-  belum diverifikasi.
+## Gerbang sebelum mulai
 
-## Skenario dosen
+- Buat database khusus yang baru untuk run ini, misalnya `uat_run_20261025`.
+  Jangan gunakan `autograder_dev`, database bersama, atau produksi.
+- Atur `DATABASE_URL` untuk menunjuk ke database terisolasi **sebelum**
+  menjalankan migrasi, seed, atau server. Jalankan
+  `SELECT current_database()` dan pastikan hasilnya tepat nama database UAT.
+  Simpan hanya nama database dan hasil verifikasi, bukan kredensial atau URL.
+- Seed hanya akun dosen/admin yang diperlukan melalui prosedur resmi. Jangan
+  mengisi data lewat SQL manual.
+- Gunakan build frontend/backend yang SHA-nya dicatat. Jalankan server backend
+  hanya setelah verifikasi database; gunakan frontend port 5174 sesuai rencana UAT.
+- Siapkan unduhan CSV dari browser UI dan catatan skor manual yang bisa
+  dibandingkan dengan laporan otomatis.
 
-1. Masuk sebagai dosen dan buka **Course**.
-   - **Diharapkan:** daftar Course yang dapat dikelola tampil dan navigasi menunjukkan
-     langkah Course & enrollment.
-2. Pilih Course, daftarkan mahasiswa UAT, lalu buka **Assignment & test case**.
-   - **Diharapkan:** URL membawa `courseId` Course yang dipilih dan halaman assignment
-     menampilkan Course yang sama.
-3. Buat assignment dengan tenggat, batas akhir keterlambatan, dan batas sumber daya
-   valid. Tambahkan satu test case terlihat dan satu tersembunyi.
-   - **Diharapkan:** assignment tersimpan, test case tampil, dan validasi menolak batas
-     sumber daya yang tidak valid.
-4. Buka **Rekap nilai & CSV** untuk assignment.
-   - **Diharapkan:** rekap sesuai assignment dan langkah navigasi kembali ke Course serta
-     assignment yang benar.
-5. Pilih **Unduh CSV**.
-   - **Diharapkan:** berkas CSV diunduh dan halaman menampilkan nama berkas; kegagalan
-     ekspor menampilkan pesan error, bukan sukses.
+Jika database khusus tidak tersedia atau `current_database()` tidak cocok,
+hentikan UAT backend tanpa menjalankan migrasi/server dan tandai bukti sebagai
+`BELUM DIVERIFIKASI`.
 
-## Pemeriksaan navigasi dan akses
+## Data uji
 
-- Gunakan tautan langkah untuk bergerak maju dan kembali; Course terpilih tetap cocok.
-- Muat ulang halaman assignment dengan `?courseId=<id>` dan pastikan Course tersebut
-  tetap dipilih.
-- Masuk sebagai mahasiswa dan buka route pengelolaan dosen atau rekap.
-  - **Diharapkan:** mahasiswa dialihkan dan tidak melihat data pengelolaan dosen.
+1. Daftarkan melalui UI 10 akun mahasiswa unik dan catat email uji tanpa kata
+   sandi.
+2. Sebagai dosen, buat Course `UAT Algorithm`, kode unik `UAT-2026`, term
+   `2026`.
+3. Enroll seluruh 10 mahasiswa lewat UI Course.
+4. Buat assignment berjudul `UAT Multiply by Two`, dengan deskripsi meminta
+   program Python membaca satu integer dan mencetak nilainya dikali dua.
+   Pilih deadline dan resource limit yang diterima form.
+5. Buat lima test case melalui UI; masing-masing berbobot 20 dan memakai
+   pencocokan EXACT:
 
-## Catatan hasil
+   | ID | Input | Expected output | Bobot |
+   | --- | --- | --- | ---: |
+   | `uat_01` | `1` | `2` | 20 |
+   | `uat_02` | `2` | `4` | 20 |
+   | `uat_03` | `0` | `0` | 20 |
+   | `uat_04` | `-2` | `-4` | 20 |
+   | `uat_05` | `7` | `14` | 20 |
 
-Catat tanggal, browser, akun/role (tanpa kata sandi atau token), Course dan assignment
-UAT, hasil tiap langkah, serta jumlah intervensi manual yang benar-benar dilakukan.
-Pisahkan hasil tes otomatis, pemeriksaan browser, dan UAT backend nyata. Jangan
-menyatakan langkah lolos bila belum diamati.
+   Akhiri setiap input dan output dengan newline. Pastikan jumlah bobot bernilai
+   100 dan kelima kasus tampil di daftar test case.
+
+## Alur end-to-end
+
+1. **Course dan enrollment:** buat Course dan enroll 10 akun mahasiswa dari
+   halaman UI, tanpa mengetik URL atau memakai API langsung.
+   - Bukti: Course tampil pada daftar dosen; enrollment menampilkan 10 akun.
+2. **Assignment dan test case:** buat assignment, enam resource limit, dan lima
+   test case pada Course tersebut.
+   - Bukti: assignment dan kelima kasus terlihat di UI setelah disimpan.
+3. **Submission mahasiswa:** masuk bergantian melalui UI sebagai 10 mahasiswa.
+   Setiap akun mengunggah berkas `.py` berisi implementasi benar:
+   `print(int(input()) * 2)`.
+   - Bukti: 10 submission diterima; simpan ID/status yang terlihat tanpa
+     mengubah data langsung.
+4. **Pembacaan kode (FR-20):** sebagai dosen, buka setiap submission dari rekap
+   dan tinjau source code yang dikirim.
+   - Bukti: checklist berisi 10 dari 10 submission yang telah ditinjau.
+5. **Perbandingan skor manual dan otomatis:** hitung hasil lima kasus secara
+   manual untuk seluruh 10 submission dan bandingkan dengan laporan test case.
+   - Nilai yang diharapkan untuk setiap berkas benar adalah 5/5 lulus dan
+     100/100. Catat penyimpangan satu per satu; jangan menyimpulkan pass hanya
+     dari badge warna.
+6. **Perbaikan test case dan regrade (FR-17):** melalui UI, ubah `uat_03`
+   sementara agar expected output menjadi `1`. Regrade submission terkait dan
+   pastikan hasil kasus tersebut gagal serta skor berubah menjadi 80/100.
+   Pulihkan expected output menjadi `0`, regrade ulang, dan pastikan lima kasus
+   lulus serta skor kembali 100/100. Jika backend tidak menyediakan jalur UI
+   untuk regrade satu submission atau semua submission, catat blocker; jangan
+   mengganti test case/database dengan SQL atau curl.
+7. **Rekap dan CSV:** buka rekap dari navigasi UI dan unduh CSV menggunakan
+   tombol **Unduh CSV**. Periksa nama berkas, header, 10 baris mahasiswa, dan
+   skor akhir; cocokkan isinya dengan rekap.
+   - Bukti: simpan CSV hasil unduhan sebagai artefak lokal UAT dan catat hash
+     serta jumlah baris. Jangan menambahkan token ke URL.
+
+## Penghitungan intervensi
+
+Hitung sebagai intervensi setiap tindakan di luar alur UI yang disediakan:
+
+| Jenis intervensi | Target | Hasil aktual |
+| --- | ---: | --- |
+| Edit/insert/delete database secara manual | 0 | BELUM DIVERIFIKASI |
+| Panggilan curl/API di luar UI | 0 | BELUM DIVERIFIKASI |
+| Mengetik URL untuk melewati navigasi | 0 | BELUM DIVERIFIKASI |
+| Total intervensi | 0 | BELUM DIVERIFIKASI |
+
+Pendaftaran akun, pengisian form, login, upload berkas, dan klik navigasi adalah
+langkah skenario UI, bukan intervensi. Catat setiap penyimpangan dari alur UI
+sebagai intervensi dan jangan menargetkan hasil 0 dengan menghilangkan catatan.
+
+## Hasil run
+
+- Status: **BELUM DIVERIFIKASI**; belum ada bukti E2E pada database UAT terisolasi.
+- Alasan: `AUTOGRADER_TEST_DATABASE_URL` pada lingkungan kerja menunjuk ke
+  `autograder_dev`; role database yang tersedia tidak memiliki hak membuat
+  database, dan kredensial server UAT khusus belum tersedia. Database tersebut
+  tidak digunakan untuk pengujian ini.
+- Yang belum diverifikasi: migrasi dan seed terisolasi, Course/enrollment,
+  assignment, lima test case, 10 submission, pembacaan kode, perbandingan skor,
+  regrade setelah perubahan test case, ekspor CSV, dan jumlah intervensi.
+- Pemilik run berikutnya: tim UAT setelah database terisolasi diprovisikan.

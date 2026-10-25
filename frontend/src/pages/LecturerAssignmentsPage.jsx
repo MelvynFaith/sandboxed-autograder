@@ -69,6 +69,7 @@ function validateResourceLimits(limits) {
 function LecturerAssignmentsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedCourseId = searchParams.get('courseId')
+  const initialCourseId = useRef(requestedCourseId)
   const [courses, setCourses] = useState([])
   const [courseId, setCourseId] = useState(() => requestedCourseId ?? '')
   const [assignments, setAssignments] = useState([])
@@ -96,9 +97,10 @@ function LecturerAssignmentsPage() {
         if (current) {
           setCourses(results)
           const requestedCourse = results.find(
-            (course) => String(course.id) === requestedCourseId,
+            (course) => String(course.id) === initialCourseId.current,
           )
-          setCourseId(String(requestedCourse?.id ?? results[0]?.id ?? ''))
+          const selectedId = String(requestedCourse?.id ?? results[0]?.id ?? '')
+          setCourseId(selectedId)
         }
       })
       .catch((loadError) => {
@@ -114,7 +116,7 @@ function LecturerAssignmentsPage() {
     return () => {
       current = false
     }
-  }, [requestedCourseId])
+  }, [])
 
   useEffect(() => {
     let current = true
