@@ -275,13 +275,19 @@ describe('HistoryPage', () => {
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: /^Batalkan/ }))
-    const confirmation = screen.getByRole('group', {
+    const confirmation = screen.getByRole('dialog', {
       name: 'Konfirmasi pembatalan submission Struktur Data',
     })
-    expect(confirmation).toHaveFocus()
+    const confirmButton = within(confirmation).getByRole('button', { name: 'Ya, batalkan' })
+    const cancelButton = within(confirmation).getByRole('button', { name: 'Tidak' })
+    expect(cancelButton).toHaveFocus()
     expect(cancelSubmission).not.toHaveBeenCalled()
 
-    fireEvent.click(within(confirmation).getByRole('button', { name: 'Ya, batalkan' }))
+    fireEvent.keyDown(window, { key: 'Tab' })
+    expect(confirmButton).toHaveFocus()
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
+    expect(cancelButton).toHaveFocus()
+    fireEvent.click(confirmButton)
 
     expect(await screen.findByRole('status')).toHaveTextContent('Submission berhasil dibatalkan.')
     expect(cancelSubmission).toHaveBeenCalledWith('submission-2')
@@ -300,8 +306,27 @@ describe('HistoryPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tidak' }))
 
     expect(cancelSubmission).not.toHaveBeenCalled()
-    expect(screen.queryByRole('group')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Batalkan/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Batalkan/ })).toHaveFocus()
+  })
+
+  it('dismisses the cancel confirmation with Escape and restores focus', async () => {
+    setUser()
+    getSubmissionHistory.mockResolvedValue(pageOf([queuedSubmission]))
+    render(<App />)
+
+    const trigger = await screen.findByRole('button', {
+      name: 'Batalkan submission Struktur Data',
+    })
+    fireEvent.click(trigger)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+    expect(cancelSubmission).not.toHaveBeenCalled()
   })
 
   it('shows the server message and reloads when the submission already started', async () => {

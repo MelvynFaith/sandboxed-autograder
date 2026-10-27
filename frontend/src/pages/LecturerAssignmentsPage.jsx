@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getAssignments } from '../api/assignments.js'
 import { getCourses } from '../api/courses.js'
+import FocusTrapDialog from '../components/FocusTrapDialog.jsx'
 import {
   createLecturerAssignment,
   deleteLecturerAssignment,
@@ -83,26 +84,7 @@ function LecturerAssignmentsPage() {
   const [isImportingYaml, setIsImportingYaml] = useState(false)
   const [isExportingYaml, setIsExportingYaml] = useState(false)
   const yamlFileInput = useRef(null)
-  const confirmDeleteButton = useRef(null)
   const deleteTrigger = useRef(null)
-
-  useEffect(() => {
-    if (!pendingDelete) {
-      return undefined
-    }
-    confirmDeleteButton.current?.focus()
-
-    function handleDialogKeyDown(event) {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        setPendingDelete(null)
-        deleteTrigger.current?.focus()
-      }
-    }
-
-    window.addEventListener('keydown', handleDialogKeyDown)
-    return () => window.removeEventListener('keydown', handleDialogKeyDown)
-  }, [pendingDelete])
 
   useEffect(() => {
     let current = true
@@ -358,12 +340,12 @@ function LecturerAssignmentsPage() {
 
   function requestDelete(type, id, event) {
     deleteTrigger.current = event.currentTarget
+    event.currentTarget.focus()
     setPendingDelete({ type, id })
   }
 
   function cancelDelete() {
     setPendingDelete(null)
-    deleteTrigger.current?.focus()
   }
 
   function editTestCase(testCase) {
@@ -686,38 +668,35 @@ function LecturerAssignmentsPage() {
       )}
 
       {pendingDelete && (
-        <div
-          aria-labelledby="confirm-delete-title"
-          aria-modal="true"
-          className="fixed inset-0 z-10 grid place-items-center bg-slate-950/40 p-6"
-          role="dialog"
+        <FocusTrapDialog
+          labelledBy="confirm-delete-title"
+          onDismiss={cancelDelete}
+          returnFocusRef={deleteTrigger}
         >
-          <div className="w-full max-w-md space-y-4 rounded-lg bg-white p-6">
-            <h2 className="text-lg font-semibold" id="confirm-delete-title">
-              Konfirmasi penghapusan
-            </h2>
-            <p>Data yang dihapus tidak dapat dipulihkan.</p>
-            <div className="flex gap-3">
-              <button
-                className="rounded bg-red-700 px-4 py-2 text-white"
-                onClick={pendingDelete.type === 'assignment'
-                  ? confirmDeleteAssignment
-                  : confirmDeleteTestCase}
-                type="button"
-                ref={confirmDeleteButton}
-              >
-                Hapus
-              </button>
-              <button
-                className="rounded border border-slate-300 px-4 py-2"
-                onClick={cancelDelete}
-                type="button"
-              >
-                Batal
-              </button>
-            </div>
+          <h2 className="text-lg font-semibold" id="confirm-delete-title">
+            Konfirmasi penghapusan
+          </h2>
+          <p>Data yang dihapus tidak dapat dipulihkan.</p>
+          <div className="flex gap-3">
+            <button
+              className="rounded bg-red-700 px-4 py-2 text-white"
+              onClick={pendingDelete.type === 'assignment'
+                ? confirmDeleteAssignment
+                : confirmDeleteTestCase}
+              type="button"
+            >
+              Hapus
+            </button>
+            <button
+              className="rounded border border-slate-300 px-4 py-2"
+              data-dialog-initial-focus
+              onClick={cancelDelete}
+              type="button"
+            >
+              Batal
+            </button>
           </div>
-        </div>
+        </FocusTrapDialog>
       )}
     </main>
   )
