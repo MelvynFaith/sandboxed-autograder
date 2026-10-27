@@ -170,15 +170,22 @@ describe('RecapPage', () => {
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Nilai ulang semua' }))
-    const confirmation = screen.getByRole('group', {
+    const confirmation = screen.getByRole('dialog', {
       name: 'Konfirmasi penilaian ulang seluruh assignment',
     })
-    expect(confirmation).toHaveFocus()
+    const confirmButton = within(confirmation).getByRole('button', { name: 'Ya, nilai ulang semua' })
+    const cancelButton = within(confirmation).getByRole('button', { name: 'Batal' })
+    expect(cancelButton).toHaveFocus()
     expect(regradeAssignment).not.toHaveBeenCalled()
 
-    fireEvent.click(within(confirmation).getByRole('button', { name: 'Batal' }))
+    fireEvent.keyDown(window, { key: 'Tab' })
+    expect(confirmButton).toHaveFocus()
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
+    expect(cancelButton).toHaveFocus()
+    fireEvent.keyDown(window, { key: 'Escape' })
     expect(regradeAssignment).not.toHaveBeenCalled()
-    expect(screen.queryByRole('group')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Nilai ulang semua' })).toHaveFocus()
 
     fireEvent.click(screen.getByRole('button', { name: 'Nilai ulang semua' }))
     fireEvent.click(screen.getByRole('button', { name: 'Ya, nilai ulang semua' }))
@@ -187,7 +194,7 @@ describe('RecapPage', () => {
       '2 submission dijadwalkan untuk dinilai ulang, 1 dilewati.',
     )
     expect(regradeAssignment).toHaveBeenCalledWith('4')
-    expect(screen.queryByRole('group')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('shows an explicit error when the recap cannot be loaded', async () => {

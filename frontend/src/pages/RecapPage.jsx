@@ -12,25 +12,22 @@ import {
   statusLabels,
   statusStyles,
 } from '../components/gradingLabels.js'
+import FocusTrapDialog from '../components/FocusTrapDialog.jsx'
 
 const regradableStatuses = new Set(['COMPLETED', 'FAILED'])
 
-function RegradeAllConfirmation({ isBusy, onConfirm, onDismiss }) {
-  const panel = useRef(null)
-
-  // Move focus into the panel so keyboard and screen reader users land on the question.
-  useEffect(() => {
-    panel.current?.focus()
-  }, [])
+function RegradeAllConfirmation({ isBusy, onConfirm, onDismiss, returnFocusRef }) {
+  const titleId = 'regrade-all-confirmation-title'
 
   return (
-    <div
-      aria-label="Konfirmasi penilaian ulang seluruh assignment"
-      className="mt-4 space-y-3 rounded-md border border-amber-300 bg-amber-50 p-4"
-      ref={panel}
-      role="group"
-      tabIndex={-1}
+    <FocusTrapDialog
+      labelledBy={titleId}
+      onDismiss={isBusy ? undefined : onDismiss}
+      returnFocusRef={returnFocusRef}
     >
+      <h2 className="text-lg font-semibold" id={titleId}>
+        Konfirmasi penilaian ulang seluruh assignment
+      </h2>
       <p className="text-sm text-amber-950">
         Nilai ulang semua submission yang sudah selesai pada assignment ini? Hasil lama akan
         diganti setelah penilaian ulang selesai.
@@ -48,12 +45,13 @@ function RegradeAllConfirmation({ isBusy, onConfirm, onDismiss }) {
           className="rounded border border-slate-300 bg-white px-4 py-2 font-medium disabled:opacity-60"
           disabled={isBusy}
           onClick={onDismiss}
+          data-dialog-initial-focus
           type="button"
         >
           Batal
         </button>
       </div>
-    </div>
+    </FocusTrapDialog>
   )
 }
 
@@ -71,6 +69,7 @@ function RecapPage() {
   const [isConfirmingAll, setIsConfirmingAll] = useState(false)
   const [busyRegradeId, setBusyRegradeId] = useState(null)
   const [isRegradingAll, setIsRegradingAll] = useState(false)
+  const regradeAllTrigger = useRef(null)
 
   useEffect(() => {
     let isCurrent = true
@@ -194,18 +193,19 @@ function RecapPage() {
           >
             {isDownloading ? 'Mengunduh...' : 'Unduh CSV'}
           </button>
-          {!isConfirmingAll && (
-            <button
-              className="rounded border border-slate-300 bg-white px-4 py-2 font-medium hover:bg-slate-100"
-              onClick={() => {
-                setNotice(null)
-                setIsConfirmingAll(true)
-              }}
-              type="button"
-            >
-              Nilai ulang semua
-            </button>
-          )}
+          <button
+            aria-hidden={isConfirmingAll}
+            className="rounded border border-slate-300 bg-white px-4 py-2 font-medium hover:bg-slate-100"
+            onClick={(event) => {
+              setNotice(null)
+              regradeAllTrigger.current = event.currentTarget
+              event.currentTarget.focus()
+              setIsConfirmingAll(true)
+            }}
+            type="button"
+          >
+            Nilai ulang semua
+          </button>
         </div>
       )}
       {isConfirmingAll && (
@@ -213,6 +213,7 @@ function RecapPage() {
           isBusy={isRegradingAll}
           onConfirm={regradeAll}
           onDismiss={() => setIsConfirmingAll(false)}
+          returnFocusRef={regradeAllTrigger}
         />
       )}
       <div
