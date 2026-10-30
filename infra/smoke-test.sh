@@ -7,10 +7,13 @@
 #   sudo -v && infra/smoke-test.sh          run it; exits 0 only if every check passes
 #   infra/smoke-test.sh clean               remove what a run left in the database and CODE_DIR
 #
-# It creates a student through the API and, because there is no upload endpoint yet, the course,
-# assignment, test cases and submissions with SQL. Every row it makes is recognisable (emails
-# smoke-*@example.test, course SMOKE), and `clean` removes exactly those. Run it on a host whose
-# database holds no real data, or run `clean` straight after.
+# Three students register and log in through the API and upload their programs with
+# POST /api/v1/submissions (one student each: FR-14 allows one queued submission per student and
+# assignment). Only the lecturer side is made with SQL, because registration always yields STUDENT
+# and there is no administrator password to promote one: the lecturer, course, enrollments,
+# assignment and test cases. Every row it makes is recognisable (emails smoke-*@example.test, course
+# SMOKE), and `clean` removes exactly those and the stored files. Run it on a host whose database
+# holds no real data, or run `clean` straight after.
 #
 # Overrides: API (http://127.0.0.1:8080), DB (autograder), CODE_DIR (/var/lib/autograder/submissions),
 # UNIT (autograder; empty skips the cgroup and log checks), AS_POSTGRES ("sudo -u postgres") and
@@ -24,15 +27,17 @@ UNIT=${UNIT-autograder}
 AS_POSTGRES=${AS_POSTGRES-sudo -u postgres}
 AS_GRADER=${AS_GRADER-sudo -u grader}
 
-STUDENT=smoke-student@example.test
 LECTURER=smoke-lecturer@example.test
 PASSWORD=smoke-test-password
-WAIT_S=90 # the queue is filled from the database once a minute until uploads enqueue directly
+WAIT_S=90
 
 # q runs one SQL statement and prints the bare result.
 q() { $AS_POSTGRES psql -d "$DB" -v ON_ERROR_STOP=1 -qtAX -c "$1"; }
 
 clean() {
+	# The stored files have server-generated names, so list them before their rows go.
+	files=$(q "SELECT s.code_path FROM submissions s JOIN assignments a ON a.id = s.assignment_id
+		JOIN courses c ON c.id = a.course_id WHERE c.code = 'SMOKE'")
 	$AS_POSTGRES psql -d "$DB" -v ON_ERROR_STOP=1 -qX <<-'SQL'
 	BEGIN;
 	CREATE TEMP TABLE smoke_submissions ON COMMIT DROP AS
@@ -52,7 +57,9 @@ clean() {
 	DELETE FROM users WHERE email LIKE 'smoke-%@example.test';
 	COMMIT;
 	SQL
-	$AS_GRADER rm -f "$CODE_DIR"/smoke-ok.py "$CODE_DIR"/smoke-wrong.py "$CODE_DIR"/smoke-net.py
+	for f in $files; do
+		$AS_GRADER rm -f "$CODE_DIR/$f"
+	done
 	echo "smoke data removed"
 }
 
@@ -84,23 +91,35 @@ fi
 since=$(date '+%Y-%m-%d %H:%M:%S')
 
 check "/healthz before the run" "$(http "$API/healthz")" 200
-printf 'print(int(input()) * 2)\n' | $AS_GRADER tee "$CODE_DIR/smoke-ok.py" > /dev/null
-printf 'print(int(input()) * 3)\n' | $AS_GRADER tee "$CODE_DIR/smoke-wrong.py" > /dev/null
-printf 'import socket\nsocket.socket(socket.AF_INET, socket.SOCK_STREAM)\n' |
-	$AS_GRADER tee "$CODE_DIR/smoke-net.py" > /dev/null
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+printf 'print(int(input()) * 2)\n' > "$work/ok.py"
+printf 'print(int(input()) * 3)\n' > "$work/wrong.py"
+printf 'import socket\nsocket.socket(socket.AF_INET, socket.SOCK_STREAM)\n' > "$work/net.py"
 
 json=(-H 'Content-Type: application/json')
-check "register a student" "$(http -X POST "${json[@]}" "$API/api/v1/auth/register" \
-	-d "{\"name\":\"Smoke Student\",\"email\":\"$STUDENT\",\"password\":\"$PASSWORD\"}")" 201
-check "log in" "$(http -X POST "${json[@]}" "$API/api/v1/auth/login" \
-	-d "{\"email\":\"$STUDENT\",\"password\":\"$PASSWORD\"}")" 200
+# json_field NAME reads a top-level number or string out of a one-line JSON object.
+json_field() { sed -n "s/.*\"$1\":\"\{0,1\}\([^\",}]*\).*/\1/p"; }
 
-student=$(q "SELECT id FROM users WHERE email = '$STUDENT'")
+declare -A student token
+for f in ok wrong net; do
+	email=smoke-$f@example.test
+	check "register student $f" "$(http -X POST "${json[@]}" "$API/api/v1/auth/register" \
+		-d "{\"name\":\"Smoke $f\",\"email\":\"$email\",\"password\":\"$PASSWORD\"}")" 201
+	token[$f]=$(curl -s -X POST "${json[@]}" "$API/api/v1/auth/login" \
+		-d "{\"email\":\"$email\",\"password\":\"$PASSWORD\"}" | json_field access_token)
+	check "log in student $f" "$([ -n "${token[$f]}" ] && echo 200 || echo none)" 200
+	student[$f]=$(q "SELECT id FROM users WHERE email = '$email'")
+done
+
 lecturer=$(q "INSERT INTO users (name, email, password_hash, role)
 	VALUES ('Smoke Lecturer', '$LECTURER', 'x', 'LECTURER') RETURNING id")
 course=$(q "INSERT INTO courses (code, name, lecturer_id, term)
 	VALUES ('SMOKE', 'Smoke test', $lecturer, 'smoke') RETURNING id")
-q "INSERT INTO enrollments (course_id, user_id) VALUES ($course, $student)" > /dev/null
+for f in ok wrong net; do
+	q "INSERT INTO enrollments (course_id, user_id) VALUES ($course, ${student[$f]})" > /dev/null
+done
 assignment=$(q "INSERT INTO assignments (course_id, title, deadline_at, late_until_at)
 	VALUES ($course, 'smoke', now() + interval '1 day', now() + interval '2 days') RETURNING id")
 q "INSERT INTO resource_limits (assignment_id, cpu_time_ms, memory_mb, max_processes, timeout_s,
@@ -108,11 +127,19 @@ q "INSERT INTO resource_limits (assignment_id, cpu_time_ms, memory_mb, max_proce
 q "INSERT INTO test_cases (assignment_id, external_id, input, expected_output, weight, match_mode) VALUES
 	($assignment, 'tc_01', E'21\n', E'42\n', 50, 'EXACT'),
 	($assignment, 'tc_02', E'5\n', E'10\n', 50, 'EXACT')" > /dev/null
+
+# upload F prints the HTTP status of the upload; the reply body is left in $work/reply.
+upload() {
+	curl -s -o "$work/reply" -w '%{http_code}' -H "Authorization: Bearer ${token[$1]}" \
+		-F "assignment_id=$assignment" -F "file=@$work/$1.py;filename=main.py" "$API/api/v1/submissions"
+}
 declare -A sub
 for f in ok wrong net; do
-	sub[$f]=$(q "INSERT INTO submissions (user_id, assignment_id, code_path, original_filename, size_bytes)
-		VALUES ($student, $assignment, 'smoke-$f.py', 'main.py', 1) RETURNING id")
+	check "upload $f is accepted (202)" "$(upload "$f")" 202
+	sub[$f]=$(json_field id < "$work/reply")
 done
+# FR-14: the same student cannot queue another submission for the assignment so soon.
+check "a second upload is refused (429)" "$(upload ok)" 429
 
 echo "waiting up to ${WAIT_S}s for the workers..."
 for _ in $(seq "$WAIT_S"); do
