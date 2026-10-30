@@ -9,8 +9,10 @@ the same scripts and differ only in their `.env` file, database, and domain.
 | Production | Campus server, reachable from outside the campus network | merges to `main` |
 
 **Status:** the AppArmor profile, the systemd unit, the install steps, a smoke test, a daily
-database backup and the expiry of old submission files exist, and the backend runs on the campus
-server from these steps. Everything under [Not started](#not-started) does not.
+database backup, the expiry of old submission files and the Nginx site that serves the dashboard
+exist, and the backend runs on the campus server from these steps. The Nginx site has been written
+to plain HTTP only; HTTPS waits for a DNS name. Everything under [Not started](#not-started) does
+not exist.
 
 ## Contents
 
@@ -18,7 +20,8 @@ server from these steps. Everything under [Not started](#not-started) does not.
 |---|---|---|
 | `apparmor/sandbox-exec` | AppArmor profile that lets `sandbox-exec` create user namespaces | R9 |
 | `systemd/autograder.service` | Backend unit; delegates a cgroup subtree to the service user | R11, Bagian 13.2 |
-| `smoke-test.sh` | Three submissions through the installed pipeline, checked against their scores | Bagian 13.2, NFR-09 |
+| `nginx/autograder.conf` | Nginx site: serves the dashboard build, proxies `/api/`, `/ws/` and `/healthz` to the backend | Bagian 13.2 step 6, NFR-09 |
+| `smoke-test.sh` | Three uploads through the installed pipeline, checked against their scores | Bagian 13.2, NFR-09, FR-04, FR-14 |
 | `db-backup.sh`, `systemd/autograder-backup.{service,timer}` | Daily `pg_dump` with 14-day retention | Bagian 13.4, NFR-13 |
 | `systemd/autograder-expire.{service,timer}` | Daily deletion of submission files a year after their assignment closed | Bagian 13.4, NFR-13 |
 | `loadtest/` | Load tests: seeded student accounts and k6 scripts, [their own README](loadtest/README.md) | Bagian 11.4, NFR-01a, NFR-01b, FR-13, FR-14 |
@@ -146,6 +149,45 @@ Ubuntu 24.04 (the campus server).
     keeps spaces at either end of the password, which `read` would otherwise drop. Use a password of
     its own, not one of the host's: these are the credentials the handover (SRS Bagian 13.5) passes
     on.
+11. **Dashboard and Nginx.** The backend serves only the API, so Nginx serves the dashboard and
+    passes `/api/`, `/ws/` and `/healthz` on to the backend; the browser then sees one origin and
+    the dashboard's relative URLs need no CORS. Build the dashboard on any machine with Node.js 20 or
+    newer, and copy the result to the host:
+
+    ```sh
+    (cd frontend && npm ci && npm run build)
+    scp -r frontend/dist USER@HOST:/tmp/autograder-dist
+    ```
+
+    On the host, install Nginx, put the build in place and enable the site. Ubuntu's own `default`
+    site also listens on port 80, so remove it:
+
+    ```sh
+    sudo apt install nginx
+    sudo rm -rf /var/www/autograder && sudo cp -r /tmp/autograder-dist /var/www/autograder
+    sudo install -m 0644 infra/nginx/autograder.conf /etc/nginx/sites-available/autograder
+    sudo ln -s ../sites-available/autograder /etc/nginx/sites-enabled/autograder
+    sudo rm -f /etc/nginx/sites-enabled/default
+    sudo nginx -t && sudo systemctl reload nginx
+    ```
+
+    `nginx -t` must print `syntax is ok` and `test is successful`. If `sudo ufw status` says the
+    firewall is active, allow the site with `sudo ufw allow 80/tcp` (and never enable `ufw` without
+    allowing SSH first). Then check the site from the host, and run the smoke test through Nginx:
+
+    ```sh
+    curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1/                 # 200, the dashboard
+    curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1/history          # 200, index.html
+    curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1/assets/none.js   # 404, not index.html
+    curl -s http://127.0.0.1/healthz                                           # "status":"ok"
+    sudo -v && API=http://127.0.0.1 infra/smoke-test.sh; infra/smoke-test.sh clean
+    ```
+
+    Open the host's address in a browser from another network to prove the site is reachable from
+    outside the campus (SRS risk R10, Bagian 13.2 step 11). The site is plain HTTP until there is a
+    DNS name: passwords and tokens cross the network unencrypted, so use only test or throwaway
+    passwords until [HTTPS](#https) is in place. To publish a new dashboard build, repeat the
+    `scp` and the `rm`/`cp` lines; no reload is needed.
 
 ### Backend environment
 
@@ -171,10 +213,14 @@ sudo -v && infra/smoke-test.sh
 infra/smoke-test.sh clean
 ```
 
-It registers and logs in a student through the API, then, because there is no upload endpoint yet,
-adds a course, an assignment with two test cases and three submissions with SQL, and waits up to 90
-seconds for the workers (the queue is filled from the database once a minute). It checks:
+It registers three students through the API and logs them in. A lecturer, a course, the
+enrolments and an assignment with two test cases are added with SQL, because registration only makes
+students and no administrator password is at hand to appoint a lecturer. Each student then uploads
+one program with `POST /api/v1/submissions`, and the script waits up to 90 seconds for the workers.
+`API=http://127.0.0.1` runs the same checks through Nginx. It checks:
 
+- Each upload answers `202`, and a second upload by the same student straight afterwards answers
+  `429` (FR-14).
 - A correct program scores 100/100, a wrong one 0/100 with both results `FAILED`, and one that calls
   `socket()` 0/100 with both results `SECURITY_VIOLATION` and two `SANDBOX_VIOLATION` audit rows for
   syscall 41.
@@ -183,7 +229,7 @@ seconds for the workers (the queue is filled from the database once a minute). I
 - No `sbx-*` cgroup is left under the unit, and the log has no `ERROR` line.
 
 It exits 0 only if every check passes. Its rows are recognisable (emails `smoke-*@example.test`, course
-`SMOKE`); `clean` removes exactly those and the three stored files. A second run refuses until `clean`
+`SMOKE`); `clean` removes exactly those and their stored files. A second run refuses until `clean`
 has run. Run it on a database without real data, or run `clean` straight away.
 
 To check that `/healthz` notices a dead database (NFR-09, SRS Bagian 11.6), stop PostgreSQL for a
@@ -310,11 +356,29 @@ sudo make -C sandbox install
 Build the variant first with `make -C sandbox CFLAGS=-DSBX_FORCE_TRACE BUILD_DIR=build/trace BIN=sandbox-exec-trace`
 or `make -C sandbox SANITIZE=1 BUILD_DIR=build/asan BIN=sandbox-exec-asan`.
 
+## HTTPS
+
+Not done: it needs a DNS name for the host, and there is none yet. When there is one (`NAME` below),
+issue a certificate with the webroot challenge the site already answers, then switch the site over
+by following the lines marked `TLS` in `infra/nginx/autograder.conf`:
+
+```sh
+sudo apt install certbot
+sudo install -d /var/www/letsencrypt
+sudo certbot certonly --webroot -w /var/www/letsencrypt -d NAME --deploy-hook 'systemctl reload nginx'
+```
+
+Edit `/etc/nginx/sites-available/autograder` (the `listen` and `server_name` lines, the certificate
+paths, and the second server that redirects port 80), run `sudo nginx -t && sudo systemctl reload
+nginx`, and allow port 443 in the firewall. `certbot renew --dry-run` checks the renewal. If the
+campus network administrators issue a certificate instead, point `ssl_certificate` and
+`ssl_certificate_key` at theirs.
+
 ## Not started
 
-- The install steps as one script, and Node.js on the host for the frontend build.
-- An Nginx reverse proxy with TLS that serves the frontend build and uses `/healthz` as a health
-  check. The unit has no watchdog until the backend reports readiness.
+- The install steps as one script.
+- A watchdog on the unit and a health check of `/healthz` by the unit or Nginx: the backend does not
+  report readiness to systemd yet.
 - A copy of the daily backups off the server: SRS Bagian 13.4 stores them outside the application
   server, and they are on it for now. The restore test on staging (same section) waits for the
   staging host.
