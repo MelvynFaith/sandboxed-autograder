@@ -73,11 +73,15 @@ The grading pipeline includes the schema, in-process queue, Harness runner, grad
 worker pool. Request handling stores a submission as `QUEUED` and calls `Enqueue` with its submission
 and user IDs; a worker calls `Dequeue`.
 
-## Authentication API
+## OpenAPI
 
-The OpenAPI subset for the submission upload, history, detail, and report endpoints is in
-[`docs/openapi.yaml`](../docs/openapi.yaml). It covers the endpoints implemented in PR #63; the
-remaining API routes are not yet described there.
+The [`OpenAPI document`](../docs/openapi.yaml) describes the implemented authentication and session
+operations; self-profile and administrator user management; Courses and enrollments; assignments,
+resource limits, and test cases including YAML import/export; submissions, history, code, reports,
+regrading, grade recaps and CSV export; audit logs, queue and rate limits; health checks; and the
+submission WebSocket ticket and progress routes.
+
+## Authentication API
 
 Run the API with Go 1.27.2 or newer. Configuration is supplied through environment variables:
 

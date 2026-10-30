@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { cancelSubmission, getSubmissionHistory } from '../api/submissionHistory.js'
 import { getSubmissionReport } from '../api/submissionReport.js'
 import StatusBadge from '../components/StatusBadge.jsx'
 import SubmissionReport from '../components/SubmissionReport.jsx'
+import FocusTrapDialog from '../components/FocusTrapDialog.jsx'
 import {
   dateFormatter,
   formatScore,
@@ -11,22 +12,18 @@ import {
   submissionStatusStyles,
 } from '../components/submissionLabels.js'
 
-function CancelConfirmation({ assignmentTitle, isCancelling, onCancel, onDismiss }) {
-  const panel = useRef(null)
-
-  // Move focus into the panel so keyboard and screen reader users land on the question.
-  useEffect(() => {
-    panel.current?.focus()
-  }, [])
+function CancelConfirmation({ assignmentTitle, isCancelling, onCancel, onDismiss, returnFocusRef }) {
+  const titleId = useId()
 
   return (
-    <div
-      aria-label={`Konfirmasi pembatalan submission ${assignmentTitle}`}
-      className="mt-4 space-y-3 rounded-md border border-amber-300 bg-amber-50 p-4"
-      ref={panel}
-      role="group"
-      tabIndex={-1}
+    <FocusTrapDialog
+      labelledBy={titleId}
+      onDismiss={isCancelling ? undefined : onDismiss}
+      returnFocusRef={returnFocusRef}
     >
+      <h2 className="text-lg font-semibold" id={titleId}>
+        Konfirmasi pembatalan submission {assignmentTitle}
+      </h2>
       <p className="text-sm text-amber-950">
         Batalkan submission ini? Submission yang dibatalkan tidak akan dinilai.
       </p>
@@ -43,12 +40,13 @@ function CancelConfirmation({ assignmentTitle, isCancelling, onCancel, onDismiss
           className="rounded border border-slate-300 bg-white px-4 py-2 font-medium disabled:opacity-60"
           disabled={isCancelling}
           onClick={onDismiss}
+          data-dialog-initial-focus
           type="button"
         >
           Tidak
         </button>
       </div>
-    </div>
+    </FocusTrapDialog>
   )
 }
 
@@ -67,6 +65,7 @@ function HistoryPage() {
   const [cancellingId, setCancellingId] = useState(null)
   const [cancelNotice, setCancelNotice] = useState(null)
   const reportRequestId = useRef(0)
+  const cancelTrigger = useRef(null)
 
   useEffect(() => {
     let isCurrent = true
@@ -229,12 +228,15 @@ function HistoryPage() {
               >
                 Lihat kode
               </Link>
-              {submission.status === 'QUEUED' && confirmingId !== submission.id && (
+              {submission.status === 'QUEUED' && (
                 <button
                   aria-label={`Batalkan submission ${submission.assignmentTitle}`}
+                  aria-hidden={confirmingId === submission.id}
                   className="rounded border border-red-300 px-4 py-2 font-medium text-red-800 hover:bg-red-50"
-                  onClick={() => {
+                  onClick={(event) => {
                     setCancelNotice(null)
+                    cancelTrigger.current = event.currentTarget
+                    event.currentTarget.focus()
                     setConfirmingId(submission.id)
                   }}
                   type="button"
@@ -249,6 +251,7 @@ function HistoryPage() {
                 isCancelling={cancellingId === submission.id}
                 onCancel={() => confirmCancel(submission.id)}
                 onDismiss={() => setConfirmingId(null)}
+                returnFocusRef={cancelTrigger}
               />
             )}
             {cancelNotice?.id === submission.id && (
