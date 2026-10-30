@@ -58,9 +58,10 @@
   adversarial API checks, the smoke test through the upload endpoint and the UAT cannot run there yet.
 - **Owner: project team.** SRS 13.1 puts the load test on staging, and there is no staging host: the
   team has to decide where the official run happens.
-- **Owner: project team.** The GitHub Projects board is out of date (most cards still say Review or
-  In Progress although their pull requests are merged) and the `critical` label of SRS 10.4 does not
-  exist, so the defect indicator cannot be queried.
+- **Owner: Melvyn Faith.** The `critical` label of SRS 10.4 does not exist, so the defect indicator
+  cannot be queried; it is to be created. The GitHub Projects board was out of date and was brought up
+  to date on 30 Oct (19 of 21 cards Done; US-15 waits for the spreadsheet check of the CSV, US-19 for
+  the fairness load test), and the finished user-story issues were closed with their evidence.
 
 ## Next week
 

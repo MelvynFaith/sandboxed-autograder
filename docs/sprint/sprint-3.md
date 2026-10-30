@@ -46,7 +46,7 @@ them.
 
 | Indicator | Value on 30 Oct |
 |---|---|
-| WBS packages done | The board shows 6 of 21 cards Done, 10 Review, 4 In Progress, 1 To Do. The board was not kept in step with the merges: the requirements of every card except US-19 (fairness test) are on `develop` and US-15 (CSV) awaits its spreadsheet check. The board is to be brought up to date |
+| WBS packages done | 19 of 21 user-story cards Done on 30 Oct, after the board was brought up to date that day. Until then it showed 6 Done, 10 Review, 4 In Progress and 1 To Do, because it had not followed the merges. The two cards left are US-15 (grade recap, awaiting the check of the CSV in a spreadsheet, issue #90) and US-19 (fairness under load, issue #94, To Do). The cards moved to Done are the ones whose issues were closed on 30 Oct with the evidence for each criterion |
 | Open critical defects | 0 recorded; the label `critical` does not exist yet, so the figure cannot be queried. It is to be created |
 | CI success on `develop` | 62 of 62 runs passed between 13 and 26 Oct |
 | Test coverage | Go: 77.2% of statements across the packages, measured on 30 Oct at `62908c7` with `go test -coverpkg=./...` (the target is 70%). Python and the frontend are not measured |
@@ -89,7 +89,7 @@ Proposed by the PM; to be confirmed with the team.
 | Action | Owner | Due |
 |---|---|---|
 | Confirm the UAT date with the instructor (R6) | Melvyn Faith (PM) | 31 Oct |
-| Bring the board up to date, create the `critical` label | Melvyn Faith | 31 Oct |
+| Create the `critical` label (the board was brought up to date on 30 Oct) | Melvyn Faith | 31 Oct |
 | Merge #117, rebase and merge #114; the manual keyboard checks of NFR-11 | Benedictus Erlangga | 3 Nov |
 | Rework #113 (varied programs, hidden case, full scenario) | Benedictus Erlangga | 3 Nov |
 | Deploy to the campus server (after #118) and run the smoke test and the QA scripts there | Melvyn Faith | 3 Nov |
