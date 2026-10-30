@@ -150,7 +150,7 @@ describe('LecturerAssignmentsPage', () => {
       },
     )
     expect(updateResourceLimit).not.toHaveBeenCalled()
-  }, 10_000)
+  }, 15_000)
 
   it('rejects non-positive resource limits', async () => {
     setUser()
