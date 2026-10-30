@@ -73,13 +73,16 @@ from the dead run, needs the real unit. To run it on the campus server (`Restart
 the unit back by itself after 2 s):
 
 ```sh
-# upload a submission that takes a while (infra/qa has no script for this: use a sleep(8) program)
-sudo systemctl kill -s SIGKILL autograder && sudo pkill -9 -f sandbox-exec
-sleep 5
-curl -s http://127.0.0.1:8080/healthz
-sudo journalctl -u autograder --since '2 min ago' --no-pager -o cat | grep -E 'swept|reconcile|graded'
-find /sys/fs/cgroup/system.slice/autograder.service -name 'sbx-*' | wc -l    # must print 0
+ADMIN_EMAIL=... ADMIN_PASSWORD=... python3 infra/qa/crash_probe.py \
+    --kill 'sudo systemctl kill -s SIGKILL autograder; sudo pkill -9 -f sandbox-exec' \
+    --cgroup-glob '/sys/fs/cgroup/system.slice/autograder.service/sbx-*'
+sudo journalctl -u autograder --since '5 min ago' --no-pager -o cat | grep -E 'swept|reconcile|graded'
 ```
+
+[`infra/qa/crash_probe.py`](../../infra/qa/crash_probe.py) does the procedure above through the API
+and exits 1 if the submission does not finish or anything is left. Run on the local backend with its
+`--start` option, it printed the same result as the manual run (a new submission, `COMPLETED` 10 of
+10 about 7 s after the backend answered again, nothing left).
 
 ## Gaps
 
@@ -102,5 +105,8 @@ ADMIN_EMAIL=... ADMIN_PASSWORD=... python3 infra/qa/adversarial_api.py --base ht
 ADMIN_EMAIL=... ADMIN_PASSWORD=... python3 infra/qa/cmdline_probe.py --base http://127.0.0.1:8080
 ```
 
-The two scripts create users, Courses and rejected uploads; run them only on a database without real
-data, with the administrator of that database.
+The three scripts create users, Courses and rejected uploads; run them only on a database without
+real data, with the administrator of that database. `infra/qa/clean.sql` removes what they made
+(`sudo -u postgres psql -d autograder -v ON_ERROR_STOP=1 -f infra/qa/clean.sql`); on the local
+database it removed 38 test users with their Courses, submissions and audit rows and left the 11 UAT
+users and their submission untouched.
