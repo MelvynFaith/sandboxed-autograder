@@ -86,3 +86,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   timer, deletes the stored files of submissions whose assignment closed more than a year ago and
   keeps their grades, recording the deletion in the new `submissions.code_deleted_at` (NFR-13,
   SRS 13.4). `--dry-run` counts them.
+- Nginx site (`infra/nginx/autograder.conf`): serves the dashboard build, proxies `/api/`, `/ws/` and
+  `/healthz` to the backend on loopback, limits upload and body sizes, and sets a
+  Content-Security-Policy; plain HTTP until a DNS name exists, with the HTTPS steps in
+  `infra/README.md` (SRS 13.2). The smoke test now uploads its programs through
+  `POST /api/v1/submissions`, checks that a second upload is refused with `429`, and can run through
+  Nginx with `API=http://127.0.0.1`.
