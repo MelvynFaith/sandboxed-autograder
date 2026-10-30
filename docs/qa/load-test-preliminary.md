@@ -57,8 +57,9 @@ the sandboxes; "memory.peak" is that cgroup's highest use.
 ## What this does not show
 
 1. **A different machine.** This host has 20 logical CPUs and the four workers never competed for
-   cores; the campus server's CPU count and speed are not recorded here. The model takes W as the
-   server's core count. The official run on the target server may be slower.
+   cores. The campus server was measured in week 9 (SRS 6.1) with 8 cores and 7.8 GiB of RAM, so four
+   workers would not compete there either, but its per-core speed was not compared with this host's.
+   The model takes W as the server's core count. The official run on the target server may be slower.
 2. **k6, PostgreSQL and the backend shared one host**, as they would on the campus server if k6 ran
    there (the README of `infra/loadtest/` notes the same).
 3. **One tiny program.** Every submission is the same one-line program; real submissions of up to
