@@ -38,9 +38,9 @@ them.
 |---|---|---|
 | Responsiveness and accessibility (WBS 5.5, NFR-11) | The audit report ([#114](https://github.com/MelvynFaith/sandboxed-autograder/pull/114)) and the 44 px touch targets ([#117](https://github.com/MelvynFaith/sandboxed-autograder/pull/117)) are approved but not merged; the keyboard checks are only partly done | Merge both; the manual keyboard checks before [#112](https://github.com/MelvynFaith/sandboxed-autograder/issues/112) is closed |
 | The lecturer UAT flow and scenario ([#113](https://github.com/MelvynFaith/sandboxed-autograder/pull/113)) | Two reviews asked for changes (the scenario has to match SRS 11.5; the ten programs have to differ); the isolated-database run is blocked on a database role | Rework by the author; the API-side UAT run exists meanwhile (see Demo notes) |
-| Bug fixing and query optimization (WBS 5.6) | No performance measurement was made, so there is nothing to optimize against | The load test (WBS 6.2) gives the first numbers |
+| Bug fixing and query optimization (WBS 5.6) | No performance measurement was made during the sprint. A preliminary local load test on 30 Oct ([PR #122](https://github.com/MelvynFaith/sandboxed-autograder/pull/122)) found nothing to optimize: 100 simultaneous submissions averaged 2.3 s | The official load test (WBS 6.2) on the target host |
 | The sprint's work on the campus server | No deployment after 19 Oct is recorded; the server runs the build from before the submission API | Deploy once [#118](https://github.com/MelvynFaith/sandboxed-autograder/pull/118) (Nginx and the dashboard) is merged |
-| Fairness test and spreadsheet check of the CSV ([#94](https://github.com/MelvynFaith/sandboxed-autograder/issues/94), [#90](https://github.com/MelvynFaith/sandboxed-autograder/issues/90)) | Not run | Load test; open the CSV in Excel and Google Sheets |
+| Fairness test and spreadsheet check of the CSV ([#94](https://github.com/MelvynFaith/sandboxed-autograder/issues/94), [#90](https://github.com/MelvynFaith/sandboxed-autograder/issues/90)) | The fairness test passed only in the preliminary local run ([PR #122](https://github.com/MelvynFaith/sandboxed-autograder/pull/122): 409 ms against a limit of 560 ms), not in the official one; the CSV was not opened in a spreadsheet | Official load test; open the CSV in Excel and Google Sheets |
 
 ### Indicators (SRS 10.4)
 
@@ -73,8 +73,9 @@ them.
 
 ### What to improve
 
-- QA started late. The load test scripts exist but have never run, no UAT has been held, and there
-  is no staging host, so the checks of SRS 13.1 had nowhere to run.
+- QA started late. The load test scripts ran for the first time on 30 Oct, locally and only as a
+  preliminary ([PR #122](https://github.com/MelvynFaith/sandboxed-autograder/pull/122)); no UAT has been held, and there is no staging host, so the checks of SRS 13.1
+  had nowhere to run.
 - The board and the issues did not follow the work: most cards sat in Review or In Progress after
   their pull requests merged.
 - The UAT date has gone unconfirmed through three sprints (R6).

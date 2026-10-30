@@ -24,6 +24,10 @@
   - Failure injection (NFR-04): a backend and sandbox killed while a submission was `RUNNING` came
     back, requeued it and graded it, with nothing left behind. The sweep of leftovers under a
     persistent unit cgroup is not covered; the commands for the campus server are in the report.
+- **Owner: Melvyn Faith.** A preliminary load test of SRS 11.4 on a development machine with four
+  workers: 5 to 100 simultaneous accounts all completed (100 accounts: average 2.3 s, p95 4.0 s), 199
+  of 200 uploads from one account were refused with a reason, and the fairness limit held (409 ms
+  against 560 ms). Report in [PR #122](https://github.com/MelvynFaith/sandboxed-autograder/pull/122).
 - **Owner: Melvyn Faith.** Opened three pull requests, all awaiting review:
   [#118](https://github.com/MelvynFaith/sandboxed-autograder/pull/118) (the Nginx site that serves
   the dashboard, and a smoke test that uploads through the API; the dashboard loaded through Nginx in
@@ -43,8 +47,9 @@
 - **Owner: Erlangga31.** [PR #113](https://github.com/MelvynFaith/sandboxed-autograder/pull/113), the
   lecturer UAT flow and scenario, has changes requested: the ten programs of the scenario have to
   differ so that the score comparison tests something, and one test case should be hidden.
-- **Owner: Robertus Gabeler.** The load test and its report (WBS 6.2): the k6 scripts are in
-  `infra/loadtest/` and have not been run.
+- **Owner: Robertus Gabeler.** The official load test and its report (WBS 6.2): the k6 scripts are in
+  `infra/loadtest/`. A preliminary run on a development machine passed all scenarios ([PR #122](https://github.com/MelvynFaith/sandboxed-autograder/pull/122)), but it
+  is not the official test: the host differs and there is no staging.
 - **Owner: Melvyn Faith.** The deployment of `develop` to the campus server, including the dashboard
   behind Nginx, after #118 merges; the UAT data on the server; the release of `develop` to `main`.
 
@@ -67,7 +72,7 @@
 
 - Hold the UAT with the instructor, record the interventions and the defects, and fix what it finds.
 - Deploy to the campus server and run the smoke test, the API attack checks and the crash test there.
-- Run the load test and write its report; confirm the fairness criterion of
+- Run the official load test and write its report; confirm the fairness criterion of
   [issue #94](https://github.com/MelvynFaith/sandboxed-autograder/issues/94).
 - Merge the NFR-11 pull requests and finish the keyboard checks.
 - Prepare the release of `develop` to `main` with a tag, and update the SRS to the present dates and
