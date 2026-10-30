@@ -15,10 +15,10 @@ which only says the submission is queued.
 | `ratelimit.js` | one account sends 200 submissions in a row while 10 others submit | FR-14 | one of the 200 accepted, the rest refused with `429` and a reason; the 10 graded within 10 s on average |
 | `fairness.js` | one account floods the queue, then 10 others submit | FR-13 | the 10 average at most twice their time without the flood |
 
-**Status:** needs the upload endpoint, `POST /api/v1/submissions`, which is not written yet; until
-then every submission is refused with `404`. The scripts were run against a stand-in for that
-endpoint that follows the contract in SRS Lampiran B (multipart `assignment_id` and `file`, `202`
-with the submission `id`).
+**Status:** the upload endpoint, `POST /api/v1/submissions`, exists on `develop`, and on 30 Oct all
+four scripts passed against it on a development machine: a preliminary run, not the official one,
+reported in [docs/qa/load-test-preliminary.md](../../docs/qa/load-test-preliminary.md). The official
+run on staging (SRS Bagian 13.1) and its report are still to do.
 
 ## Where to run it
 
