@@ -107,6 +107,6 @@ ADMIN_EMAIL=... ADMIN_PASSWORD=... python3 infra/qa/cmdline_probe.py --base http
 
 The three scripts create users, Courses and rejected uploads; run them only on a database without
 real data, with the administrator of that database. `infra/qa/clean.sql` removes what they made
-(`sudo -u postgres psql -d autograder -v ON_ERROR_STOP=1 -f infra/qa/clean.sql`); on the local
+(`sudo -u postgres psql -d autograder -v ON_ERROR_STOP=1 -qX < infra/qa/clean.sql`; the redirect lets the `postgres` user read the file from a home directory it cannot enter); on the local
 database it removed 38 test users with their Courses, submissions and audit rows and left the 11 UAT
 users and their submission untouched.

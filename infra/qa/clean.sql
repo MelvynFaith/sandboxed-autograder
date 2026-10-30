@@ -4,7 +4,7 @@
 -- changes wrote (they belong to the administrator), and it does not remove the stored submission
 -- files: delete those by code_path first if the directory matters (see below).
 --
---   sudo -u postgres psql -d autograder -v ON_ERROR_STOP=1 -f infra/qa/clean.sql
+--   sudo -u postgres psql -d autograder -v ON_ERROR_STOP=1 -qX < infra/qa/clean.sql
 --
 -- To list the files before they go:
 --   SELECT s.code_path FROM submissions s JOIN users u ON u.id = s.user_id
