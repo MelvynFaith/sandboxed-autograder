@@ -119,3 +119,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `infra/README.md` (SRS 13.2). The smoke test now uploads its programs through
   `POST /api/v1/submissions`, checks that a second upload is refused with `429`, and can run through
   Nginx with `API=http://127.0.0.1`.
+- Coverage gates in CI (NFR-07): the scheduler job counts statements with `-coverpkg=./...` and fails
+  below 70 %, the grader job runs `pytest --cov` and fails below 90 % (statements and branches), and the
+  frontend job runs the tests with `--coverage` against the thresholds in `vite.config.js` (80 %
+  statements and lines, 75 % branches, 85 % functions). Measured today: 77 %, 98 % and 86 %.
