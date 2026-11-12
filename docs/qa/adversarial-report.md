@@ -1,13 +1,17 @@
 # Adversarial test report (SRS 11.3, WBS 6.1) and failure injection (NFR-04)
 
-**Date:** 30 Oct 2026 (week 11). **Author:** Melvyn Faith.
-**Build tested:** `develop` at `62908c7`. **Host:** WSL2 Ubuntu 26.04, kernel 6.18.33.2, cgroup v2,
-1 GiB of swap active, PostgreSQL 18, the real Grading Harness and `sandbox-exec`.
+**Date:** 30 Oct 2026 (week 11), with the campus server run of 12 Nov 2026 (week 13) added.
+**Author:** Melvyn Faith.
+**Build tested:** `develop` at `62908c7` on the development machine; `develop` at `eeaa8eb` on the
+campus server. **Development host:** WSL2 Ubuntu 26.04, kernel 6.18.33.2, cgroup v2, 1 GiB of swap
+active, PostgreSQL 18, the real Grading Harness and `sandbox-exec`. The campus server run is in its own
+section below.
 
 This report maps each of the 22 attack scenarios of SRS 11.3 to the evidence that exists, says what
 was run today and what was not, and lists the gaps. A scenario is marked **pass** only when a test
 or a run showed the expected result; **partial** when part of it was shown; **not run** otherwise.
-Nothing here was run on the campus server: it still runs an older build (see the last section).
+Everything up to the section "Run on the campus server" was run on the development machine; that
+section covers the API checks, the `/proc` probe and the crash test on the campus server.
 
 ## What was run
 
@@ -19,6 +23,7 @@ Nothing here was run on the campus server: it still runs an older build (see the
 | `/proc` leak probe, [`infra/qa/cmdline_probe.py`](../../infra/qa/cmdline_probe.py), live backend | no test case marker seen in about 6,000 scans per run, three runs; the control process was found each time |
 | Failure injection (section below), live backend | the interrupted submission was recovered and graded, nothing left behind |
 | UAT scenario driver (10 programs through the REST API), earlier the same day | 10 of 10 automatic scores equal the hand-made ones, no hidden-content leak |
+| The API checks, the `/proc` probe and the failure injection again, on the campus server, 12 Nov | 28 of 28 passed; no marker in 353 scans, control found; the interrupted submission was recovered and graded (details in the section below) |
 
 The sandbox suite also runs in CI in three variants (normal, ptrace fallback, ASan/UBSan); the ASan
 variant was not run locally today. The suite passed 64 of 64 on the campus server as a system service
@@ -69,12 +74,14 @@ submission and the leftovers.
 What this does not show: each backend start here gets a new delegated cgroup scope, so the old one
 disappeared with the old process and the sweep had no cgroups or mounts to remove. The case the sweep
 exists for, a restarted unit that keeps its cgroup and finds `sbx-*` directories and `tmpfs` mounts
-from the dead run, needs the real unit. To run it on the campus server (`Restart=on-failure` brings
-the unit back by itself after 2 s):
+from the dead run, needs the real unit. The command for the campus server (`Restart=on-failure` brings the unit back
+by itself after 2 s) is below, and its result is in the next section. The pattern is written
+`[s]andbox-exec` because `pkill -f` matches whole command lines: the `--kill` string contains the
+pattern, so a plain `sandbox-exec` also kills the probe that runs it.
 
 ```sh
 ADMIN_EMAIL=... ADMIN_PASSWORD=... python3 infra/qa/crash_probe.py \
-    --kill 'sudo systemctl kill -s SIGKILL autograder; sudo pkill -9 -f sandbox-exec' \
+    --kill 'sudo kill -9 "$(systemctl show -p MainPID --value autograder)"; sudo pkill -9 -f "[s]andbox-exec"' \
     --cgroup-glob '/sys/fs/cgroup/system.slice/autograder.service/sbx-*'
 sudo journalctl -u autograder --since '5 min ago' --no-pager -o cat | grep -E 'swept|reconcile|graded'
 ```
@@ -84,13 +91,52 @@ and exits 1 if the submission does not finish or anything is left. Run on the lo
 `--start` option, it printed the same result as the manual run (a new submission, `COMPLETED` 10 of
 10 about 7 s after the backend answered again, nothing left).
 
+## Run on the campus server (12 Nov 2026)
+
+After the upgrade of the campus server to `develop` at `eeaa8eb` (Ubuntu 24.04, kernel 6.8.0-139, 8
+cores, 7.8 GiB, the backend as a systemd service with a delegated cgroup and `Restart=on-failure`,
+PostgreSQL on the same host), the three scripts of `infra/qa/` were run against the backend on its
+loopback port, on a database without real data (afterwards it held only the administrator). The
+post-upgrade smoke test
+(`infra/smoke-test.sh`) had passed with 21 checks, directly and through Nginx.
+
+| Script | Result |
+|---|---|
+| `adversarial_api.py` | 28 of 28 checks passed: the IDOR, cross-class, role escalation, session and hidden-test-case checks (scenarios 15 and 17 to 20) gave the same answers as on the development machine; during the flood of 200 uploads from one account, another student's upload was accepted (`202`) and graded `COMPLETED` after 0.5 s |
+| `cmdline_probe.py`, run as the `grader` user the service runs as | 353 full scans of `/proc/*/cmdline` and `environ` while the submission was graded; the control process with a marker in its argv was found, the test case markers were never seen. This is a much shorter sample than the roughly 6,000 scans per run of the development machine; the difference was not examined |
+| `crash_probe.py` | see below |
+
+**Failure injection.** The probe uploaded a program that sleeps for 8 s and waited until the submission
+(15) was `RUNNING`. It then sent `SIGKILL` to the service's main process and to every `sandbox-exec`.
+Right after the kill there were 0 `sbx-*` cgroup directories and 0 sandbox processes. `/healthz`
+answered again after 1.5 s. The journal shows `swept leftovers of dead sandbox runs`, then the
+submission queued again with `"reason":"reconcile"`, and the submission was `COMPLETED` with 10 of 10
+about 8 s after the restart. After the recovery there were 0 `sbx-*` directories and 0 sandbox
+processes.
+
+What this does not show: the kill left no `sbx-*` directory behind, so the start-up sweep ran but had
+nothing to remove on this run. The recovery of the interrupted submission is shown on the real unit;
+the removal of leftover directories and mounts by the sweep is still covered only by the supervisor
+tests of scenario 22.
+
+**An earlier attempt.** The first run of the probe used the command with a plain `pkill -f
+sandbox-exec`, which also killed the probe and its shell, so it produced no result. The service had
+been restarted once by systemd and the submission of that attempt (14) ended `COMPLETED`; that attempt
+was not logged, so it is not counted as evidence. The same attempt printed `Failed to send signal
+SIGKILL to auxiliary processes: Invalid argument` from `systemctl kill`, so the command now signals
+the main process directly, as in the section above.
+
+The test users, Courses and submissions were removed with `infra/qa/clean.sql` afterwards; the
+database again held only the administrator.
+
 ## Gaps
 
 1. **Fairness under load (scenario 13)** and the NFR-01 load tests need k6 and staging or a quiet
    server; they are Robertus's WBS 6.2.
-2. **The campus server** runs a build from before the submission API, so none of the API checks have
-   run there. After the deploy, run `infra/qa/adversarial_api.py` and `infra/qa/cmdline_probe.py`
-   there, on a database without real data, and the crash test above, and add their results here.
+2. **On the campus server** the sandbox suite was not rerun on 12 Nov (`sandbox/` did not change
+   between the build that ran there before, `f1f67d6`, and `eeaa8eb`), the scripts ran against the
+   backend directly and not through Nginx, and the sweep of leftover directories did not get any to
+   remove (see above).
 3. **The ASan/UBSan variant** was not run locally; CI covers it.
 4. **Scope of scenario 16**: the reader was the backend's own user. root can read anything on the
    host, which no process-level measure here prevents.

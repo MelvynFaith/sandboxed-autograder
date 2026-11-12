@@ -2,8 +2,11 @@
 let it come back, and see what happens to the submission and to the leftovers.
 
   ADMIN_EMAIL=... ADMIN_PASSWORD=... python3 infra/qa/crash_probe.py \\
-      --kill 'sudo systemctl kill -s SIGKILL autograder; sudo pkill -9 -f sandbox-exec' \\
+      --kill 'sudo kill -9 "$(systemctl show -p MainPID --value autograder)"; sudo pkill -9 -f "[s]andbox-exec"' \\
       --cgroup-glob '/sys/fs/cgroup/system.slice/autograder.service/sbx-*'
+
+Write the pattern as [s]andbox-exec: pkill -f matches whole command lines, and the --kill string
+(and so this probe's own command line) contains the pattern, so a plain one kills the probe too.
 
 Steps: make a Course and an assignment with one test case, upload a program that sleeps for 8 s,
 wait for RUNNING, run the --kill command, run the optional --start command (leave it out when systemd
