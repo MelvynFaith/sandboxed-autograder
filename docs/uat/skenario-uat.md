@@ -39,7 +39,8 @@ hentikan UAT backend tanpa menjalankan migrasi/server dan tandai bukti sebagai
 3. Enroll seluruh 10 mahasiswa lewat UI Course.
 4. Buat assignment berjudul `UAT Multiply by Two`, dengan deskripsi meminta
    program Python membaca satu integer dan mencetak nilainya dikali dua.
-   Pilih deadline dan resource limit yang diterima form.
+   Atur resource limit ke CPU 1000 ms, memori 64 MB, maksimum 4 proses,
+   timeout 5 detik, output 1048576 byte, dan tmpfs 32 MB.
 5. Buat lima test case melalui UI; masing-masing berbobot 20 dan memakai
    pencocokan EXACT. Tandai `uat_05` sebagai tersembunyi:
 
@@ -54,8 +55,9 @@ hentikan UAT backend tanpa menjalankan migrasi/server dan tandai bukti sebagai
    Akhiri setiap input dan output dengan newline. Pastikan jumlah bobot bernilai
    100; dosen harus melihat kelima kasus dan status tersembunyinya pada daftar.
 
-6. Untuk 10 submission, gunakan program yang berbeda berikut. Skor dihitung
-   dari lima kasus berbobot sama dengan pencocokan EXACT:
+6. Untuk 10 submission, gunakan 10 berkas Python yang berbeda berikut, satu
+   berkas per akun. Jangan unggah program yang sama untuk mahasiswa berbeda.
+   Skor dihitung dari lima kasus berbobot sama dengan pencocokan EXACT:
 
    | ID | Program Python | Hasil yang diharapkan |
    | --- | --- | --- |
@@ -66,14 +68,16 @@ hentikan UAT backend tanpa menjalankan migrasi/server dan tandai bukti sebagai
    | `UAT-P05` | `n = int(input()); print(n * 2 if n >= 0 else 0)` | 80/100; gagal hanya pada `uat_04` |
    | `UAT-P06` | `n = int(input()); print(n * 2 + 1)` | 0/100; semua output salah |
    | `UAT-P07` | `print(f"{int(input()) * 2} ")` | 0/100; trailing space membuat semua output tidak cocok dengan EXACT |
-   | `UAT-P08` | `raise ValueError("UAT runtime error")` | 0/100; runtime error |
+   | `UAT-P08` | `n = int(input()); print(len(bytearray(1 << 30)) if n == 7 else 1 / 0)` | 0/100; runtime error pada empat kasus terlihat, memory limit pada kasus tersembunyi |
    | `UAT-P09` | `print(int(input()) * )` | 0/100; syntax error |
    | `UAT-P10` | `while True: pass` | 0/100; harus dihentikan oleh batas waktu sandbox |
 
-   Jalankan `UAT-P10` hanya jika batas waktu dan penghentian proses worker
-   terkonfirmasi pada lingkungan terisolasi; bila tidak, hentikan dan catat
-   blocker, jangan biarkan proses tanpa batas berjalan. Catat email uji yang
-   dipetakan ke setiap ID tanpa kata sandi.
+   `UAT-P08` sengaja meminta alokasi 1 GiB pada satu kasus, sedangkan batas
+   memori assignment 64 MB. Jalankan `UAT-P08` dan `UAT-P10` hanya jika
+   penghentian proses oleh batas memori dan batas waktu sandbox terkonfirmasi
+   pada lingkungan terisolasi; bila tidak, hentikan dan catat blocker. Jangan
+   menjalankan program tersebut tanpa batas sumber daya yang terverifikasi.
+   Catat email uji yang dipetakan ke setiap ID tanpa kata sandi.
 
 ## Alur end-to-end
 
@@ -84,8 +88,10 @@ hentikan UAT backend tanpa menjalankan migrasi/server dan tandai bukti sebagai
    test case pada Course tersebut.
    - Bukti: assignment dan kelima kasus terlihat di UI setelah disimpan.
 3. **Submission mahasiswa:** masuk bergantian melalui UI sebagai 10 mahasiswa.
-   Setiap akun mengunggah program `.py` sesuai pasangan ID dan program pada
-   tabel data uji.
+   Setiap akun mengunggah berkas `.py` yang berbeda: `UAT-P01` untuk akun
+   pertama, `UAT-P02` untuk akun kedua, dan seterusnya sampai `UAT-P10`.
+   Gunakan kode persis pada tabel data uji, bukan satu solusi yang disalin
+   untuk semua akun.
    - Bukti: 10 submission diterima; simpan ID/status yang terlihat tanpa
      mengubah data langsung. Skor akhir yang diharapkan berurutan adalah
      100, 100, 100, 80, 80, 0, 0, 0, 0, 0.
@@ -98,8 +104,24 @@ hentikan UAT backend tanpa menjalankan migrasi/server dan tandai bukti sebagai
    - Bukti: checklist berisi 10 dari 10 submission yang telah ditinjau.
 5. **Perbandingan skor manual dan otomatis:** hitung hasil lima kasus secara
    manual untuk seluruh 10 submission dan bandingkan dengan laporan test case.
-   - Cocokkan skor akhir dengan urutan 100, 100, 100, 80, 80, 0, 0, 0, 0, 0;
-     catat status tiap kasus dan penyimpangan satu per satu. Jangan
+   - Gunakan tabel tally manual ini sebelum melihat skor otomatis; setiap kasus
+     berbobot 20 dan setiap hasil gagal/verdict error mendapat 0:
+
+     | Program | `uat_01` | `uat_02` | `uat_03` | `uat_04` | `uat_05` | Skor manual |
+     | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+     | `UAT-P01` | 20 | 20 | 20 | 20 | 20 | 100 |
+     | `UAT-P02` | 20 | 20 | 20 | 20 | 20 | 100 |
+     | `UAT-P03` | 20 | 20 | 20 | 20 | 20 | 100 |
+     | `UAT-P04` | 20 | 20 | 20 | 0 | 20 | 80 |
+     | `UAT-P05` | 20 | 20 | 20 | 0 | 20 | 80 |
+     | `UAT-P06` | 0 | 0 | 0 | 0 | 0 | 0 |
+     | `UAT-P07` | 0 | 0 | 0 | 0 | 0 | 0 |
+     | `UAT-P08` | 0 | 0 | 0 | 0 | 0 | 0 |
+     | `UAT-P09` | 0 | 0 | 0 | 0 | 0 | 0 |
+     | `UAT-P10` | 0 | 0 | 0 | 0 | 0 | 0 |
+
+   - Skor akhir manual berurutan adalah 100, 100, 100, 80, 80, 0, 0, 0, 0,
+     0. Catat verdict tiap kasus dan penyimpangan satu per satu; jangan
      menyimpulkan pass hanya dari badge warna.
 6. **Perbaikan test case dan regrade (FR-17):** melalui UI, ubah `uat_03`
    sementara agar expected output menjadi `1`. Regrade seluruh assignment dan
