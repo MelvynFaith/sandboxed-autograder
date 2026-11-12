@@ -60,6 +60,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   enforce assignment deadlines and configured FR-14 rate limits transactionally, save and enqueue
   `QUEUED` jobs with 202 Accepted, provide paginated/filterable student history and scoped submission
   details, and reveal hidden test-case data only to administrators and current Course owners.
+- Submission history and reports for the dashboard (`scheduler/`): submission and report responses
+  carry `assignment_title`, and each result is marked `is_hidden`, so the dashboard can name the
+  assignment and mask what a student may not see (FR-09, FR-10).
+- Regrade and cancel (`scheduler/`): `POST /submissions/{id}/regrade` and `POST
+  /assignments/{id}/regrade` queue a submission, or every submission of an assignment, for grading
+  again without a new submission or a change of `submitted_at`, and `DELETE /submissions/{id}`
+  cancels a `QUEUED` one; a `RUNNING` submission cannot be cancelled. A regrade of a submission whose
+  file the retention job deleted answers `410` (FR-16, FR-17).
+- Submission code (`scheduler/`): `GET /submissions/{id}/code` returns the stored source to its
+  owner, to the lecturer of the Course and to an administrator; anyone else gets `404`, and a file
+  deleted by the retention job answers `410` (FR-20, NFR-13).
+- Test case YAML (`scheduler/`): `POST /assignments/{id}/testcases/import` and `GET
+  /assignments/{id}/testcases/export` read and write the YAML format of SRS 7.3 (FR-03).
+- Grade recap (`scheduler/`): `GET /assignments/{id}/results` lists every student's score with
+  `is_late` and `stale_grade`, and `GET /assignments/{id}/results/export` downloads it as CSV, for
+  the lecturer of the Course and administrators (FR-11).
+- Administrator endpoints (`scheduler/`): `GET /admin/audit-logs` (sandbox violations with the syscall
+  number and the user), `GET /admin/queue` (queue depth and workers), and `GET` and `PUT
+  /admin/rate-limits` (the FR-14 thresholds) (FR-12, FR-13, FR-14).
+- Dashboard (`frontend/`): the Course and enrollment screens, lecturer assignment and test case
+  management with resource limits and YAML import/export, submission history and detailed reports
+  from the real API, cancel with a confirmation, the code view, the grade recap with CSV export and
+  regrade, and the administration page with users, roles, queue, rate limits and the audit log
+  (FR-02, FR-03, FR-06, FR-09 to FR-12, FR-14, FR-16 to FR-20). Confirmation dialogs trap keyboard
+  focus. The dashboard accepts the status-only polling responses of the API.
+- OpenAPI (`docs/openapi.yaml`): every route the backend registers is documented, and a test fails
+  when a registered route is missing from the document.
 - Grading pipeline (`scheduler/`): the Grading Harness runner, which keeps the assignment definition
   off the command line and checks the report; the grading store, which moves a submission through
   `QUEUED`, `RUNNING` and `COMPLETED` or `FAILED` and writes results and audit rows in one
@@ -86,3 +113,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   timer, deletes the stored files of submissions whose assignment closed more than a year ago and
   keeps their grades, recording the deletion in the new `submissions.code_deleted_at` (NFR-13,
   SRS 13.4). `--dry-run` counts them.
+- Nginx site (`infra/nginx/autograder.conf`): serves the dashboard build, proxies `/api/`, `/ws/` and
+  `/healthz` to the backend on loopback, limits upload and body sizes, and sets a
+  Content-Security-Policy; plain HTTP until a DNS name exists, with the HTTPS steps in
+  `infra/README.md` (SRS 13.2). The smoke test now uploads its programs through
+  `POST /api/v1/submissions`, checks that a second upload is refused with `429`, and can run through
+  Nginx with `API=http://127.0.0.1`.
