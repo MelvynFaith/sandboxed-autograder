@@ -5,6 +5,7 @@
 | [`progress/`](progress/) | Weekly progress notes, `minggu-NN.md` | Every week |
 | [`sprint/`](sprint/) | Sprint review and retrospective, `sprint-N.md` | End of each sprint |
 | [`qa/`](qa/) | Test reports: adversarial and failure injection | When a test round is run |
+| [`user-manual/`](user-manual/) | User-facing workflow notes | When UI flows change |
 
 Start new notes by copying the `_template.md` in each folder.
 
