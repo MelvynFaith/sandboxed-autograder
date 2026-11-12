@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App.jsx'
 import {
@@ -150,6 +150,28 @@ describe('LecturerAssignmentsPage', () => {
       },
     )
     expect(updateResourceLimit).not.toHaveBeenCalled()
+    expect(await screen.findByRole('status')).toHaveFocus()
+    expect(screen.getByLabelText('Judul')).toHaveValue('')
+    expect(screen.getByLabelText('Deskripsi')).toHaveValue('')
+    expect(screen.getByLabelText('Deadline')).toHaveValue('')
+    expect(screen.getByLabelText('Batas akhir keterlambatan')).toHaveValue('')
+    for (const label of [
+      'Batas waktu CPU (ms)',
+      'Batas memori (MB)',
+      'Jumlah proses maksimum',
+      'Waktu maksimum (detik)',
+      'Output maksimum (byte)',
+      'Ukuran tmpfs (MB)',
+    ]) {
+      expect(screen.getByLabelText(label)).toHaveValue(null)
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ubah assignment terpilih' }))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Ubah assignment' })).toBeInTheDocument()
+      expect(screen.getByLabelText('Judul')).toHaveValue('Latihan Algoritma')
+      expect(screen.getByLabelText('Ukuran tmpfs (MB)')).toHaveValue(32)
+    })
   }, 15_000)
 
   it('rejects non-positive resource limits', async () => {
@@ -269,6 +291,7 @@ describe('LecturerAssignmentsPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Ukuran tmpfs ditambah 16 MB tidak boleh melebihi batas memori.',
     )
+    expect(screen.getByRole('alert')).toHaveFocus()
     expect(createLecturerAssignment).not.toHaveBeenCalled()
   })
 
@@ -344,6 +367,10 @@ describe('LecturerAssignmentsPage', () => {
     await fillAssignmentForm()
     fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
     await screen.findByRole('heading', { name: 'Tambah test case' })
+    expect(screen.getByLabelText('Mode pencocokan output')).toHaveValue('EXACT')
+    expect(screen.getByText(/EXACT membandingkan seluruh keluaran, termasuk spasi dan baris baru/))
+      .toBeInTheDocument()
+
     fireEvent.change(screen.getByLabelText('Input'), { target: { value: '1' } })
     fireEvent.change(screen.getByLabelText('Keluaran yang diharapkan'), {
       target: { value: '1' },
@@ -380,6 +407,7 @@ describe('LecturerAssignmentsPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'ID eksternal test case sudah digunakan pada assignment ini.',
     )
+    expect(screen.getByRole('alert')).toHaveFocus()
   })
 
   it('updates and deletes a test case with confirmation', async () => {

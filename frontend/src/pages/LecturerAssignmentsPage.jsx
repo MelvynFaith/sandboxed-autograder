@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { getAssignments } from '../api/assignments.js'
 import { getCourses } from '../api/courses.js'
+import FormFeedback from '../components/FormFeedback.jsx'
 import FocusTrapDialog from '../components/FocusTrapDialog.jsx'
 import {
   createLecturerAssignment,
@@ -74,6 +75,7 @@ function LecturerAssignmentsPage() {
   const [courseId, setCourseId] = useState(() => requestedCourseId ?? '')
   const [assignments, setAssignments] = useState([])
   const [activeAssignment, setActiveAssignment] = useState(null)
+  const [activeResourceLimits, setActiveResourceLimits] = useState(null)
   const [testCases, setTestCases] = useState([])
   const [editingTestCaseId, setEditingTestCaseId] = useState(null)
   const [assignmentForm, setAssignmentForm] = useState(emptyAssignment)
@@ -141,6 +143,7 @@ function LecturerAssignmentsPage() {
 
   async function selectAssignment(assignment) {
     setActiveAssignment(assignment)
+    setActiveResourceLimits(null)
     setIsEditingAssignment(false)
     setAssignmentForm({
       title: assignment.title,
@@ -155,6 +158,7 @@ function LecturerAssignmentsPage() {
         getResourceLimit(assignment.id),
       ])
       setTestCases(results)
+      setActiveResourceLimits(limits)
       setResourceLimits(
         Object.fromEntries(resourceLimitFields.map(({ name }) => [name, String(limits[name])])),
       )
@@ -217,15 +221,37 @@ function LecturerAssignmentsPage() {
       if (isEditingAssignment) {
         await updateResourceLimit(savedAssignment.id, limits)
       }
+      setActiveResourceLimits(limits)
       setIsEditingAssignment(false)
       setSuccess(isEditingAssignment ? 'Assignment berhasil diperbarui.' : 'Assignment berhasil dibuat.')
       if (!isEditingAssignment) {
+        setAssignmentForm(emptyAssignment)
+        setResourceLimits(emptyLimits)
         setTestCases([])
         setTestCaseForm(emptyTestCase)
       }
     } catch (saveError) {
       setError(saveError.message)
     }
+  }
+
+  function beginEditingAssignment() {
+    if (!activeAssignment || !activeResourceLimits) return
+
+    setError('')
+    setSuccess('')
+    setAssignmentForm({
+      title: activeAssignment.title,
+      description: activeAssignment.description,
+      deadline_at: toLocalDateTime(activeAssignment.deadlineAt),
+      late_until_at: toLocalDateTime(activeAssignment.lateUntilAt),
+    })
+    setResourceLimits(
+      Object.fromEntries(
+        resourceLimitFields.map(({ name }) => [name, String(activeResourceLimits[name])]),
+      ),
+    )
+    setIsEditingAssignment(true)
   }
 
   async function confirmDeleteAssignment() {
@@ -237,6 +263,7 @@ function LecturerAssignmentsPage() {
       setAssignments((current) => current.filter((entry) => entry.id !== pendingDelete.id))
       if (activeAssignment?.id === pendingDelete.id) {
         setActiveAssignment(null)
+        setActiveResourceLimits(null)
         setTestCases([])
       }
       setSuccess('Assignment berhasil dihapus.')
@@ -315,6 +342,7 @@ function LecturerAssignmentsPage() {
           getResourceLimit(activeAssignment.id),
         ])
         setTestCases(updatedTestCases)
+        setActiveResourceLimits(updatedLimits)
         setResourceLimits(
           Object.fromEntries(
             resourceLimitFields.map(({ name }) => [name, String(updatedLimits[name])]),
@@ -387,8 +415,7 @@ function LecturerAssignmentsPage() {
           <li className="text-slate-600">3. Rekap nilai &amp; CSV (pilih assignment)</li>
         </ol>
       </nav>
-      {error && <p className="text-red-700" role="alert">{error}</p>}
-      {success && <p className="text-blue-800" role="status">{success}</p>}
+      <FormFeedback error={error} success={success} />
       {isLoading ? (
         <p className="text-slate-600">Memuat Course...</p>
       ) : courses.length === 0 ? (
@@ -404,6 +431,7 @@ function LecturerAssignmentsPage() {
                 setCourseId(event.target.value)
                 setSearchParams({ courseId: event.target.value })
                 setActiveAssignment(null)
+                setActiveResourceLimits(null)
                 setAssignments([])
               }}
               value={courseId}
@@ -525,7 +553,8 @@ function LecturerAssignmentsPage() {
               {activeAssignment && !isEditingAssignment && (
                 <button
                   className="rounded border border-slate-300 px-4 py-2"
-                  onClick={() => setIsEditingAssignment(true)}
+                  disabled={!activeResourceLimits}
+                  onClick={beginEditingAssignment}
                   type="button"
                 >
                   Ubah assignment terpilih
@@ -653,10 +682,14 @@ function LecturerAssignmentsPage() {
                     )}
                   </label>
                 ))}
-                <label className="block">
-                  <span className="mb-1 block font-medium">Mode pencocokan output</span>
+                <div>
+                  <label className="mb-1 block font-medium" htmlFor="test-case-match-mode">
+                    Mode pencocokan output
+                  </label>
                   <select
+                    aria-describedby="match-mode-help"
                     className="w-full rounded border border-slate-300 p-2"
+                    id="test-case-match-mode"
                     onChange={(event) =>
                       setTestCaseForm((current) => ({ ...current, match_mode: event.target.value }))
                     }
@@ -664,7 +697,12 @@ function LecturerAssignmentsPage() {
                   >
                     {matchModes.map((mode) => <option key={mode}>{mode}</option>)}
                   </select>
-                </label>
+                  <p className="mt-1 text-sm text-slate-600" id="match-mode-help">
+                    EXACT membandingkan seluruh keluaran, termasuk spasi dan baris baru. Jika
+                    program menggunakan print(), sertakan baris baru di keluaran yang diharapkan
+                    atau pilih WHITESPACE_INSENSITIVE.
+                  </p>
+                </div>
                 <label className="flex items-center gap-2">
                   <input
                     checked={testCaseForm.is_hidden}

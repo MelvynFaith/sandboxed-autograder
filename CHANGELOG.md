@@ -123,3 +123,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   below 70 %, the grader job runs `pytest --cov` and fails below 90 % (statements and branches), and the
   frontend job runs the tests with `--coverage` against the thresholds in `vite.config.js` (80 %
   statements and lines, 75 % branches, 85 % functions). Measured today: 77 %, 98 % and 86 %.
+
+### Fixed
+
+- Dashboard (`frontend/`): clarify that `EXACT` test-case matching includes trailing newlines,
+  focus and scroll to lecturer form feedback, clear assignment fields after creation while retaining
+  the selected assignment's limits for editing, hide pagination controls for single-page student
+  lists, clear stale grading status before a new upload attempt, refresh recap rows during regrading,
+  and explain visible failure verdicts and empty output without revealing hidden-case details
+  (issues #129–#134).

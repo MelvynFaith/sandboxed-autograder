@@ -7,6 +7,7 @@ import {
   getCourseEnrollmentsPage,
   getCoursesPage,
 } from '../api/courses.js'
+import FormFeedback from '../components/FormFeedback.jsx'
 import { useAuth } from '../context/useAuth.js'
 
 const PAGE_SIZE = 10
@@ -252,16 +253,7 @@ function CoursesPage() {
           <li className="text-slate-600">3. Rekap nilai &amp; CSV</li>
         </ol>
       </nav>
-      {error && (
-        <p className="mt-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-red-700" role="alert">
-          {error}
-        </p>
-      )}
-      {success && (
-        <p className="mt-4 rounded border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800" role="status">
-          {success}
-        </p>
-      )}
+      <FormFeedback error={error} success={success} />
 
       <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <h2 className="text-lg font-semibold">Buat Course baru</h2>

@@ -214,6 +214,37 @@ describe('HistoryPage', () => {
     expect(within(report).queryByText('output SECURITY_VIOLATION')).not.toBeInTheDocument()
   })
 
+  it.each([
+    ['FAILED', 'Keluaran program tidak sesuai dengan yang diharapkan.'],
+    ['RUNTIME_ERROR', 'Program mengalami kesalahan saat dijalankan.'],
+    ['SECURITY_VIOLATION', 'Program melakukan operasi yang tidak diizinkan oleh sandbox.'],
+  ])('explains an empty visible %s result', async (verdict, explanation) => {
+    setUser()
+    getSubmissionReport.mockResolvedValue({
+      submissionId: 'submission-1',
+      totalScore: 0,
+      maxScore: 100,
+      results: [{
+        testCaseId: 'testcase-visible',
+        externalId: 'tc_01',
+        verdict,
+        score: 0,
+        executionTimeMs: 1,
+        memoryKb: 512,
+        hidden: false,
+        errorMessage: null,
+        actualOutput: '',
+      }],
+    })
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Lihat laporan' }))
+
+    const report = await screen.findByRole('region', { name: 'Laporan submission submission-1' })
+    expect(within(report).getByText('(kosong)')).toBeInTheDocument()
+    expect(report).toHaveTextContent(`Pesan error: ${explanation}`)
+  })
+
   it('shows only status, score, time and memory for a hidden result without a test case id', async () => {
     setUser()
     getSubmissionReport.mockResolvedValue({
