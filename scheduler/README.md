@@ -83,7 +83,7 @@ submission WebSocket ticket and progress routes.
 
 ## Authentication API
 
-Run the API with Go 1.27.2 or newer. Configuration is supplied through environment variables:
+Run the API with Go 1.27.4 or newer. Configuration is supplied through environment variables:
 
 ```sh
 export DATABASE_URL='postgres://USER:PASSWORD@localhost:5432/DATABASE?sslmode=disable'
