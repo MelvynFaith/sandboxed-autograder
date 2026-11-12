@@ -117,7 +117,18 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Test
-        run: go test -race -coverprofile=coverage.out ./...
+        # -coverpkg counts a package's statements when another package's tests run them: auth,
+        # courses and submissions are tested through the API, so without it they show as 0%.
+        run: go test -race -coverprofile=coverage.out -coverpkg=./... ./...
+      - name: Coverage gate
+        # NFR-07: at least 70% statement coverage on the scheduler.
+        run: |
+          total="$(go tool cover -func=coverage.out | awk '/^total:/ { gsub("%", "", $3); print $3 }')"
+          echo "Statement coverage: ${total}%"
+          if ! awk -v t="$total" 'BEGIN { exit !(t + 0 >= 70) }'; then
+            echo "::error::Statement coverage ${total}% is below the 70% of NFR-07"
+            exit 1
+          fi
       - name: Build
         run: go build ./...
 
@@ -137,11 +148,12 @@ jobs:
           cache: pip
           cache-dependency-path: grader/pyproject.toml
       - name: Install
-        run: python -m pip install -e . ruff pytest
+        run: python -m pip install -e . ruff pytest pytest-cov
       - name: Lint
         run: ruff check .
       - name: Test
-        run: pytest
+        # NFR-07: the gate sits below the measured 98% so that an ordinary change does not trip it.
+        run: pytest --cov=harness --cov-branch --cov-report=term-missing --cov-fail-under=90
 
   frontend:
     name: frontend (React)
@@ -163,6 +175,7 @@ jobs:
       - name: Lint
         run: npm run lint --if-present
       - name: Test
-        run: npm test --if-present
+        # The thresholds are in vite.config.js (NFR-07).
+        run: npm test --if-present -- --coverage
       - name: Build
         run: npm run build

@@ -1,1 +1,26 @@
 @import "tailwindcss";
+
+@layer base {
+  button,
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    min-height: 44px;
+  }
+
+  label:has(> input[type="checkbox"]) {
+    min-height: 44px;
+  }
+
+  nav[aria-label="Navigasi utama"] a,
+  a.rounded {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  nav[aria-label="Navigasi utama"] a {
+    min-width: 44px;
+    justify-content: center;
+  }
+}
