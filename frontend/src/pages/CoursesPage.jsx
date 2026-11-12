@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   createCourse,
   createEnrollment,
@@ -36,6 +37,11 @@ function PageControls({ page, hasNext, onPageChange, label }) {
 
 function CoursesPage() {
   const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedCourseId = searchParams.get('courseId')
+  const initialCourseId = useRef(requestedCourseId)
+  const requestedCourseIdRef = useRef(requestedCourseId)
+  const initialCourseSelectionPending = useRef(Boolean(requestedCourseId))
   const isAdmin = user.role === 'admin'
   const [coursesPage, setCoursesPage] = useState({
     items: [],
@@ -62,12 +68,12 @@ function CoursesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const selectedCourse = coursesPage.items.find(
-    (course) => String(course.id) === selectedCourseId,
+  const activeCourseId = String(
+    coursesPage.items.find((course) => String(course.id) === requestedCourseId)?.id ??
+    coursesPage.items.find((course) => String(course.id) === selectedCourseId)?.id ??
+    coursesPage.items[0]?.id ??
+    '',
   )
-  const activeCourseId = selectedCourse
-    ? selectedCourseId
-    : String(coursesPage.items[0]?.id ?? '')
   const activeCourse = coursesPage.items.find(
     (course) => String(course.id) === activeCourseId,
   )
@@ -75,11 +81,42 @@ function CoursesPage() {
   useEffect(() => {
     let isCurrent = true
 
-    getCoursesPage({ page: coursePage, pageSize: PAGE_SIZE })
-      .then((result) => {
-        if (!isCurrent) return
-        setCoursesPage(result)
-      })
+    async function loadCourses() {
+      let result = await getCoursesPage({ page: coursePage, pageSize: PAGE_SIZE })
+      let requestedCourse = null
+
+      if (initialCourseSelectionPending.current && initialCourseId.current) {
+        const requestedCourseIdForPage = initialCourseId.current
+        requestedCourse = result.items.find(
+          (course) => String(course.id) === requestedCourseIdForPage,
+        )
+        const firstPage = result
+        while (!requestedCourse && result.has_next) {
+          result = await getCoursesPage({ page: result.page + 1, pageSize: PAGE_SIZE })
+          requestedCourse = result.items.find(
+            (course) => String(course.id) === requestedCourseIdForPage,
+          )
+        }
+        if (!requestedCourse) {
+          result = firstPage
+          initialCourseSelectionPending.current = false
+        } else if (result.page === coursePage) {
+          initialCourseSelectionPending.current = false
+        }
+      } else {
+        requestedCourse = result.items.find(
+          (course) => String(course.id) === requestedCourseIdRef.current,
+        )
+      }
+
+      if (!isCurrent) return
+      const selectedId = String(requestedCourse?.id ?? result.items[0]?.id ?? '')
+      setCoursesPage(result)
+      setCoursePage(result.page)
+      setSelectedCourseId(selectedId)
+    }
+
+    loadCourses()
       .catch((loadError) => {
         if (isCurrent) setError(loadError.message)
       })
@@ -91,6 +128,10 @@ function CoursesPage() {
       isCurrent = false
     }
   }, [coursePage])
+
+  useEffect(() => {
+    requestedCourseIdRef.current = requestedCourseId
+  }, [requestedCourseId])
 
   useEffect(() => {
     if (!activeCourseId) return undefined
@@ -148,6 +189,8 @@ function CoursesPage() {
       setCourseForm({ name: '', code: '', term: '', lecturerEmail: '' })
       setCoursePage(1)
       setSelectedCourseId(String(created.id))
+      requestedCourseIdRef.current = String(created.id)
+      setSearchParams({ courseId: String(created.id) })
       const result = await getCoursesPage({ page: 1, pageSize: PAGE_SIZE })
       setCoursesPage(result)
       setSuccess('Course berhasil dibuat.')
@@ -193,6 +236,22 @@ function CoursesPage() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
       <h1 className="text-2xl font-semibold">Course</h1>
+      <nav aria-label="Alur dosen" className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+        <ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <li aria-current="step" className="font-semibold text-blue-800">
+            1. Course &amp; enrollment
+          </li>
+          <li>
+            <Link
+              className="font-medium text-blue-700 underline"
+              to={`/lecturer/assignments${activeCourseId ? `?courseId=${encodeURIComponent(activeCourseId)}` : ''}`}
+            >
+              2. Assignment &amp; test case
+            </Link>
+          </li>
+          <li className="text-slate-600">3. Rekap nilai &amp; CSV</li>
+        </ol>
+      </nav>
       {error && (
         <p className="mt-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-red-700" role="alert">
           {error}
@@ -278,6 +337,8 @@ function CoursesPage() {
                     onClick={() => {
                       setError('')
                       setSelectedCourseId(String(course.id))
+                      requestedCourseIdRef.current = String(course.id)
+                      setSearchParams({ courseId: String(course.id) })
                       setEnrollmentPage(1)
                     }}
                     type="button"
