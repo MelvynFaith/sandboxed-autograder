@@ -1,9 +1,9 @@
 # Laporan audit NFR-11: responsif dan aksesibilitas
 
 - Tanggal audit: 2026-10-25
-- Commit viewport dan target sentuh yang diukur: `9f44d9f`
-- Commit axe-core yang dipindai: `9f44d9f`
-- Commit dialog yang diuji dengan keyboard browser: `b3108a0`
+- Commit viewport dan target sentuh yang diukur: `9f44d9f` (kini masuk ke `develop` melalui merge commit #117 `316ab8c7401f5f6f989f738bc110eaacb93ca9b8`).
+- Commit axe-core yang dipindai: `9f44d9f` (kini masuk ke `develop` melalui merge commit #117 `316ab8c7401f5f6f989f738bc110eaacb93ca9b8`).
+- Commit dialog yang diuji dengan keyboard browser: `b3108a0` (merge commit #116 `01449bd4097d14ee55bc0d9e600ccc5fe2e4bea5` memiliki tree yang sama).
 - Lingkungan viewport: frontend mock `VITE_USE_MOCK=true`, Vite `http://127.0.0.1:5177`
 - Lingkungan keyboard: frontend mock `VITE_USE_MOCK=true`, Vite `http://127.0.0.1:5176`
 - Viewport: 360 × 900, 768 × 900, 1280 × 900 CSS px
@@ -182,6 +182,34 @@ diukur, label, nama kontrol, status tekstual, atau scrolling tabel dalam wadah.
 axe-core tidak menemukan pelanggaran pada rute/peran yang dipindai. Dialog
 konfirmasi yang diuji berfungsi dengan keyboard pada managed browser, tetapi
 laporan ini tidak menyatakan seluruh pengalaman keyboard lulus. Fokus terlihat,
-upload submission melalui file chooser keyboard, pemeriksaan seluruh kontrol,
-dan pemeriksaan manual pada perangkat fisik tetap **BELUM DIVERIFIKASI, perlu
-pengecekan manual** sebelum menyatakan lulus penuh NFR-11.
+dan beberapa alur file chooser sudah diuji pada managed browser. Pemilihan pada
+dialog OS native, Tab setelah input tanggal native, isi byte CSV, pemeriksaan
+keyboard seluruh kontrol, dan pemeriksaan manual pada perangkat fisik tetap
+**BELUM DIVERIFIKASI, perlu pengecekan manual** sebelum menyatakan lulus penuh
+NFR-11.
+
+## Follow-up keyboard — 2026-11-12
+
+Dengan mock frontend pada `http://127.0.0.1:5176`, login mahasiswa dan dosen
+berhasil dengan urutan Tab dan Enter. Pada mahasiswa, Enter di input file
+memicu event file chooser; setelah berkas uji sintetis dipilih, Enter pada
+Upload menampilkan sukses mock. Register dan test case menunjukkan urutan fokus
+maju yang diharapkan. Form enrollment menampilkan validasi tanpa perubahan data
+saat dikirim kosong. Ekspor CSV menampilkan notifikasi dan nama berkas yang
+diharapkan; browser tool tidak menghasilkan event download sehingga isi byte
+tidak diperiksa.
+
+Dialog hapus dan regrade-all diuji ulang: fokus awal di Batal, Tab dan
+Shift+Tab tetap berputar dalam dialog, Escape menutup dialog dan fokus kembali
+ke tombol pemicu. Select peran admin dapat difokuskan dan bernama aksesibel;
+Space lalu Escape tidak mengubah peran. Nilai ini sengaja tidak disimpan.
+Outline fokus yang terukur pada input register dan select admin adalah 1 px
+warna `rgb(229, 151, 0)`.
+
+Pengukuran tambahan Course, assignment lecturer, rekap, dan admin pada lebar
+360/768/1280 px tidak menemukan overflow horizontal dokumen. Detail tiap
+pemeriksaan dan batasannya ada pada [checklist keyboard](./nfr-11-keyboard-checklist.md).
+Pemeriksaan tetap parsial: kontrol tanggal native menghentikan pengukuran
+urutan Tab di managed browser, pemilihan berkas pada dialog OS native belum
+diverifikasi, dan tidak semua kontrol di semua rute diuji. Issue #112 tetap
+terbuka sampai langkah tersebut diperiksa pada browser normal.
