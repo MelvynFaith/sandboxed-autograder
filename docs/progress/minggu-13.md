@@ -25,6 +25,8 @@
 - **Owner: Melvyn Faith. R10:** on 12 Nov, from a phone on mobile data with Wi-Fi off, that is from
   outside the campus network, the login page of the dashboard opened over HTTP on the server's public
   address, and `/healthz` answered `"status":"ok"`. The address is not recorded in the repository.
+- **Owner: Melvyn Faith.** The `critical` label of SRS 10.4 was created on 12 Nov, so the indicator
+  "open critical defects" can now be queried; no issue carries it yet.
 - **Owner: Melvyn Faith.** After a reboot for a pending kernel update, PostgreSQL, the backend and
   Nginx were all running again without any command, and the smoke test through Nginx passed a second
   time.
@@ -70,8 +72,6 @@
 - **Owner: project team.** SRS 13.1 puts the load test on staging, and there is no staging host. The
   campus server is the only host with the real build; the team has to decide whether the official run
   happens there, and when, so that it does not disturb the UAT.
-- **Owner: Melvyn Faith.** The `critical` label of SRS 10.4 still does not exist, so the defect
-  indicator cannot be queried.
 - **Owner: project team.** Seven pull requests wait for a review or for rework, besides the one
   that adds this note; until they merge, `develop` does not contain the QA reports, the coverage gates
   or the NFR-11 work.
