@@ -22,6 +22,9 @@
   dashboard build and proxies `/api/`, `/ws/` and `/healthz` from `infra/nginx/autograder.conf`
   (step 11 of `infra/README.md`). The start page and a client route answer `200`, a missing asset
   `404`, and the smoke test passes through Nginx as well. The site is plain HTTP.
+- **Owner: Melvyn Faith. R10:** on 12 Nov, from a phone on mobile data with Wi-Fi off, that is from
+  outside the campus network, the login page of the dashboard opened over HTTP on the server's public
+  address, and `/healthz` answered `"status":"ok"`. The address is not recorded in the repository.
 - **Owner: Melvyn Faith.** After a reboot for a pending kernel update, PostgreSQL, the backend and
   Nginx were all running again without any command, and the smoke test through Nginx passed a second
   time.
@@ -61,8 +64,9 @@
 
 - **R6, owner: Melvyn Faith.** The UAT with the instructor has no confirmed date, and the QA window
   ended on 9 Nov. The deployment window ends on 23 Nov.
-- **R10.** Nginx is up, but the proof that the dashboard opens from outside the campus network (from
-  a phone on mobile data) is not recorded yet, and there is no DNS name for HTTPS.
+- **R10.** Reduced, not closed. The dashboard and `/healthz` were reached from outside the campus
+  network (see Done), but there is still no DNS name, so there is no HTTPS, and passwords cross the
+  network in plain text until there is.
 - **Owner: project team.** SRS 13.1 puts the load test on staging, and there is no staging host. The
   campus server is the only host with the real build; the team has to decide whether the official run
   happens there, and when, so that it does not disturb the UAT.
