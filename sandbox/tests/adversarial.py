@@ -558,6 +558,59 @@ class Syscalls(unittest.TestCase):
             with self.subTest(syscall=name):
                 self.violation(f"import ctypes\nctypes.CDLL(None, use_errno=True).syscall({nr}, 0, 0, 0, 0, 0)", nr=nr)
 
+    @unittest.skipUnless(X86_64, "syscall numbers below are x86-64")
+    def test_more_dangerous_syscalls(self):
+        # Kernel attack surface and ways to leave or weaken the sandbox that are not on the allowlist.
+        cases = {
+            "io_uring_setup": 425,
+            "keyctl": 250,
+            "add_key": 248,
+            "open_by_handle_at": 304,
+            "name_to_handle_at": 303,
+            "process_vm_writev": 311,
+            "process_madvise": 440,
+            "pidfd_getfd": 438,
+            "kcmp": 312,
+            "chroot": 161,
+            "mknod": 133,
+            "seccomp": 317,
+            "personality": 135,
+            "capset": 126,
+            "setresuid": 117,
+            "settimeofday": 164,
+            "sethostname": 170,
+            "umount2": 166,
+            "finit_module": 313,
+            "kexec_file_load": 320,
+            "landlock_create_ruleset": 444,
+            "open_tree": 428,
+            "fsopen": 430,
+            "move_mount": 429,
+        }
+        for name, nr in cases.items():
+            with self.subTest(syscall=name):
+                self.violation(f"import ctypes\nctypes.CDLL(None, use_errno=True).syscall({nr}, 0, 0, 0, 0, 0)", nr=nr)
+
+    @unittest.skipUnless(X86_64, "the x32 and i386 ABIs exist on x86-64 only")
+    def test_other_syscall_abis_are_not_a_way_around_the_filter(self):
+        # A filter that only checks the number can be bypassed through another ABI: the x32 bit on the
+        # number, or the i386 table through int 0x80. libseccomp's filter must kill both, and the
+        # supervisor reports it as a violation (the number is unknown, -1).
+        r = self.violation("import ctypes\nctypes.CDLL(None).syscall(0x40000000 | 39)")  # x32 getpid
+        self.assertEqual(r["stdout"], "")
+        r = sandbox(
+            """
+            import ctypes, mmap
+            code = bytes([0xB8, 0x14, 0, 0, 0, 0xCD, 0x80, 0xC3])  # mov eax, 20 (i386 getpid); int 0x80; ret
+            m = mmap.mmap(-1, 4096, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC)
+            m.write(code)
+            print(ctypes.CFUNCTYPE(ctypes.c_int)(ctypes.addressof(ctypes.c_char.from_buffer(m)))())
+            """
+        )
+        # A host without 32-bit emulation raises SIGSEGV for int 0x80 instead; either way no result.
+        self.assertNotEqual(r["termination_reason"], "EXITED", r)
+        self.assertEqual(r["stdout"], "")
+
     def test_namespace_creation_by_clone_is_denied(self):
         r = sandbox(
             """
