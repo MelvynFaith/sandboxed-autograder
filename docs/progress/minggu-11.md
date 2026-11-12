@@ -2,8 +2,9 @@
 
 **Phase / sprint:** QA, security testing and UAT (WBS 6)
 
-> State on Friday 30 Oct 2026, written by Melvyn Faith from the repository and GitHub. It is to be
-> updated before the week closes on 2 Nov. Dates are GitHub's merge dates, in UTC.
+> Written by Melvyn Faith from the repository and GitHub: first on Friday 30 Oct 2026, and brought
+> to the state at the close of the week (2 Nov) on 12 Nov, after the fact. The repository shows no
+> activity between 30 Oct and 2 Nov. Dates are GitHub's merge dates, in UTC.
 
 ## Done
 
@@ -28,7 +29,7 @@
   workers: 5 to 100 simultaneous accounts all completed (100 accounts: average 2.3 s, p95 4.0 s), 199
   of 200 uploads from one account were refused with a reason, and the fairness limit held (409 ms
   against 560 ms). Report in [PR #122](https://github.com/MelvynFaith/sandboxed-autograder/pull/122).
-- **Owner: Melvyn Faith.** Opened three pull requests, all awaiting review:
+- **Owner: Melvyn Faith.** Opened three pull requests, all merged on 30 Oct:
   [#118](https://github.com/MelvynFaith/sandboxed-autograder/pull/118) (the Nginx site that serves
   the dashboard, and a smoke test that uploads through the API; the dashboard loaded through Nginx in
   a browser with no Content-Security-Policy violation),
@@ -36,7 +37,10 @@
   [#120](https://github.com/MelvynFaith/sandboxed-autograder/pull/120) (the adversarial report and its
   scripts, WBS 6.1).
 - **Owner: Melvyn Faith.** The [week 10 note](minggu-10.md) sections that were empty are filled, and
-  the [sprint 3 review](../sprint/sprint-3.md) is written.
+  the [sprint 3 review](../sprint/sprint-3.md) is written. Both are in
+  [PR #121](https://github.com/MelvynFaith/sandboxed-autograder/pull/121), opened on 30 Oct with the
+  preliminary load test ([PR #122](https://github.com/MelvynFaith/sandboxed-autograder/pull/122));
+  neither had a review by 2 Nov.
 
 ## In progress / carried over
 
@@ -51,12 +55,13 @@
   `infra/loadtest/`. A preliminary run on a development machine passed all scenarios ([PR #122](https://github.com/MelvynFaith/sandboxed-autograder/pull/122)), but it
   is not the official test: the host differs and there is no staging.
 - **Owner: Melvyn Faith.** The deployment of `develop` to the campus server, including the dashboard
-  behind Nginx, after #118 merges; the UAT data on the server; the release of `develop` to `main`.
+  behind Nginx (#118 merged on 30 Oct, but the deployment itself was not done by 2 Nov); the UAT data
+  on the server; the release of `develop` to `main`.
 
 ## Blockers and risks
 
 - **R6, owner: Melvyn Faith.** The UAT date is not confirmed with the instructor. The window of 27
-  Oct to 9 Nov ends in ten days.
+  Oct to 9 Nov ends in seven days, and nothing was held by 2 Nov.
 - **R10.** The backend on the campus server listens on loopback only. Nginx, a DNS name for HTTPS and
   the proof of access from outside the campus network are not done.
 - **Owner: project team.** The campus server runs the build from before the submission API, so the
