@@ -18,6 +18,9 @@ import {
   updateTestCase,
 } from '../api/testcases.js'
 
+const deadlineAt = new Date('2026-10-12T23:59').toISOString()
+const lateUntilAt = new Date('2026-10-13T23:59').toISOString()
+
 vi.mock('../api/lecturerAssignments.js', () => ({
   createLecturerAssignment: vi.fn(),
   deleteLecturerAssignment: vi.fn(),
@@ -88,8 +91,8 @@ beforeEach(() => {
     courseId: 'course-1',
     title: 'Latihan Algoritma',
     description: 'Latihan dasar',
-    deadlineAt: '2026-10-12T16:59:00.000Z',
-    lateUntilAt: '2026-10-13T16:59:00.000Z',
+    deadlineAt,
+    lateUntilAt,
   })
   createTestCase.mockResolvedValue({ id: 'testcase-1', assignmentId: 'assignment-1' })
   exportTestCasesYaml.mockResolvedValue({
@@ -112,8 +115,8 @@ beforeEach(() => {
     courseId: 'course-1',
     title: 'Latihan Algoritma',
     description: 'Latihan dasar',
-    deadlineAt: '2026-10-12T16:59:00.000Z',
-    lateUntilAt: '2026-10-13T16:59:00.000Z',
+    deadlineAt,
+    lateUntilAt,
   })
 })
 
@@ -137,8 +140,8 @@ describe('LecturerAssignmentsPage', () => {
       {
         title: 'Latihan Algoritma',
         description: 'Latihan dasar',
-        deadline_at: new Date('2026-10-12T23:59').toISOString(),
-        late_until_at: new Date('2026-10-13T23:59').toISOString(),
+        deadline_at: deadlineAt,
+        late_until_at: lateUntilAt,
       },
       {
         cpu_time_ms: 1000,
@@ -265,8 +268,8 @@ describe('LecturerAssignmentsPage', () => {
     expect(updateLecturerAssignment).toHaveBeenLastCalledWith('assignment-1', {
       title: 'Latihan Algoritma',
       description: 'Latihan dasar',
-      deadline_at: new Date('2026-10-12T23:59').toISOString(),
-      late_until_at: new Date('2026-10-13T23:59').toISOString(),
+      deadline_at: deadlineAt,
+      late_until_at: lateUntilAt,
     })
     expect(updateResourceLimit).toHaveBeenCalledTimes(2)
     expect(updateResourceLimit).toHaveBeenLastCalledWith('assignment-1', {
