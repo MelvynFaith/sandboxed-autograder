@@ -102,12 +102,15 @@ hentikan UAT backend tanpa menjalankan migrasi/server dan tandai bukti sebagai
      catat status tiap kasus dan penyimpangan satu per satu. Jangan
      menyimpulkan pass hanya dari badge warna.
 6. **Perbaikan test case dan regrade (FR-17):** melalui UI, ubah `uat_03`
-   sementara agar expected output menjadi `1`. Regrade submission terkait dan
-   pastikan hasil kasus tersebut gagal serta skor berubah menjadi 80/100.
-   Pulihkan expected output menjadi `0`, regrade ulang, dan pastikan lima kasus
-   lulus serta skor kembali 100/100. Jika backend tidak menyediakan jalur UI
-   untuk regrade satu submission atau semua submission, catat blocker; jangan
-   mengganti test case/database dengan SQL atau curl.
+   sementara agar expected output menjadi `1`. Regrade seluruh assignment dan
+   pastikan setiap kasus diperiksa ulang. Skor sementara yang diharapkan untuk
+   `UAT-P01` sampai `UAT-P10` adalah 80, 80, 80, 60, 60, 20, 0, 0, 0, 0:
+   program benar kini gagal `uat_03`; dua program yang juga gagal pada kasus
+   negatif kehilangan dua bobot; program salah-output mendapat satu kasus lulus.
+   Pulihkan expected output menjadi `0`, regrade seluruh assignment lagi, dan
+   pastikan skor kembali ke 100, 100, 100, 80, 80, 0, 0, 0, 0, 0. Jika backend
+   tidak menyediakan jalur UI untuk regrade seluruh assignment, catat blocker;
+   jangan mengganti test case/database dengan SQL atau curl.
 7. **Rekap dan CSV:** buka rekap dari navigasi UI dan unduh CSV menggunakan
    tombol **Unduh CSV**. Periksa nama berkas, header, 10 baris mahasiswa, dan
    skor akhir; cocokkan isinya dengan rekap.
