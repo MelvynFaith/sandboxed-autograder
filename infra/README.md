@@ -10,9 +10,12 @@ the same scripts and differ only in their `.env` file, database, and domain.
 
 **Status:** the AppArmor profile, the systemd unit, the install steps, a smoke test, a daily
 database backup, the expiry of old submission files and the Nginx site that serves the dashboard
-exist, and the backend runs on the campus server from these steps. The Nginx site has been written
-to plain HTTP only; HTTPS waits for a DNS name. Everything under [Not started](#not-started) does
-not exist.
+exist, and the backend runs on the campus server from these steps. The Nginx site is plain HTTP
+only; HTTPS waits for a DNS name. On 12 Nov 2026 it was installed on the campus server (Ubuntu's
+Nginx 1.24) from step 11, where the site answered as the checks of that step expect and the smoke
+test passed through it. The same day, from a phone on mobile data (outside the campus network, SRS
+risk R10), the login page and `/healthz` answered over HTTP. Everything under
+[Not started](#not-started) does not exist.
 
 ## Contents
 
@@ -243,6 +246,66 @@ sudo systemctl stop postgresql; sleep 2; curl -s -w ' %{http_code}\n' http://127
 sudo systemctl start postgresql; sleep 3; curl -s -w ' %{http_code}\n' http://127.0.0.1:8080/healthz
 ```
 
+## Upgrading and rolling back
+
+An upgrade replaces the Grading Harness and the backend binary; the sandbox and the unit files only
+when they changed (compare with `git diff --stat <old> <new> -- sandbox infra/systemd infra/apparmor`).
+It ran this way on the campus server on 12 Nov 2026, from `develop` at `eeaa8eb`. Run it from the
+checkout (`~/sandboxed-autograder`) as the user who owns it.
+
+1. Take a backup, then update the checkout:
+
+   ```sh
+   sudo systemctl start autograder-backup && sudo -u postgres ls /var/backups/autograder | tail -2
+   git fetch -q origin && git switch -q develop && git pull -q --ff-only && git log --oneline -1
+   ```
+
+2. Reinstall the Harness (`--no-deps` leaves the installed PyYAML alone) and check that it starts
+   under the service user with an empty environment:
+
+   ```sh
+   sudo /opt/grader/venv/bin/pip install -q --upgrade --force-reinstall --no-deps "$PWD/grader"
+   (cd / && sudo -u grader env -i /opt/grader/venv/bin/python -m harness --help | head -1)
+   ```
+
+3. Build the backend, keep the running binary as `autograder.prev`, install the new one and restart:
+
+   ```sh
+   (cd scheduler && CGO_ENABLED=0 ~/go-sdk/bin/go build -o autograder ./cmd/autograder)
+   sudo cp /usr/local/bin/autograder /usr/local/bin/autograder.prev
+   sudo install -m 0755 scheduler/autograder /usr/local/bin/autograder && rm scheduler/autograder
+   sudo systemctl restart autograder; sleep 3; systemctl is-active autograder
+   sudo journalctl -u autograder -n 8 --no-pager -o cat
+   curl -s -w '  -> %{http_code}\n' http://127.0.0.1:8080/healthz
+   ```
+
+   The log shows the schema up to date, the delegated cgroup ready, the worker pool started, the API
+   listening and the sweep done; `/healthz` answers `200` with every worker alive.
+
+4. Run the [smoke test](#smoke-test).
+
+**Rolling back.** If the new backend does not start or fails the smoke test, put the previous binary
+back:
+
+```sh
+sudo install -m 0755 /usr/local/bin/autograder.prev /usr/local/bin/autograder && sudo systemctl restart autograder
+sleep 3; systemctl is-active autograder; curl -s http://127.0.0.1:8080/healthz
+```
+
+On 12 Nov 2026 this was rehearsed on the campus server: with the previous binary installed the
+service came back `active` and `/healthz` answered with all four workers alive; the new binary was
+then installed again (its checksum was the same as before) and the smoke test passed with 21 checks.
+
+What this rehearsal covered and what it did not:
+
+- The previous binary ran against the same schema (version 4). If an upgrade brings a migration, the
+  previous binary may not run on the migrated database: restore the dump taken in step 1 as well (see
+  [Database backup](#database-backup)), after stopping the backend. This case was not rehearsed.
+- Only `/healthz` and the start-up log were checked with the previous binary; its pipeline was not
+  run (the smoke test uploads through an endpoint the previous build did not have).
+- The previous Harness is not kept. The new one is meant to work with the older backend, because the
+  progress output it adds is optional, but that combination was not run end to end.
+
 ## Database backup
 
 `autograder-backup.timer` dumps the database every day at 02:30 WIB and keeps the dumps of the last
@@ -286,7 +349,10 @@ sudo -u postgres dropdb autograder_check
 ```
 
 `pg_restore` prints nothing on success, and the schema version is the one the backend logged at
-start-up.
+start-up. This was done on the campus server on 12 Nov 2026 with that day's dump: `pg_restore`
+exited 0, the schema was version 4 and not dirty, and the scratch database held the same single
+user as the live one. The live database had more audit rows (6 against 1), which were written after
+the dump was taken.
 
 **Restoring.** Stop the backend, replace the database with the dump, and start it again:
 
@@ -383,6 +449,7 @@ campus network administrators issue a certificate instead, point `ssl_certificat
   report readiness to systemd yet.
 - A copy of the daily backups off the server: SRS Bagian 13.4 stores them outside the application
   server, and they are on it for now. The restore test on staging (same section) waits for the
-  staging host.
+  staging host; the scratch restore on the campus server is described under
+  [Database backup](#database-backup).
 
 Secrets are never stored here. They live in GitHub Actions secrets, separately for each environment.
