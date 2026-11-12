@@ -19,5 +19,12 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     testTimeout: 10_000,
+    // Used by `npm test -- --coverage` (CI). NFR-07 asks for at least 70%; these sit a few points
+    // below the measured 86% statements, 82% branches, 90% functions and 87% lines.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**'],
+      thresholds: { statements: 80, branches: 75, functions: 85, lines: 80 },
+    },
   },
 })
