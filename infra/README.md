@@ -41,8 +41,7 @@ Ubuntu 24.04 (the campus server).
 3. **Go, for building only.** Any machine with Go 1.27.4 or newer can build the backend (step 9);
    `scheduler/go.mod` names that release because earlier ones have two security issues in the
    standard library that `govulncheck` reports for the backend (`net/http` and `crypto/x509`). To
-   build on the host
-   without installing Go system-wide:
+   build on the host without installing Go system-wide:
 
    ```sh
    curl -fsSLo /tmp/go.tgz https://go.dev/dl/go1.27.4.linux-amd64.tar.gz
