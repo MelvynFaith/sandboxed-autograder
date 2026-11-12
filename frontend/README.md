@@ -52,8 +52,10 @@ npm run build
 | `/profile` | Authenticated users | Profile and password settings |
 
 The UI is expected to work at 360 px, 768 px, and 1280 px without horizontal
-scrolling. Forms have keyboard support and accessible labels. Timestamps are
-stored in UTC and displayed in WIB (UTC+7).
+scrolling. Forms expose accessible labels. Timestamps are stored in UTC and
+displayed in WIB (UTC+7). The detailed responsive and accessibility audit,
+including the manual keyboard checklist and the unverified browser checks, is
+kept in [the NFR-11 report](../docs/nfr/nfr-11-report.md).
 
 ## Authentication and session limitations
 
