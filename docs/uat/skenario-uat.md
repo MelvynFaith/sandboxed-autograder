@@ -12,7 +12,8 @@ langkah; skenario tertulis bukan bukti bahwa UAT sudah dijalankan.
 
 ## Gerbang sebelum mulai
 
-- Buat database khusus yang baru untuk run ini, misalnya `uat_run_20261025`.
+- Buat database khusus yang baru untuk run ini, misalnya
+  `uat_run_YYYYMMDD` dengan tanggal run aktual.
   Jangan gunakan `autograder_dev`, database bersama, atau produksi.
 - Atur `DATABASE_URL` untuk menunjuk ke database terisolasi **sebelum**
   menjalankan migrasi, seed, atau server. Jalankan
@@ -40,18 +41,39 @@ hentikan UAT backend tanpa menjalankan migrasi/server dan tandai bukti sebagai
    program Python membaca satu integer dan mencetak nilainya dikali dua.
    Pilih deadline dan resource limit yang diterima form.
 5. Buat lima test case melalui UI; masing-masing berbobot 20 dan memakai
-   pencocokan EXACT:
+   pencocokan EXACT. Tandai `uat_05` sebagai tersembunyi:
 
-   | ID | Input | Expected output | Bobot |
-   | --- | --- | --- | ---: |
-   | `uat_01` | `1` | `2` | 20 |
-   | `uat_02` | `2` | `4` | 20 |
-   | `uat_03` | `0` | `0` | 20 |
-   | `uat_04` | `-2` | `-4` | 20 |
-   | `uat_05` | `7` | `14` | 20 |
+   | ID | Input | Expected output | Bobot | Visibilitas |
+   | --- | --- | --- | ---: | --- |
+   | `uat_01` | `1` | `2` | 20 | Terlihat |
+   | `uat_02` | `2` | `4` | 20 | Terlihat |
+   | `uat_03` | `0` | `0` | 20 | Terlihat |
+   | `uat_04` | `-2` | `-4` | 20 | Terlihat |
+   | `uat_05` | `7` | `14` | 20 | Tersembunyi |
 
    Akhiri setiap input dan output dengan newline. Pastikan jumlah bobot bernilai
-   100 dan kelima kasus tampil di daftar test case.
+   100; dosen harus melihat kelima kasus dan status tersembunyinya pada daftar.
+
+6. Untuk 10 submission, gunakan program yang berbeda berikut. Skor dihitung
+   dari lima kasus berbobot sama dengan pencocokan EXACT:
+
+   | ID | Program Python | Hasil yang diharapkan |
+   | --- | --- | --- |
+   | `UAT-P01` | `print(int(input()) * 2)` | 100/100 |
+   | `UAT-P02` | `n = int(input()); print(n + n)` | 100/100 |
+   | `UAT-P03` | `n = int(input().strip()); print(n << 1)` | 100/100 |
+   | `UAT-P04` | `n = int(input()); print(abs(n) * 2)` | 80/100; gagal hanya pada `uat_04` |
+   | `UAT-P05` | `n = int(input()); print(n * 2 if n >= 0 else 0)` | 80/100; gagal hanya pada `uat_04` |
+   | `UAT-P06` | `n = int(input()); print(n * 2 + 1)` | 0/100; semua output salah |
+   | `UAT-P07` | `print(f"{int(input()) * 2} ")` | 0/100; trailing space membuat semua output tidak cocok dengan EXACT |
+   | `UAT-P08` | `raise ValueError("UAT runtime error")` | 0/100; runtime error |
+   | `UAT-P09` | `print(int(input()) * )` | 0/100; syntax error |
+   | `UAT-P10` | `while True: pass` | 0/100; harus dihentikan oleh batas waktu sandbox |
+
+   Jalankan `UAT-P10` hanya jika batas waktu dan penghentian proses worker
+   terkonfirmasi pada lingkungan terisolasi; bila tidak, hentikan dan catat
+   blocker, jangan biarkan proses tanpa batas berjalan. Catat email uji yang
+   dipetakan ke setiap ID tanpa kata sandi.
 
 ## Alur end-to-end
 
@@ -62,18 +84,23 @@ hentikan UAT backend tanpa menjalankan migrasi/server dan tandai bukti sebagai
    test case pada Course tersebut.
    - Bukti: assignment dan kelima kasus terlihat di UI setelah disimpan.
 3. **Submission mahasiswa:** masuk bergantian melalui UI sebagai 10 mahasiswa.
-   Setiap akun mengunggah berkas `.py` berisi implementasi benar:
-   `print(int(input()) * 2)`.
+   Setiap akun mengunggah program `.py` sesuai pasangan ID dan program pada
+   tabel data uji.
    - Bukti: 10 submission diterima; simpan ID/status yang terlihat tanpa
-     mengubah data langsung.
+     mengubah data langsung. Skor akhir yang diharapkan berurutan adalah
+     100, 100, 100, 80, 80, 0, 0, 0, 0, 0.
+   - Sebagai salah satu mahasiswa, buka laporan submission sendiri. Pastikan
+     hasil `uat_05` menampilkan status dan skor, tetapi tidak menampilkan input
+     maupun expected output. Jangan membuka laporan melalui akun dosen untuk
+     menggantikan pemeriksaan tampilan mahasiswa.
 4. **Pembacaan kode (FR-20):** sebagai dosen, buka setiap submission dari rekap
    dan tinjau source code yang dikirim.
    - Bukti: checklist berisi 10 dari 10 submission yang telah ditinjau.
 5. **Perbandingan skor manual dan otomatis:** hitung hasil lima kasus secara
    manual untuk seluruh 10 submission dan bandingkan dengan laporan test case.
-   - Nilai yang diharapkan untuk setiap berkas benar adalah 5/5 lulus dan
-     100/100. Catat penyimpangan satu per satu; jangan menyimpulkan pass hanya
-     dari badge warna.
+   - Cocokkan skor akhir dengan urutan 100, 100, 100, 80, 80, 0, 0, 0, 0, 0;
+     catat status tiap kasus dan penyimpangan satu per satu. Jangan
+     menyimpulkan pass hanya dari badge warna.
 6. **Perbaikan test case dan regrade (FR-17):** melalui UI, ubah `uat_03`
    sementara agar expected output menjadi `1`. Regrade submission terkait dan
    pastikan hasil kasus tersebut gagal serta skor berubah menjadi 80/100.
@@ -105,11 +132,18 @@ sebagai intervensi dan jangan menargetkan hasil 0 dengan menghilangkan catatan.
 ## Hasil run
 
 - Status: **BELUM DIVERIFIKASI**; belum ada bukti E2E pada database UAT terisolasi.
-- Alasan: `AUTOGRADER_TEST_DATABASE_URL` pada lingkungan kerja menunjuk ke
-  `autograder_dev`; role database yang tersedia tidak memiliki hak membuat
-  database, dan kredensial server UAT khusus belum tersedia. Database tersebut
-  tidak digunakan untuk pengujian ini.
+- Pemeriksaan terakhir (2026-11-12): pembuatan database khusus
+  `uat_run_20261112` ditolak karena role yang tersedia tidak memiliki hak
+  `CREATEDB`. `sudo -n` tidak tersedia dan autentikasi peer sebagai `postgres`
+  gagal. Operator database perlu memprovisikan database terisolasi dengan owner
+  yang sesuai role migrasi, atau menyediakan kredensial khusus untuk database
+  terisolasi itu.
+- Keselamatan: `autograder_dev` tidak digunakan untuk migrasi, seed, server,
+  atau UAT. Setelah operator menyediakan database, verifikasi
+  `SELECT current_database()` sebelum menjalankan migrasi atau server.
 - Yang belum diverifikasi: migrasi dan seed terisolasi, Course/enrollment,
-  assignment, lima test case, 10 submission, pembacaan kode, perbandingan skor,
-  regrade setelah perubahan test case, ekspor CSV, dan jumlah intervensi.
-- Pemilik run berikutnya: tim UAT setelah database terisolasi diprovisikan.
+  assignment, lima test case termasuk kerahasiaan laporan `uat_05`, 10 program
+  dan skor submission, pembacaan kode, perbandingan skor, regrade setelah
+  perubahan test case, ekspor CSV, dan jumlah intervensi.
+- Pemilik langkah berikutnya: operator database memprovisikan database
+  terisolasi; tim UAT menjalankan skenario setelah gerbang verifikasi lulus.

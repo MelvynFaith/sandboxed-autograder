@@ -15,10 +15,14 @@ mengakses halaman pengelolaan dosen.
 3. Gunakan tautan **Assignment & test case**. Buat assignment untuk Course
    tersebut, isikan deskripsi soal, deadline, batas akhir keterlambatan, serta
    keenam batas sumber daya yang valid. Tambahkan sedikitnya 5 test case dan
-   pastikan seluruhnya tampil setelah disimpan.
+   pastikan seluruhnya tampil setelah disimpan. Tandai satu kasus sebagai
+   tersembunyi.
 4. Masuk sebagai tiap mahasiswa melalui UI dan kirim satu berkas Python melalui
-   halaman **Daftar Assignment**. Jangan memakai curl, mengubah database, atau
-   membuka rute langsung.
+   halaman **Daftar Assignment**. Gunakan 10 program uji dengan hasil
+   bervariasi seperti yang ditentukan di [skenario lengkap](./skenario-uat.md).
+   Salah satu mahasiswa harus membuka laporannya dan memastikan kasus
+   tersembunyi hanya menampilkan status/skor, tanpa input atau expected output.
+   Jangan memakai curl, mengubah database, atau membuka rute langsung.
 5. Kembali sebagai dosen, buka **Rekap nilai & CSV**, tinjau setiap submission,
    lalu buka kode yang dikirim setiap mahasiswa. Cocokkan hasil otomatis dengan
    perhitungan manual untuk sedikitnya 10 submission.
@@ -30,7 +34,7 @@ mengakses halaman pengelolaan dosen.
 
 ## Kriteria bukti
 
-- Database harus baru dan terisolasi, misalnya `uat_run_20261025`; sebelum
+- Database harus baru dan terisolasi, misalnya `uat_run_YYYYMMDD`; sebelum
   server dimulai, koneksi harus diarahkan ke database itu dan diverifikasi
   dengan `SELECT current_database()`.
 - Catat jumlah intervensi terlarang secara terpisah: perubahan database manual,
