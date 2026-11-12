@@ -10,9 +10,12 @@ the same scripts and differ only in their `.env` file, database, and domain.
 
 **Status:** the AppArmor profile, the systemd unit, the install steps, a smoke test, a daily
 database backup, the expiry of old submission files and the Nginx site that serves the dashboard
-exist, and the backend runs on the campus server from these steps. The Nginx site has been written
-to plain HTTP only; HTTPS waits for a DNS name. Everything under [Not started](#not-started) does
-not exist.
+exist, and the backend runs on the campus server from these steps. The Nginx site is plain HTTP
+only; HTTPS waits for a DNS name. On 12 Nov 2026 it was installed on the campus server (Ubuntu's
+Nginx 1.24) from step 11, where the site answered as the checks of that step expect and the smoke
+test passed through it. The same day, from a phone on mobile data (outside the campus network, SRS
+risk R10), the login page and `/healthz` answered over HTTP. Everything under
+[Not started](#not-started) does not exist.
 
 ## Contents
 
