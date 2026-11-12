@@ -38,11 +38,14 @@ Ubuntu 24.04 (the campus server).
    sudo apt install build-essential libseccomp-dev git postgresql python3-venv
    ```
 2. **Service user.** `sudo useradd --system --no-create-home --shell /usr/sbin/nologin grader`
-3. **Go, for building only.** Any machine with Go 1.27 or newer can build the backend (step 9). To
-   build on the host without installing Go system-wide:
+3. **Go, for building only.** Any machine with Go 1.27.4 or newer can build the backend (step 9);
+   `scheduler/go.mod` names that release because earlier ones have two security issues in the
+   standard library that `govulncheck` reports for the backend (`net/http` and `crypto/x509`). To
+   build on the host
+   without installing Go system-wide:
 
    ```sh
-   curl -fsSLo /tmp/go.tgz https://go.dev/dl/go1.27.2.linux-amd64.tar.gz
+   curl -fsSLo /tmp/go.tgz https://go.dev/dl/go1.27.4.linux-amd64.tar.gz
    mkdir ~/go-sdk && tar -C ~/go-sdk --strip-components=1 -xzf /tmp/go.tgz && rm /tmp/go.tgz
    ```
 4. **Build and install `sandbox-exec`.** `make -C sandbox && sudo make -C sandbox install`. This
