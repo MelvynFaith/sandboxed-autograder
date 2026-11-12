@@ -140,8 +140,8 @@ database again held only the administrator.
 3. **The ASan/UBSan variant** was not run locally; CI covers it.
 4. **Scope of scenario 16**: the reader was the backend's own user. root can read anything on the
    host, which no process-level measure here prevents.
-5. **The syscall allowlist** itself was not audited syscall by syscall in this report; the suite
-   tests the denied calls it lists.
+5. **The syscall allowlist** was reviewed on 12 Nov (section "Audit of the syscall allowlist" at the
+   end); what stays reachable on purpose, and what could be narrowed, is listed there.
 
 ## How to repeat
 
@@ -156,3 +156,47 @@ real data, with the administrator of that database. `infra/qa/clean.sql` removes
 (`sudo -u postgres psql -d autograder -v ON_ERROR_STOP=1 -qX < infra/qa/clean.sql`; the redirect lets the `postgres` user read the file from a home directory it cannot enter); on the local
 database it removed 38 test users with their Courses, submissions and audit rows and left the 11 UAT
 users and their submission untouched.
+
+## Audit of the syscall allowlist (12 Nov 2026)
+
+Scope: the allowlist in `sandbox/src/filter.c`, build of `develop` at `eeaa8eb`, x86-64, kernel 6.18 on
+WSL2. Method: read the list, then, for 77 system calls that are not on it, run a one-line Python program
+in the real sandbox that issues the call and read the report.
+
+- All 77 were reported as `SECURITY_VIOLATION` with the number of the call. They cover io_uring, the
+  key-management calls, `open_by_handle_at`, `process_vm_*`, `kcmp`, `chroot`, `mknod`, `seccomp`,
+  `personality`, `capset` and the `set*uid` family, the clock and host-name setters, module loading,
+  `kexec`, the new mount API, Landlock, `pidfd_getfd`, SysV IPC, the memory-policy calls, inotify and
+  fanotify, and the networking calls, besides `ptrace`, `mount`, `unshare`, `bpf` and the others the suite
+  already had.
+- The other ABIs do not get around the filter. The x32 bit set on a call number, and the i386 table
+  through `int 0x80`, are killed by `SIGSYS` and reported as a violation with the number `-1`: libseccomp's
+  default action for a foreign ABI is to kill, which is what closes this classic way around a filter that
+  only checks the number. Not shown for other architectures.
+
+Added to the suite: `test_more_dangerous_syscalls` (24 of the 77, the ones with the most kernel surface or
+the most value for leaving the sandbox) and `test_other_syscall_abis_are_not_a_way_around_the_filter`. Mutation
+check: allowing `keyctl` and `io_uring_setup` in a copy of the filter made the first test fail on exactly those
+two calls, and setting the filter's action for a foreign ABI to allow made the second one fail. The suite passes
+66 of 66 on the normal build and on the ptrace fallback build.
+
+Reachable on purpose (allowlisted), and what it exposes:
+
+- AF_UNIX `socketpair` with `sendmsg`, `recvmsg`, `sendmmsg`, `recvmmsg` and `setsockopt`/`getsockopt` for any
+  option: asyncio's self-pipe needs them. This exposes the AF_UNIX code and the socket options; for example
+  `SO_ATTACH_FILTER` reaches the kernel's classic BPF validation (a malformed program was refused with `EINVAL`).
+- `splice`, `tee`, `sendfile`, `copy_file_range`: `shutil` uses them; they exercise the pipe and page-cache paths.
+- `memfd_create` with `execve`/`execveat`: an anonymous file can be executed, which bypasses the `noexec` flag of
+  the work directory. A program can already run native code through `ctypes` and executable mappings, so this adds
+  little.
+- `fcntl` with every command, `prctl` with 8 commands, `ioctl` with 7 requests.
+- `uname` and `sysinfo` report the host's kernel release and memory (the probe printed the WSL2 kernel release
+  and its page count), which lets a student fingerprint the kernel.
+
+Candidates to narrow, not changed here (each needs to be tried against the UAT programs and the standard-library
+features students use): `memfd_create`, `setsockopt`/`getsockopt` limited to `SOL_SOCKET` options other than filter
+attachment, and `uname`/`sysinfo`. I did not measure which of the allowlisted calls CPython actually uses for typical
+programs; `strace -f -c` is the method named in `filter.c`.
+
+Not covered: other architectures (the numbers in the tests are x86-64), kernels with different system calls, and
+vulnerabilities in the allowed calls themselves.
