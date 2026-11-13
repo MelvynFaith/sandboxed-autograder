@@ -138,11 +138,6 @@ function AssignmentsPage() {
 
     setSubmittingId(assignment.id)
     setMessages((current) => ({ ...current, [assignment.id]: null }))
-    setSubmissions((current) => {
-      const remaining = { ...current }
-      delete remaining[assignment.id]
-      return remaining
-    })
 
     try {
       const submission = await submitSubmission(assignment.id, file)

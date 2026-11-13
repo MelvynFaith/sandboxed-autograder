@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-function FormFeedback({ error, success }) {
+function FormFeedback({ error, success, announcementKey }) {
   const noticeRef = useRef(null)
   const message = error || success
   const isError = Boolean(error)
@@ -13,7 +13,7 @@ function FormFeedback({ error, success }) {
 
     notice.scrollIntoView?.({ block: 'nearest' })
     notice.focus()
-  }, [isError, message])
+  }, [announcementKey, isError, message])
 
   if (!message) return null
 

@@ -127,8 +127,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - Dashboard (`frontend/`): clarify that `EXACT` test-case matching includes trailing newlines,
-  focus and scroll to lecturer form feedback, clear assignment fields after creation while retaining
-  the selected assignment's limits for editing, hide pagination controls for single-page student
-  lists, clear stale grading status before a new upload attempt, refresh recap rows during regrading,
-  and explain visible failure verdicts and empty output without revealing hidden-case details
-  (issues #129–#134).
+  focus and re-announce repeated lecturer form feedback, clear assignment fields after creation while
+  retaining the selected assignment's limits for editing, hide pagination controls for single-page
+  student lists, preserve live grading status if a later upload is rejected, refresh recap rows during
+  regrading, and explain visible failure verdicts and empty output without revealing hidden-case
+  details (issues #129–#134).

@@ -67,8 +67,17 @@ function CoursesPage() {
   })
   const [enrollmentEmail, setEnrollmentEmail] = useState('')
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const [error, setErrorState] = useState('')
+  const [success, setSuccessState] = useState('')
+  const [feedbackRevision, setFeedbackRevision] = useState(0)
+  function setError(message) {
+    setErrorState(message)
+    if (message) setFeedbackRevision((revision) => revision + 1)
+  }
+  function setSuccess(message) {
+    setSuccessState(message)
+    if (message) setFeedbackRevision((revision) => revision + 1)
+  }
   const activeCourseId = String(
     coursesPage.items.find((course) => String(course.id) === requestedCourseId)?.id ??
     coursesPage.items.find((course) => String(course.id) === selectedCourseId)?.id ??
@@ -253,7 +262,11 @@ function CoursesPage() {
           <li className="text-slate-600">3. Rekap nilai &amp; CSV</li>
         </ol>
       </nav>
-      <FormFeedback error={error} success={success} />
+      <FormFeedback
+        announcementKey={feedbackRevision}
+        error={error}
+        success={success}
+      />
 
       <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <h2 className="text-lg font-semibold">Buat Course baru</h2>

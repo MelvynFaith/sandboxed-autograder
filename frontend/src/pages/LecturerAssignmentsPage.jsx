@@ -83,8 +83,17 @@ function LecturerAssignmentsPage() {
   const [testCaseForm, setTestCaseForm] = useState(emptyTestCase)
   const [isEditingAssignment, setIsEditingAssignment] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const [error, setErrorState] = useState('')
+  const [success, setSuccessState] = useState('')
+  const [feedbackRevision, setFeedbackRevision] = useState(0)
+  function setError(message) {
+    setErrorState(message)
+    if (message) setFeedbackRevision((revision) => revision + 1)
+  }
+  function setSuccess(message) {
+    setSuccessState(message)
+    if (message) setFeedbackRevision((revision) => revision + 1)
+  }
   const [pendingDelete, setPendingDelete] = useState(null)
   const [yamlFile, setYamlFile] = useState(null)
   const [isImportingYaml, setIsImportingYaml] = useState(false)
@@ -415,7 +424,11 @@ function LecturerAssignmentsPage() {
           <li className="text-slate-600">3. Rekap nilai &amp; CSV (pilih assignment)</li>
         </ol>
       </nav>
-      <FormFeedback error={error} success={success} />
+      <FormFeedback
+        announcementKey={feedbackRevision}
+        error={error}
+        success={success}
+      />
       {isLoading ? (
         <p className="text-slate-600">Memuat Course...</p>
       ) : courses.length === 0 ? (

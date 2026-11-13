@@ -295,6 +295,9 @@ describe('LecturerAssignmentsPage', () => {
       'Ukuran tmpfs ditambah 16 MB tidak boleh melebihi batas memori.',
     )
     expect(screen.getByRole('alert')).toHaveFocus()
+    screen.getByRole('button', { name: 'Buat assignment' }).focus()
+    fireEvent.submit(screen.getByRole('heading', { name: 'Buat assignment' }).closest('form'))
+    expect(screen.getByRole('alert')).toHaveFocus()
     expect(createLecturerAssignment).not.toHaveBeenCalled()
   })
 

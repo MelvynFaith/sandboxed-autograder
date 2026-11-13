@@ -84,7 +84,7 @@ describe('student assignment submissions', () => {
     expect(await screen.findByTestId('submission-status-badge')).toHaveTextContent('Antre')
   })
 
-  it('hides single-page pagination and clears an earlier status when a new upload is rate limited', async () => {
+  it('hides single-page pagination and preserves an earlier status when a new upload is rate limited', async () => {
     setUser('mahasiswa')
     vi.stubEnv('VITE_USE_MOCK', 'false')
     const fetchMock = vi.fn()
@@ -134,7 +134,7 @@ describe('student assignment submissions', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Tunggu setidaknya 14 detik')
     expect(screen.queryByRole('region', { name: 'Status submission submission-1' }))
-      .not.toBeInTheDocument()
+      .toBeInTheDocument()
   })
 
   it('rejects files that do not have a Python extension', async () => {
