@@ -12,6 +12,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Repository scaffolding: README, MIT license, contribution guide, security policy, and component
   directories.
 - GitHub Actions CI. Each component's jobs activate once that component contains code.
+- Dependabot for the Go modules, the Python and the npm dependencies (`.github/dependabot.yml`): a weekly
+  pull request for the minor and patch updates of each ecosystem, one for each major update, and a
+  7-day wait before a new version is proposed; `CONTRIBUTING.md` says how to review them.
 - Issue templates for bug reports and user stories, and a pull request template.
 - Weekly progress and sprint review templates under `docs/`.
 - Sandbox Executor (`sandbox/`): `sandbox-exec` runs one command in user, PID, mount, network, UTS
