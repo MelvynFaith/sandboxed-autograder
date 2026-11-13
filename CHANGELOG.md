@@ -21,6 +21,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Sandbox Executor (`sandbox/`): a `ptrace` fallback for kernels without seccomp user notification (SRS
   risk R12). The filter then uses `SCMP_ACT_TRACE` and the supervisor traces the program; results are
   unchanged. `make trace` runs the whole suite on it. `clone()` with `CLONE_UNTRACED` is now denied.
+- Syscall census (`sandbox/tests/syscall_census.py`, `docs/qa/syscall-census.md`): runs a corpus of 31
+  typical Python programs under `strace -f` and in the sandbox and compares the calls they use with the
+  seccomp allowlist, including the arguments of `clone`, `ioctl`, `prctl` and `socketpair`. The allowlist is
+  unchanged.
 - Sandbox host setup (`infra/`): an AppArmor profile that lets `sandbox-exec` create user
   namespaces on Ubuntu 24.04, a systemd unit with cgroup delegation, and install and verification
   steps.
