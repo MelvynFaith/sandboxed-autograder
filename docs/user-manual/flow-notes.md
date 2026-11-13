@@ -1,9 +1,19 @@
 # User flow notes: student and lecturer
 
 These notes describe the visible frontend workflow for a quick-start user
-manual. The screenshots supplied with this task were captured from the local
-demo frontend with sample accounts and data; they are illustrative only and
-are not evidence of a backend UAT.
+manual. The screenshots below were captured from the local demo frontend at
+develop commit `5d518de` with sample accounts and data. They are illustrative
+only and are not evidence of a backend UAT.
+
+## Screenshots
+
+Student assignment list:
+
+![Student assignment list in demo mode](./screenshots/student-assignments.png)
+
+Lecturer recap and CSV controls:
+
+![Lecturer recap in demo mode](./screenshots/lecturer-recap.png)
 
 ## Student
 
