@@ -25,7 +25,8 @@ risk R10), the login page and `/healthz` answered over HTTP. Everything under
 | `systemd/autograder.service` | Backend unit; delegates a cgroup subtree to the service user | R11, Bagian 13.2 |
 | `nginx/autograder.conf` | Nginx site: serves the dashboard build, proxies `/api/`, `/ws/` and `/healthz` to the backend | Bagian 13.2 step 6, NFR-09 |
 | `smoke-test.sh` | Three uploads through the installed pipeline, checked against their scores | Bagian 13.2, NFR-09, FR-04, FR-14 |
-| `db-backup.sh`, `systemd/autograder-backup.{service,timer}` | Daily `pg_dump` with 14-day retention | Bagian 13.4, NFR-13 |
+| `db-backup.sh`, `systemd/autograder-backup.{service,timer}` | Daily `pg_dump` with 14-day retention, and an export of the newest dumps for the off-server copy | Bagian 13.4, NFR-13 |
+| `offsite-pull.sh` | Run on your own computer: pulls the exported dumps from the server over ssh | Bagian 13.4, NFR-13 |
 | `systemd/autograder-expire.{service,timer}` | Daily deletion of submission files a year after their assignment closed | Bagian 13.4, NFR-13 |
 | `loadtest/` | Load tests: seeded student accounts and k6 scripts, [their own README](loadtest/README.md) | Bagian 11.4, NFR-01a, NFR-01b, FR-13, FR-14 |
 
@@ -332,8 +333,8 @@ bytes)`; `list-timers` shows the next run.
 - Each run deletes the dumps whose UTC date is 14 or more days before its own, so the daily timer
   keeps 14. Files in the directory that the script did not name are left alone.
 - Before an upgrade that brings a migration (SRS Bagian 13.3), take one by hand with `sudo systemctl
-  start autograder-backup`. It is deleted with the daily ones after 14 days; copy it elsewhere to keep
-  it until the release is stable.
+  start autograder-backup`. It is deleted with the daily ones after 14 days; keep it until the
+  release is stable by pulling it off the server ([Off-server copy](#off-server-copy)).
 - A dump holds the `autograder` database only. The `grader` role is outside it (recreate it as in
   step 6), and so are the stored submission files under `CODE_DIR`.
 
@@ -366,6 +367,62 @@ sudo systemctl start autograder
 
 `dropdb` deletes everything written since that dump. If any of it might still be needed, take a backup
 first, or restore into a database of another name and compare.
+
+### Off-server copy
+
+The dumps above sit on the same disk as the database, so one failed disk loses both. The backup unit
+can also export its newest dumps to a second directory, and `infra/offsite-pull.sh`, run on your own
+computer, copies them from there over ssh. The server holds no credentials for your computer, so a
+damaged or compromised server cannot reach the copies it has already handed over. On 12 Nov 2026 each
+dump on the campus server was about 40 KB while the database reported 8.6 MB on disk, so a year of
+daily dumps is about 15 MB at that size, and more once the UAT and load-test data are in.
+
+On the server, once. The first two lines make a group for the people who may read the dumps and add
+your login to it; the group takes effect at your next login, so log out and in again. The export
+directory is setgid, so every copy gets that group, and the script gives it mode `0640`:
+
+```sh
+sudo groupadd --system autograder-backup
+sudo usermod -aG autograder-backup "$USER"
+sudo install -d -m 2750 -o postgres -g autograder-backup /var/backups/autograder-export
+sudo install -m 0755 infra/db-backup.sh /usr/local/sbin/autograder-backup
+sudo install -m 0644 infra/systemd/autograder-backup.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start autograder-backup && sudo journalctl -u autograder-backup -n 4 -o cat --no-pager
+sudo ls -l /var/backups/autograder-export
+```
+
+The journal shows `exported: ...` and the listing a `-rw-r-----` file of group `autograder-backup`. The
+unit exports only while that directory exists, so removing it turns the export off, and the export
+keeps the newest three dumps (`BACKUP_EXPORT_KEEP`), not the 14 of the dump directory. If the export
+itself fails, the unit is marked failed (`systemctl --failed`), but only after the dump is written
+and the old dumps are deleted.
+
+On your computer, in Git Bash, WSL or Linux, from a clone of this repository:
+
+```sh
+infra/offsite-pull.sh USER@HOST
+```
+
+It logs in once, so it may ask for the password. It streams the exported dumps as one tar archive,
+checks that each is a `pg_dump` archive, and adds those it does not have to `private/backups/`, which
+git ignores. It never overwrites or deletes a local file. It exits with an error if a file with the
+same name has other content, if a file is not a dump, if the server exported nothing, or if the newest
+dump is over 36 hours old, which means the server's backup timer stopped. `OFFSITE_DEST` chooses
+another folder; the script refuses a folder inside a repository that does not ignore it, because a
+dump holds accounts, password hashes and the hidden test cases (FR-03). The address of the server is
+not kept in the repository.
+
+- Run it at least every two days: the server exports the newest three dumps, which are three days
+  when only the daily timer runs (a backup taken by hand pushes an older one out sooner). Dumps the
+  server has already dropped are not recoverable from the export, only from the 14-day directory.
+- A login in group `autograder-backup` can read every dump. The account that pulls is the
+  administrator's, who has `sudo` and could read them anyway, so the group adds no access.
+- Only the database is copied. The stored submission files under `CODE_DIR` and the `grader` role are
+  not (see above), and a regrade (FR-17) needs the files.
+- The pull checks only that a file is a `pg_dump` archive. Restore one into a scratch database as in
+  "Checking a backup" (on the server, or on a computer with PostgreSQL) once after the first pull; a
+  copy that has never been restored does not count (SRS Bagian 13.4).
 
 ## Submission file expiry
 
