@@ -273,6 +273,7 @@ describe('Course management and student assignment routes', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Pengguna dengan email tersebut tidak ditemukan.',
     )
+    expect(screen.getByRole('alert')).toHaveFocus()
   })
 
   it('uses has_next to navigate to the next Course page', async () => {

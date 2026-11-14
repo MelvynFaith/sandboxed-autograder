@@ -12,6 +12,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Repository scaffolding: README, MIT license, contribution guide, security policy, and component
   directories.
 - GitHub Actions CI. Each component's jobs activate once that component contains code.
+- Dependabot for the Go modules, the Python and the npm dependencies (`.github/dependabot.yml`): a weekly
+  pull request for the minor and patch updates of each ecosystem, one for each major update, and a
+  7-day wait before a new version is proposed; `CONTRIBUTING.md` says how to review them.
 - Issue templates for bug reports and user stories, and a pull request template.
 - Weekly progress and sprint review templates under `docs/`.
 - Sandbox Executor (`sandbox/`): `sandbox-exec` runs one command in user, PID, mount, network, UTS
@@ -21,6 +24,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Sandbox Executor (`sandbox/`): a `ptrace` fallback for kernels without seccomp user notification (SRS
   risk R12). The filter then uses `SCMP_ACT_TRACE` and the supervisor traces the program; results are
   unchanged. `make trace` runs the whole suite on it. `clone()` with `CLONE_UNTRACED` is now denied.
+- Syscall census (`sandbox/tests/syscall_census.py`, `docs/qa/syscall-census.md`): runs a corpus of 31
+  typical Python programs under `strace -f` and in the sandbox and compares the calls they use with the
+  seccomp allowlist, including the arguments of `clone`, `ioctl`, `prctl` and `socketpair`. The allowlist is
+  unchanged.
 - Sandbox host setup (`infra/`): an AppArmor profile that lets `sandbox-exec` create user
   namespaces on Ubuntu 24.04, a systemd unit with cgroup delegation, and install and verification
   steps.
@@ -119,7 +126,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `infra/README.md` (SRS 13.2). The smoke test now uploads its programs through
   `POST /api/v1/submissions`, checks that a second upload is refused with `429`, and can run through
   Nginx with `API=http://127.0.0.1`.
+- Isolated database for the UAT (`infra/uat-db.sh`, SRS Bagian 11.5): `start` creates a new `uat_`
+  database and a directory for its submission files, points the backend unit at them through a
+  systemd drop-in, and proves from PostgreSQL's list of connections that the backend uses that
+  database only, or goes back to production; `seed` creates the UAT administrator; `finish` saves a
+  dump and points the backend at production again; `drop` deletes a finished UAT database.
 - Coverage gates in CI (NFR-07): the scheduler job counts statements with `-coverpkg=./...` and fails
   below 70 %, the grader job runs `pytest --cov` and fails below 90 % (statements and branches), and the
   frontend job runs the tests with `--coverage` against the thresholds in `vite.config.js` (80 %
   statements and lines, 75 % branches, 85 % functions). Measured today: 77 %, 98 % and 86 %.
+- Off-server copy of the database backup (`infra/`, NFR-13): the backup unit exports its newest three
+  dumps to a group-readable directory when it exists, and `infra/offsite-pull.sh`, run on the
+  administrator's computer, pulls them over ssh into a git-ignored folder, checks them, and warns
+  when the newest dump is over 36 hours old.
+
+### Fixed
+
+- Dashboard (`frontend/`): clarify that `EXACT` test-case matching includes trailing newlines,
+  focus and re-announce repeated lecturer form feedback, clear assignment fields after creation while
+  retaining the selected assignment's limits for editing, hide pagination controls for single-page
+  student lists, preserve live grading status if a later upload is rejected, refresh recap rows during
+  regrading, and explain visible failure verdicts and empty output without revealing hidden-case
+  details (issues #129–#134).

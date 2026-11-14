@@ -256,31 +256,33 @@ function AssignmentsPage() {
               ) : (
                 <ul className="mt-4 space-y-4">{group.items.map(renderAssignment)}</ul>
               )}
-              <nav
-                aria-label={`Halaman assignment ${group.course.name}`}
-                className="mt-4 flex items-center justify-between gap-3"
-              >
-                <button
-                  className="rounded border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
-                  disabled={group.page <= 1}
-                  onClick={() => changeAssignmentPage(group.course.id, group.page - 1)}
-                  type="button"
+              {(group.page > 1 || group.has_next) && (
+                <nav
+                  aria-label={`Halaman assignment ${group.course.name}`}
+                  className="mt-4 flex items-center justify-between gap-3"
                 >
-                  Sebelumnya
-                </button>
-                <span className="text-sm text-slate-600">Halaman {group.page}</span>
-                <button
-                  className="rounded border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
-                  disabled={!group.has_next}
-                  onClick={() => changeAssignmentPage(group.course.id, group.page + 1)}
-                  type="button"
-                >
-                  Berikutnya
-                </button>
-              </nav>
+                  <button
+                    className="rounded border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
+                    disabled={group.page <= 1}
+                    onClick={() => changeAssignmentPage(group.course.id, group.page - 1)}
+                    type="button"
+                  >
+                    Sebelumnya
+                  </button>
+                  <span className="text-sm text-slate-600">Halaman {group.page}</span>
+                  <button
+                    className="rounded border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
+                    disabled={!group.has_next}
+                    onClick={() => changeAssignmentPage(group.course.id, group.page + 1)}
+                    type="button"
+                  >
+                    Berikutnya
+                  </button>
+                </nav>
+              )}
             </section>
           ))}
-          {courseGroups.length > 0 && (
+          {courseGroups.length > 0 && (coursePage.page > 1 || coursePage.has_next) && (
             <nav aria-label="Halaman daftar Course" className="mt-8 flex items-center justify-between gap-3">
               <button
                 className="rounded border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"

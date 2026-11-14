@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App.jsx'
 import {
@@ -17,6 +17,9 @@ import {
   importTestCasesYaml,
   updateTestCase,
 } from '../api/testcases.js'
+
+const deadlineAt = new Date('2026-10-12T23:59').toISOString()
+const lateUntilAt = new Date('2026-10-13T23:59').toISOString()
 
 vi.mock('../api/lecturerAssignments.js', () => ({
   createLecturerAssignment: vi.fn(),
@@ -88,8 +91,8 @@ beforeEach(() => {
     courseId: 'course-1',
     title: 'Latihan Algoritma',
     description: 'Latihan dasar',
-    deadlineAt: '2026-10-12T16:59:00.000Z',
-    lateUntilAt: '2026-10-13T16:59:00.000Z',
+    deadlineAt,
+    lateUntilAt,
   })
   createTestCase.mockResolvedValue({ id: 'testcase-1', assignmentId: 'assignment-1' })
   exportTestCasesYaml.mockResolvedValue({
@@ -112,8 +115,8 @@ beforeEach(() => {
     courseId: 'course-1',
     title: 'Latihan Algoritma',
     description: 'Latihan dasar',
-    deadlineAt: '2026-10-12T16:59:00.000Z',
-    lateUntilAt: '2026-10-13T16:59:00.000Z',
+    deadlineAt,
+    lateUntilAt,
   })
 })
 
@@ -137,8 +140,8 @@ describe('LecturerAssignmentsPage', () => {
       {
         title: 'Latihan Algoritma',
         description: 'Latihan dasar',
-        deadline_at: new Date('2026-10-12T23:59').toISOString(),
-        late_until_at: new Date('2026-10-13T23:59').toISOString(),
+        deadline_at: deadlineAt,
+        late_until_at: lateUntilAt,
       },
       {
         cpu_time_ms: 1000,
@@ -150,6 +153,28 @@ describe('LecturerAssignmentsPage', () => {
       },
     )
     expect(updateResourceLimit).not.toHaveBeenCalled()
+    expect(await screen.findByRole('status')).toHaveFocus()
+    expect(screen.getByLabelText('Judul')).toHaveValue('')
+    expect(screen.getByLabelText('Deskripsi')).toHaveValue('')
+    expect(screen.getByLabelText('Deadline')).toHaveValue('')
+    expect(screen.getByLabelText('Batas akhir keterlambatan')).toHaveValue('')
+    for (const label of [
+      'Batas waktu CPU (ms)',
+      'Batas memori (MB)',
+      'Jumlah proses maksimum',
+      'Waktu maksimum (detik)',
+      'Output maksimum (byte)',
+      'Ukuran tmpfs (MB)',
+    ]) {
+      expect(screen.getByLabelText(label)).toHaveValue(null)
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ubah assignment terpilih' }))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Ubah assignment' })).toBeInTheDocument()
+      expect(screen.getByLabelText('Judul')).toHaveValue('Latihan Algoritma')
+      expect(screen.getByLabelText('Ukuran tmpfs (MB)')).toHaveValue(32)
+    })
   }, 15_000)
 
   it('rejects non-positive resource limits', async () => {
@@ -243,8 +268,8 @@ describe('LecturerAssignmentsPage', () => {
     expect(updateLecturerAssignment).toHaveBeenLastCalledWith('assignment-1', {
       title: 'Latihan Algoritma',
       description: 'Latihan dasar',
-      deadline_at: new Date('2026-10-12T23:59').toISOString(),
-      late_until_at: new Date('2026-10-13T23:59').toISOString(),
+      deadline_at: deadlineAt,
+      late_until_at: lateUntilAt,
     })
     expect(updateResourceLimit).toHaveBeenCalledTimes(2)
     expect(updateResourceLimit).toHaveBeenLastCalledWith('assignment-1', {
@@ -269,6 +294,10 @@ describe('LecturerAssignmentsPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Ukuran tmpfs ditambah 16 MB tidak boleh melebihi batas memori.',
     )
+    expect(screen.getByRole('alert')).toHaveFocus()
+    screen.getByRole('button', { name: 'Buat assignment' }).focus()
+    fireEvent.submit(screen.getByRole('heading', { name: 'Buat assignment' }).closest('form'))
+    expect(screen.getByRole('alert')).toHaveFocus()
     expect(createLecturerAssignment).not.toHaveBeenCalled()
   })
 
@@ -344,6 +373,10 @@ describe('LecturerAssignmentsPage', () => {
     await fillAssignmentForm()
     fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
     await screen.findByRole('heading', { name: 'Tambah test case' })
+    expect(screen.getByLabelText('Mode pencocokan output')).toHaveValue('EXACT')
+    expect(screen.getByText(/EXACT membandingkan seluruh keluaran, termasuk spasi dan baris baru/))
+      .toBeInTheDocument()
+
     fireEvent.change(screen.getByLabelText('Input'), { target: { value: '1' } })
     fireEvent.change(screen.getByLabelText('Keluaran yang diharapkan'), {
       target: { value: '1' },
@@ -380,6 +413,7 @@ describe('LecturerAssignmentsPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'ID eksternal test case sudah digunakan pada assignment ini.',
     )
+    expect(screen.getByRole('alert')).toHaveFocus()
   })
 
   it('updates and deletes a test case with confirmation', async () => {

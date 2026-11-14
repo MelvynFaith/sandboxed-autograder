@@ -8,6 +8,15 @@ function resultTitle(result, index) {
   return `Test case ${result.externalId ?? result.testCaseId}`
 }
 
+const verdictExplanations = {
+  FAILED: 'Keluaran program tidak sesuai dengan yang diharapkan.',
+  TIMEOUT: 'Program melewati batas waktu eksekusi.',
+  MEMORY_LIMIT_EXCEEDED: 'Program melebihi batas penggunaan memori.',
+  RUNTIME_ERROR: 'Program mengalami kesalahan saat dijalankan.',
+  SYNTAX_ERROR: 'Program memiliki kesalahan sintaks.',
+  SECURITY_VIOLATION: 'Program melakukan operasi yang tidak diizinkan oleh sandbox.',
+}
+
 // A hidden result shows only status, score, time and memory: the API omits the rest for students
 // and the adapter drops it for everyone (FR-03).
 function SubmissionReport({ report }) {
@@ -49,20 +58,18 @@ function SubmissionReport({ report }) {
               </dl>
               {!result.hidden && (
                 <div className="mt-3 space-y-2 text-sm">
-                  {result.errorMessage && (
+                  {(result.errorMessage || verdictExplanations[result.verdict]) && (
                     <p className="text-red-800">
                       <span className="font-medium">Pesan error: </span>
-                      {result.errorMessage}
+                      {result.errorMessage || verdictExplanations[result.verdict]}
                     </p>
                   )}
-                  {result.actualOutput !== null && (
-                    <div>
-                      <h5 className="font-medium">Output aktual</h5>
-                      <pre className="mt-1 overflow-x-auto rounded bg-white p-3 text-slate-800">
-                        {result.actualOutput}
-                      </pre>
-                    </div>
-                  )}
+                  <div>
+                    <h5 className="font-medium">Output aktual</h5>
+                    <pre className="mt-1 overflow-x-auto rounded bg-white p-3 text-slate-800">
+                      {(result.actualOutput ?? '') === '' ? '(kosong)' : result.actualOutput}
+                    </pre>
+                  </div>
                 </div>
               )}
             </li>
