@@ -195,8 +195,9 @@ Reachable on purpose (allowlisted), and what it exposes:
 
 Candidates to narrow, not changed here (each needs to be tried against the UAT programs and the standard-library
 features students use): `memfd_create`, `setsockopt`/`getsockopt` limited to `SOL_SOCKET` options other than filter
-attachment, and `uname`/`sysinfo`. I did not measure which of the allowlisted calls CPython actually uses for typical
-programs; `strace -f -c` is the method named in `filter.c`.
+attachment, and `uname`/`sysinfo`. The calls CPython actually uses for typical programs were measured on 13 Nov: see the
+[syscall census](syscall-census.md), which found `memfd_create`, `setsockopt` and `sysinfo` unused by its 31 programs
+and `uname` used by `platform` and `os.uname()`.
 
 Not covered: other architectures (the numbers in the tests are x86-64), kernels with different system calls, and
 vulnerabilities in the allowed calls themselves.
