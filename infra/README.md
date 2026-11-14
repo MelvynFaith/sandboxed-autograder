@@ -28,6 +28,7 @@ risk R10), the login page and `/healthz` answered over HTTP. Everything under
 | `db-backup.sh`, `systemd/autograder-backup.{service,timer}` | Daily `pg_dump` with 14-day retention, and an export of the newest dumps for the off-server copy | Bagian 13.4, NFR-13 |
 | `offsite-pull.sh` | Run on your own computer: pulls the exported dumps from the server over ssh | Bagian 13.4, NFR-13 |
 | `systemd/autograder-expire.{service,timer}` | Daily deletion of submission files a year after their assignment closed | Bagian 13.4, NFR-13 |
+| `uat-db.sh` | Run on the server: an isolated database for the UAT, with the backend pointed at it and back | Bagian 11.5, R6 |
 | `loadtest/` | Load tests: seeded student accounts and k6 scripts, [their own README](loadtest/README.md) | Bagian 11.4, NFR-01a, NFR-01b, FR-13, FR-14 |
 
 ## Host setup
@@ -448,6 +449,60 @@ NFR-13, run the command with the same environment and `--dry-run`:
 sudo systemd-run --wait --pipe --collect -p User=grader -p EnvironmentFile=/etc/autograder/autograder.env \
     /usr/local/bin/autograder expire-code --dry-run
 ```
+
+## UAT database
+
+The UAT of SRS Bagian 11.5 (`docs/uat/skenario-uat.md`) must run on a new database of its own, never
+on the production one: its gate is a database such as `uat_run_YYYYMMDD`, selected before the server
+starts and confirmed with `SELECT current_database()`. `uat-db.sh` does this on the campus server
+without a second backend or another open port. It creates the database
+and a directory for the UAT's submission files, adds a systemd drop-in that gives the backend unit one
+more `EnvironmentFile` with the new `DATABASE_URL` and `CODE_DIR` (a later file overrides an earlier
+one; the JWT secret and the rest stay), restarts the backend, and then checks from PostgreSQL's own
+list of connections that the backend is connected to the UAT database and to no other. If the backend
+does not answer `/healthz` or is connected elsewhere, it removes the drop-in, restarts the backend on
+production again and fails. The production database is never written to.
+
+On the server, from a checkout, with the platform idle:
+
+```sh
+sudo infra/uat-db.sh start
+ADMIN_NAME='Full Name'; ADMIN_EMAIL='lecturer@example.ac.id'
+IFS= read -rsp 'UAT administrator password: ' ADMIN_PASSWORD && echo && export ADMIN_PASSWORD
+sudo --preserve-env=ADMIN_PASSWORD infra/uat-db.sh seed "$ADMIN_NAME" "$ADMIN_EMAIL"
+unset ADMIN_PASSWORD
+```
+
+`start [NAME]` takes the name `uat_run_` and the date in WIB unless you give one (`uat_` and up to 40
+of `a-z`, `0-9`, `_`); it prints the database, the schema version, the databases the backend is
+connected to and the production user count, which is what the UAT report records (the database
+name and this check, no credentials). `seed` runs the official `seed-admin` on the UAT database and
+logs in to prove the password; it is the account that appoints the lecturer for the run, as in step
+10. Give it a password of its own, not the handover one. Then run the scenario in the browser.
+`status` shows at any time which database the backend uses, the user count of production and of
+each UAT database, and the dumps saved.
+
+```sh
+sudo infra/uat-db.sh finish          # dump the UAT database, point the backend at production again
+sudo infra/uat-db.sh drop uat_run_YYYYMMDD    # later, when the report no longer needs it
+```
+
+`finish` writes `/var/backups/autograder-uat/<name>-<UTC time>.dump` (`0700 postgres`), removes the
+drop-in, restarts the backend and checks that it is connected to production only, printing the
+production user count now and at the start. The UAT database and its files stay for the report. `drop`
+refuses while the UAT is on, while the database has open connections, and when no dump of it was
+saved; it deletes the database and `/var/lib/autograder/uat/<name>`, and the dump stays.
+
+- While the UAT is on, the dashboard and the API serve the UAT database only, so no production
+  account can log in, the administrator of the handover included. The restart at each end interrupts
+  a submission that is being graded; do both when nothing is.
+- The daily backup and the file expiry look at production only. The UAT database has no backup but the
+  dump that `finish` takes.
+- The administrator's password of the UAT database is not kept anywhere by the script; it exists only
+  in the shell that typed it, and `seed` keeps it out of the process list.
+- Tested with stubs for `systemctl`, `psql` and the rest (97 checks, 22 of 22 mutants of the script
+  caught), with its SQL against a real PostgreSQL, and with a user systemd manager for the order of
+  the two `EnvironmentFile` entries. It has not run on the campus server.
 
 ## Verifying the host
 
