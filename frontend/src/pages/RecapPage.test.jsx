@@ -155,6 +155,56 @@ describe('RecapPage', () => {
     await waitFor(() => expect(getAssignmentRecap).toHaveBeenCalledTimes(2))
   })
 
+  it('polls the recap until a regraded submission finishes', async () => {
+    setUser()
+    const queuedRecap = {
+      ...recap,
+      items: recap.items.map((row) => row.latestSubmission
+        ? {
+            ...row,
+            latestSubmission: {
+              ...row.latestSubmission,
+              status: 'QUEUED',
+              totalScore: null,
+              maxScore: null,
+            },
+          }
+        : row),
+    }
+    const completedRecap = {
+      ...recap,
+      items: recap.items.map((row) => row.latestSubmission
+        ? {
+            ...row,
+            latestSubmission: {
+              ...row.latestSubmission,
+              status: 'COMPLETED',
+              totalScore: 100,
+              maxScore: 100,
+              staleGrade: false,
+            },
+          }
+        : row),
+    }
+    getAssignmentRecap
+      .mockResolvedValueOnce(recap)
+      .mockResolvedValueOnce(queuedRecap)
+      .mockResolvedValueOnce(completedRecap)
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Nilai ulang Ayu Lestari' }))
+    await screen.findByRole('status')
+    await waitFor(() => expect(getAssignmentRecap).toHaveBeenCalledTimes(2))
+    await waitFor(
+      () => expect(getAssignmentRecap).toHaveBeenCalledTimes(3),
+      { interval: 50, timeout: 5000 },
+    )
+
+    const ayuRow = rowOf('Ayu Lestari')
+    expect(within(ayuRow).getByText('Selesai')).toBeInTheDocument()
+    expect(within(ayuRow).getByText('100 / 100')).toBeInTheDocument()
+  })
+
   it('shows the server message when a single regrade is refused', async () => {
     setUser()
     regradeSubmission.mockRejectedValue(new Error('Berkas kode sudah dihapus karena masa retensi.'))

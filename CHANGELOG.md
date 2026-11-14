@@ -139,3 +139,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   dumps to a group-readable directory when it exists, and `infra/offsite-pull.sh`, run on the
   administrator's computer, pulls them over ssh into a git-ignored folder, checks them, and warns
   when the newest dump is over 36 hours old.
+
+### Fixed
+
+- Dashboard (`frontend/`): clarify that `EXACT` test-case matching includes trailing newlines,
+  focus and re-announce repeated lecturer form feedback, clear assignment fields after creation while
+  retaining the selected assignment's limits for editing, hide pagination controls for single-page
+  student lists, preserve live grading status if a later upload is rejected, refresh recap rows during
+  regrading, and explain visible failure verdicts and empty output without revealing hidden-case
+  details (issues #129–#134).

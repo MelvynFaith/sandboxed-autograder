@@ -15,6 +15,7 @@ import {
 import FocusTrapDialog from '../components/FocusTrapDialog.jsx'
 
 const regradableStatuses = new Set(['COMPLETED', 'FAILED'])
+const POLL_INTERVAL_MS = 2000
 
 function RegradeAllConfirmation({ isBusy, onConfirm, onDismiss, returnFocusRef }) {
   const titleId = 'regrade-all-confirmation-title'
@@ -69,7 +70,13 @@ function RecapPage() {
   const [isConfirmingAll, setIsConfirmingAll] = useState(false)
   const [busyRegradeId, setBusyRegradeId] = useState(null)
   const [isRegradingAll, setIsRegradingAll] = useState(false)
+  const [regradePollingScope, setRegradePollingScope] = useState(null)
+  const [loadedKey, setLoadedKey] = useState(null)
   const regradeAllTrigger = useRef(null)
+  const awaitingRegradeRefresh = useRef(null)
+  const pollingScope = `${assignmentId}:${page}`
+  const isPollingRegrades = regradePollingScope === pollingScope
+  const loadKey = `${assignmentId}:${page}:${reloadKey}`
 
   useEffect(() => {
     let isCurrent = true
@@ -81,6 +88,7 @@ function RecapPage() {
         const result = await getAssignmentRecap(assignmentId, { page, pageSize: 50 })
         if (isCurrent) {
           setRecap(result)
+          setLoadedKey(loadKey)
         }
       } catch (error) {
         if (isCurrent) {
@@ -98,7 +106,24 @@ function RecapPage() {
     return () => {
       isCurrent = false
     }
-  }, [assignmentId, page, reloadKey])
+  }, [assignmentId, loadKey, page, reloadKey])
+
+  useEffect(() => {
+    if (!isPollingRegrades || loadedKey !== loadKey || !recap) return undefined
+
+    const hasPendingGrades = recap.items.some((row) =>
+      ['QUEUED', 'RUNNING'].includes(row.latestSubmission?.status),
+    )
+    const mustRefreshAfterRegrade = awaitingRegradeRefresh.current === pollingScope
+    if (!hasPendingGrades && !mustRefreshAfterRegrade) return undefined
+
+    if (mustRefreshAfterRegrade) awaitingRegradeRefresh.current = null
+    const timer = window.setTimeout(
+      () => setReloadKey((current) => current + 1),
+      POLL_INTERVAL_MS,
+    )
+    return () => window.clearTimeout(timer)
+  }, [isPollingRegrades, loadKey, loadedKey, pollingScope, recap])
 
   async function downloadCsv() {
     setIsDownloading(true)
@@ -118,7 +143,11 @@ function RecapPage() {
     setBusyRegradeId(submissionId)
     setNotice(null)
     try {
-      await regradeSubmission(submissionId)
+      const result = await regradeSubmission(submissionId)
+      if (['QUEUED', 'RUNNING'].includes(result.status)) {
+        setRegradePollingScope(pollingScope)
+        awaitingRegradeRefresh.current = pollingScope
+      }
       setNotice({
         type: 'success',
         text: `Submission ${row.name} dijadwalkan untuk dinilai ulang.`,
@@ -137,6 +166,10 @@ function RecapPage() {
     setNotice(null)
     try {
       const result = await regradeAssignment(assignmentId)
+      if (result.queued > 0) {
+        setRegradePollingScope(pollingScope)
+        awaitingRegradeRefresh.current = pollingScope
+      }
       setNotice({
         type: 'success',
         text: `${result.queued} submission dijadwalkan untuk dinilai ulang, ${result.skipped} dilewati.`,
