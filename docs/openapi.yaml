@@ -1921,10 +1921,10 @@ components:
           type: integer
         actual_output:
           type: string
-          description: Omitted for hidden cases when the viewer is not authorized to see their content.
+          description: Omitted for hidden cases when the viewer is not authorized to see their content. Empty once the retention job has deleted the submission's file (NFR-13).
         error_message:
           type: string
-          description: Omitted for hidden cases when the viewer is not authorized to see their content.
+          description: Omitted for hidden cases when the viewer is not authorized to see their content. Omitted once the retention job has deleted the submission's file (NFR-13).
         is_truncated:
           type: boolean
         exec_time_ms:
