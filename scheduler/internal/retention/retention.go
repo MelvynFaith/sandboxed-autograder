@@ -3,7 +3,8 @@
 // A submission's file is deleted once its assignment has been closed for the retention period,
 // closed meaning past late_until_at, the last moment a submission is accepted. The row stays: its
 // grade, results and audit entries are kept for the records, and submissions.code_deleted_at says
-// the file is gone. A submission that is QUEUED or RUNNING keeps its file, so a regrade in progress
+// the file is gone. What the program printed (results.actual_output) is cleared with the file; the
+// verdicts, scores and timings of the results stay. A submission that is QUEUED or RUNNING keeps its file, so a regrade in progress
 // is not broken.
 package retention
 
@@ -103,7 +104,14 @@ func expireBatch(ctx context.Context, pool *pgxpool.Pool, codeDir string, closed
 			}
 			gone = append(gone, s.ID)
 		}
-		_, err = tx.Exec(ctx, `UPDATE submissions SET code_deleted_at = now() WHERE id = ANY($1)`, gone)
+		if _, err = tx.Exec(ctx, `UPDATE submissions SET code_deleted_at = now() WHERE id = ANY($1)`, gone); err != nil {
+			return err
+		}
+		// What the program printed goes with the file: the SRS deletes "berkas hasil" too (NFR-13), and
+		// the output is the student's. The row, the verdict, the score and the timings stay. The same
+		// transaction, so a row is never marked with its output left behind.
+		_, err = tx.Exec(ctx, `UPDATE results SET actual_output = '', updated_at = now()
+			WHERE submission_id = ANY($1) AND actual_output <> ''`, gone)
 		return err
 	})
 	if err != nil {

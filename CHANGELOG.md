@@ -142,6 +142,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Submission file expiry (`scheduler/`): `autograder expire-code` now also clears `results.actual_output` of
+  the submissions whose file it deletes, in the same transaction, so what a student's program printed
+  does not outlive the file (NFR-13, "berkas hasil"); verdicts, scores and timings stay.
 - Dashboard (`frontend/`): clarify that `EXACT` test-case matching includes trailing newlines,
   focus and re-announce repeated lecturer form feedback, clear assignment fields after creation while
   retaining the selected assignment's limits for editing, hide pagination controls for single-page

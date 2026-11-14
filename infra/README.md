@@ -429,8 +429,8 @@ not kept in the repository.
 
 `autograder-expire.timer` runs `autograder expire-code` every day at 03:30 WIB as `grader`. It
 deletes the stored files of submissions whose assignment closed (`late_until_at`) more than a year
-ago and keeps their grades (SRS Bagian 13.4, NFR-13); `scheduler/README.md`, "Submission file
-expiry", has the rules. The command is part of the backend binary, so rebuild and install that first
+ago and keeps their grades (SRS Bagian 13.4, NFR-13), but clears what the programs printed
+(`results.actual_output`); `scheduler/README.md`, "Submission file expiry", has the rules. The command is part of the backend binary, so rebuild and install that first
 (step 9).
 
 ```sh

@@ -97,6 +97,25 @@ func (f *fixture) deleted(t *testing.T, id int64) bool {
 	return at != nil
 }
 
+// result stores a FAILED result of the submission for the test case, with the given output.
+func (f *fixture) result(t *testing.T, submission, testcase int64, output string) {
+	t.Helper()
+	f.id(t, `INSERT INTO results (submission_id, testcase_id, status, actual_output, exec_time_ms,
+		memory_kb, memory_source, score) VALUES ($1, $2, 'FAILED', $3, 5, 1024, 'CGROUP_PEAK', 80)
+		RETURNING id`, submission, testcase, output)
+}
+
+// output returns actual_output of the only result of submission id.
+func (f *fixture) output(t *testing.T, id int64) string {
+	t.Helper()
+	var out string
+	if err := f.pool.QueryRow(context.Background(),
+		`SELECT actual_output FROM results WHERE submission_id = $1`, id).Scan(&out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 func exists(t *testing.T, name string) bool {
 	t.Helper()
 	_, err := os.Stat(name)
@@ -118,9 +137,13 @@ func TestExpireDeletesOldFilesAndKeepsTheGrades(t *testing.T) {
 	missing := f.submission(t, f.old, "COMPLETED", "g.py", false)
 	tc := f.id(t, `INSERT INTO test_cases (assignment_id, external_id, input, expected_output, weight,
 		match_mode) VALUES ($1, 'tc_01', '', '', 100, 'EXACT') RETURNING id`, f.old)
-	f.id(t, `INSERT INTO results (submission_id, testcase_id, status, actual_output, exec_time_ms,
-		memory_kb, memory_source, score) VALUES ($1, $2, 'FAILED', '41', 5, 1024, 'CGROUP_PEAK', 80)
-		RETURNING id`, completed, tc)
+	tcRecent := f.id(t, `INSERT INTO test_cases (assignment_id, external_id, input, expected_output, weight,
+		match_mode) VALUES ($1, 'tc_01', '', '', 100, 'EXACT') RETURNING id`, f.recent)
+	f.result(t, completed, tc, "41")
+	f.result(t, missing, tc, "42")
+	f.result(t, recent, tcRecent, "kept: closed less than a year ago")
+	f.result(t, queued, tc, "kept: still queued")
+	f.result(t, running, tc, "kept: still running")
 
 	if n, err := retention.Pending(ctx, f.pool, cutoff); err != nil || n != 4 {
 		t.Fatalf("Pending: %d, %v; want 4, nil", n, err)
@@ -155,14 +178,30 @@ func TestExpireDeletesOldFilesAndKeepsTheGrades(t *testing.T) {
 		}
 	}
 
-	var score int
-	var output string
-	if err := f.pool.QueryRow(ctx, `SELECT s.total_score, r.actual_output FROM submissions s
-		JOIN results r ON r.submission_id = s.id WHERE s.id = $1`, completed).Scan(&score, &output); err != nil {
+	// The grade and the result row stay; what the program printed goes with the file (NFR-13, "berkas
+	// hasil"), and only for the submissions whose file went.
+	var score, results int
+	if err := f.pool.QueryRow(ctx, `SELECT s.total_score, count(r.id) FROM submissions s
+		JOIN results r ON r.submission_id = s.id WHERE s.id = $1 GROUP BY s.id`, completed).Scan(&score, &results); err != nil {
 		t.Fatalf("grade after expiry: %v", err)
 	}
-	if score != 80 || output != "41" {
-		t.Fatalf("grade after expiry: score %d, output %q; want 80, \"41\"", score, output)
+	if score != 80 || results != 1 {
+		t.Fatalf("grade after expiry: score %d, %d result rows; want 80, 1", score, results)
+	}
+	for _, c := range []struct {
+		name string
+		id   int64
+		want string
+	}{
+		{"completed", completed, ""},
+		{"file already gone", missing, ""},
+		{"closed less than a year ago", recent, "kept: closed less than a year ago"},
+		{"queued", queued, "kept: still queued"},
+		{"running", running, "kept: still running"},
+	} {
+		if got := f.output(t, c.id); got != c.want {
+			t.Errorf("%s: actual_output %q, want %q", c.name, got, c.want)
+		}
 	}
 
 	if r, err := retention.Expire(ctx, f.pool, f.codeDir, cutoff); err != nil || r != (retention.Report{}) {
@@ -210,6 +249,10 @@ func TestExpireLeavesARowWhoseFileCannotBeDeleted(t *testing.T) {
 	f := newFixture(t)
 	stuck := f.submission(t, f.old, "COMPLETED", "locked/a.py", true)
 	later := f.submission(t, f.old, "COMPLETED", "b.py", true)
+	tc := f.id(t, `INSERT INTO test_cases (assignment_id, external_id, input, expected_output, weight,
+		match_mode) VALUES ($1, 'tc_01', '', '', 100, 'EXACT') RETURNING id`, f.old)
+	f.result(t, stuck, tc, "kept: the file is still there")
+	f.result(t, later, tc, "goes with the file")
 	locked := filepath.Join(f.codeDir, "locked")
 	if err := os.Chmod(locked, 0o500); err != nil {
 		t.Fatal(err)
@@ -228,6 +271,12 @@ func TestExpireLeavesARowWhoseFileCannotBeDeleted(t *testing.T) {
 	}
 	if !f.deleted(t, later) {
 		t.Fatal("a failure must not stop the submissions after it")
+	}
+	if got := f.output(t, stuck); got != "kept: the file is still there" {
+		t.Fatalf("output of the row whose file stays: %q; it must not be cleared before the file is gone", got)
+	}
+	if got := f.output(t, later); got != "" {
+		t.Fatalf("output of the row whose file went: %q, want it cleared", got)
 	}
 }
 
