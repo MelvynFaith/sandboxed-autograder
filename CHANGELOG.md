@@ -128,3 +128,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   below 70 %, the grader job runs `pytest --cov` and fails below 90 % (statements and branches), and the
   frontend job runs the tests with `--coverage` against the thresholds in `vite.config.js` (80 %
   statements and lines, 75 % branches, 85 % functions). Measured today: 77 %, 98 % and 86 %.
+- Off-server copy of the database backup (`infra/`, NFR-13): the backup unit exports its newest three
+  dumps to a group-readable directory when it exists, and `infra/offsite-pull.sh`, run on the
+  administrator's computer, pulls them over ssh into a git-ignored folder, checks them, and warns
+  when the newest dump is over 36 hours old.
