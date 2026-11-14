@@ -25,8 +25,10 @@ risk R10), the login page and `/healthz` answered over HTTP. Everything under
 | `systemd/autograder.service` | Backend unit; delegates a cgroup subtree to the service user | R11, Bagian 13.2 |
 | `nginx/autograder.conf` | Nginx site: serves the dashboard build, proxies `/api/`, `/ws/` and `/healthz` to the backend | Bagian 13.2 step 6, NFR-09 |
 | `smoke-test.sh` | Three uploads through the installed pipeline, checked against their scores | Bagian 13.2, NFR-09, FR-04, FR-14 |
-| `db-backup.sh`, `systemd/autograder-backup.{service,timer}` | Daily `pg_dump` with 14-day retention | Bagian 13.4, NFR-13 |
+| `db-backup.sh`, `systemd/autograder-backup.{service,timer}` | Daily `pg_dump` with 14-day retention, and an export of the newest dumps for the off-server copy | Bagian 13.4, NFR-13 |
+| `offsite-pull.sh` | Run on your own computer: pulls the exported dumps from the server over ssh | Bagian 13.4, NFR-13 |
 | `systemd/autograder-expire.{service,timer}` | Daily deletion of submission files a year after their assignment closed | Bagian 13.4, NFR-13 |
+| `uat-db.sh` | Run on the server: an isolated database for the UAT, with the backend pointed at it and back | Bagian 11.5, R6 |
 | `loadtest/` | Load tests: seeded student accounts and k6 scripts, [their own README](loadtest/README.md) | Bagian 11.4, NFR-01a, NFR-01b, FR-13, FR-14 |
 
 ## Host setup
@@ -332,8 +334,8 @@ bytes)`; `list-timers` shows the next run.
 - Each run deletes the dumps whose UTC date is 14 or more days before its own, so the daily timer
   keeps 14. Files in the directory that the script did not name are left alone.
 - Before an upgrade that brings a migration (SRS Bagian 13.3), take one by hand with `sudo systemctl
-  start autograder-backup`. It is deleted with the daily ones after 14 days; copy it elsewhere to keep
-  it until the release is stable.
+  start autograder-backup`. It is deleted with the daily ones after 14 days; keep it until the
+  release is stable by pulling it off the server ([Off-server copy](#off-server-copy)).
 - A dump holds the `autograder` database only. The `grader` role is outside it (recreate it as in
   step 6), and so are the stored submission files under `CODE_DIR`.
 
@@ -367,6 +369,62 @@ sudo systemctl start autograder
 `dropdb` deletes everything written since that dump. If any of it might still be needed, take a backup
 first, or restore into a database of another name and compare.
 
+### Off-server copy
+
+The dumps above sit on the same disk as the database, so one failed disk loses both. The backup unit
+can also export its newest dumps to a second directory, and `infra/offsite-pull.sh`, run on your own
+computer, copies them from there over ssh. The server holds no credentials for your computer, so a
+damaged or compromised server cannot reach the copies it has already handed over. On 12 Nov 2026 each
+dump on the campus server was about 40 KB while the database reported 8.6 MB on disk, so a year of
+daily dumps is about 15 MB at that size, and more once the UAT and load-test data are in.
+
+On the server, once. The first two lines make a group for the people who may read the dumps and add
+your login to it; the group takes effect at your next login, so log out and in again. The export
+directory is setgid, so every copy gets that group, and the script gives it mode `0640`:
+
+```sh
+sudo groupadd --system autograder-backup
+sudo usermod -aG autograder-backup "$USER"
+sudo install -d -m 2750 -o postgres -g autograder-backup /var/backups/autograder-export
+sudo install -m 0755 infra/db-backup.sh /usr/local/sbin/autograder-backup
+sudo install -m 0644 infra/systemd/autograder-backup.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start autograder-backup && sudo journalctl -u autograder-backup -n 4 -o cat --no-pager
+sudo ls -l /var/backups/autograder-export
+```
+
+The journal shows `exported: ...` and the listing a `-rw-r-----` file of group `autograder-backup`. The
+unit exports only while that directory exists, so removing it turns the export off, and the export
+keeps the newest three dumps (`BACKUP_EXPORT_KEEP`), not the 14 of the dump directory. If the export
+itself fails, the unit is marked failed (`systemctl --failed`), but only after the dump is written
+and the old dumps are deleted.
+
+On your computer, in Git Bash, WSL or Linux, from a clone of this repository:
+
+```sh
+infra/offsite-pull.sh USER@HOST
+```
+
+It logs in once, so it may ask for the password. It streams the exported dumps as one tar archive,
+checks that each is a `pg_dump` archive, and adds those it does not have to `private/backups/`, which
+git ignores. It never overwrites or deletes a local file. It exits with an error if a file with the
+same name has other content, if a file is not a dump, if the server exported nothing, or if the newest
+dump is over 36 hours old, which means the server's backup timer stopped. `OFFSITE_DEST` chooses
+another folder; the script refuses a folder inside a repository that does not ignore it, because a
+dump holds accounts, password hashes and the hidden test cases (FR-03). The address of the server is
+not kept in the repository.
+
+- Run it at least every two days: the server exports the newest three dumps, which are three days
+  when only the daily timer runs (a backup taken by hand pushes an older one out sooner). Dumps the
+  server has already dropped are not recoverable from the export, only from the 14-day directory.
+- A login in group `autograder-backup` can read every dump. The account that pulls is the
+  administrator's, who has `sudo` and could read them anyway, so the group adds no access.
+- Only the database is copied. The stored submission files under `CODE_DIR` and the `grader` role are
+  not (see above), and a regrade (FR-17) needs the files.
+- The pull checks only that a file is a `pg_dump` archive. Restore one into a scratch database as in
+  "Checking a backup" (on the server, or on a computer with PostgreSQL) once after the first pull; a
+  copy that has never been restored does not count (SRS Bagian 13.4).
+
 ## Submission file expiry
 
 `autograder-expire.timer` runs `autograder expire-code` every day at 03:30 WIB as `grader`. It
@@ -391,6 +449,60 @@ NFR-13, run the command with the same environment and `--dry-run`:
 sudo systemd-run --wait --pipe --collect -p User=grader -p EnvironmentFile=/etc/autograder/autograder.env \
     /usr/local/bin/autograder expire-code --dry-run
 ```
+
+## UAT database
+
+The UAT of SRS Bagian 11.5 (`docs/uat/skenario-uat.md`) must run on a new database of its own, never
+on the production one: its gate is a database such as `uat_run_YYYYMMDD`, selected before the server
+starts and confirmed with `SELECT current_database()`. `uat-db.sh` does this on the campus server
+without a second backend or another open port. It creates the database
+and a directory for the UAT's submission files, adds a systemd drop-in that gives the backend unit one
+more `EnvironmentFile` with the new `DATABASE_URL` and `CODE_DIR` (a later file overrides an earlier
+one; the JWT secret and the rest stay), restarts the backend, and then checks from PostgreSQL's own
+list of connections that the backend is connected to the UAT database and to no other. If the backend
+does not answer `/healthz` or is connected elsewhere, it removes the drop-in, restarts the backend on
+production again and fails. The production database is never written to.
+
+On the server, from a checkout, with the platform idle:
+
+```sh
+sudo infra/uat-db.sh start
+ADMIN_NAME='Full Name'; ADMIN_EMAIL='lecturer@example.ac.id'
+IFS= read -rsp 'UAT administrator password: ' ADMIN_PASSWORD && echo && export ADMIN_PASSWORD
+sudo --preserve-env=ADMIN_PASSWORD infra/uat-db.sh seed "$ADMIN_NAME" "$ADMIN_EMAIL"
+unset ADMIN_PASSWORD
+```
+
+`start [NAME]` takes the name `uat_run_` and the date in WIB unless you give one (`uat_` and up to 40
+of `a-z`, `0-9`, `_`); it prints the database, the schema version, the databases the backend is
+connected to and the production user count, which is what the UAT report records (the database
+name and this check, no credentials). `seed` runs the official `seed-admin` on the UAT database and
+logs in to prove the password; it is the account that appoints the lecturer for the run, as in step
+10. Give it a password of its own, not the handover one. Then run the scenario in the browser.
+`status` shows at any time which database the backend uses, the user count of production and of
+each UAT database, and the dumps saved.
+
+```sh
+sudo infra/uat-db.sh finish          # dump the UAT database, point the backend at production again
+sudo infra/uat-db.sh drop uat_run_YYYYMMDD    # later, when the report no longer needs it
+```
+
+`finish` writes `/var/backups/autograder-uat/<name>-<UTC time>.dump` (`0700 postgres`), removes the
+drop-in, restarts the backend and checks that it is connected to production only, printing the
+production user count now and at the start. The UAT database and its files stay for the report. `drop`
+refuses while the UAT is on, while the database has open connections, and when no dump of it was
+saved; it deletes the database and `/var/lib/autograder/uat/<name>`, and the dump stays.
+
+- While the UAT is on, the dashboard and the API serve the UAT database only, so no production
+  account can log in, the administrator of the handover included. The restart at each end interrupts
+  a submission that is being graded; do both when nothing is.
+- The daily backup and the file expiry look at production only. The UAT database has no backup but the
+  dump that `finish` takes.
+- The administrator's password of the UAT database is not kept anywhere by the script; it exists only
+  in the shell that typed it, and `seed` keeps it out of the process list.
+- Tested with stubs for `systemctl`, `psql` and the rest (97 checks, 22 of 22 mutants of the script
+  caught), with its SQL against a real PostgreSQL, and with a user systemd manager for the order of
+  the two `EnvironmentFile` entries. It has not run on the campus server.
 
 ## Verifying the host
 

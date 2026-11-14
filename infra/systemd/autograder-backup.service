@@ -19,9 +19,12 @@ Type=oneshot
 User=postgres
 Group=postgres
 ExecStart=/usr/local/sbin/autograder-backup
-# The script writes only to the backup directory.
+# The export directory is the off-server copy of infra/README.md ("Off-server copy"). The script
+# exports only if the directory exists, and the leading "-" below lets the unit start without it.
+Environment=BACKUP_EXPORT_DIR=/var/backups/autograder-export
+# The script writes only to the backup directory and the export directory.
 ProtectSystem=strict
-ReadWritePaths=/var/backups/autograder
+ReadWritePaths=/var/backups/autograder -/var/backups/autograder-export
 ProtectHome=yes
 PrivateTmp=yes
 NoNewPrivileges=yes

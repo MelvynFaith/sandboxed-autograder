@@ -12,6 +12,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Repository scaffolding: README, MIT license, contribution guide, security policy, and component
   directories.
 - GitHub Actions CI. Each component's jobs activate once that component contains code.
+- Dependabot for the Go modules, the Python and the npm dependencies (`.github/dependabot.yml`): a weekly
+  pull request for the minor and patch updates of each ecosystem, one for each major update, and a
+  7-day wait before a new version is proposed; `CONTRIBUTING.md` says how to review them.
 - Issue templates for bug reports and user stories, and a pull request template.
 - Weekly progress and sprint review templates under `docs/`.
 - Sandbox Executor (`sandbox/`): `sandbox-exec` runs one command in user, PID, mount, network, UTS
@@ -123,7 +126,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `infra/README.md` (SRS 13.2). The smoke test now uploads its programs through
   `POST /api/v1/submissions`, checks that a second upload is refused with `429`, and can run through
   Nginx with `API=http://127.0.0.1`.
+- Isolated database for the UAT (`infra/uat-db.sh`, SRS Bagian 11.5): `start` creates a new `uat_`
+  database and a directory for its submission files, points the backend unit at them through a
+  systemd drop-in, and proves from PostgreSQL's list of connections that the backend uses that
+  database only, or goes back to production; `seed` creates the UAT administrator; `finish` saves a
+  dump and points the backend at production again; `drop` deletes a finished UAT database.
 - Coverage gates in CI (NFR-07): the scheduler job counts statements with `-coverpkg=./...` and fails
   below 70 %, the grader job runs `pytest --cov` and fails below 90 % (statements and branches), and the
   frontend job runs the tests with `--coverage` against the thresholds in `vite.config.js` (80 %
   statements and lines, 75 % branches, 85 % functions). Measured today: 77 %, 98 % and 86 %.
+- Off-server copy of the database backup (`infra/`, NFR-13): the backup unit exports its newest three
+  dumps to a group-readable directory when it exists, and `infra/offsite-pull.sh`, run on the
+  administrator's computer, pulls them over ssh into a git-ignored folder, checks them, and warns
+  when the newest dump is over 36 hours old.
