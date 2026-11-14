@@ -71,6 +71,19 @@ before you push.
 | `grader/` (Python) | `ruff check` is clean (PEP 8). `pytest` passes with `--cov=harness --cov-branch --cov-fail-under=90`. |
 | `frontend/` | Lint, tests (when present), and production build succeed. `npm test -- --coverage` meets the thresholds in `vite.config.js`. Layouts work at 360 px, 768 px, and ≥ 1280 px. Forms work with the keyboard and carry accessible labels. |
 
+## Dependency updates
+
+Dependabot (`.github/dependabot.yml`) opens pull requests against `develop` every week: one grouped
+pull request for the minor and patch updates of each ecosystem (Go modules in `scheduler/`, Python in
+`grader/`, npm in `frontend/`), one pull request for each major update, and the updates of the
+workflow actions. It proposes a version only after it is 7 days old. Review these like any other
+pull request: CI must pass, read what changed in the release notes, and look at the new or changed
+package names in the lock file. The Go version in `scheduler/go.mod` is not a dependency and is
+raised by hand when a standard library advisory needs it.
+
+Dependabot reads its configuration, and scans for alerts, on the repository's default branch. While
+that is `main`, a change to `dependabot.yml` takes effect only when a release reaches `main`.
+
 ## Secrets and private data
 
 The repository is **public**.
