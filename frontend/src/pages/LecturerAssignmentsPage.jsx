@@ -39,7 +39,7 @@ const emptyTestCase = {
   expected_output: '',
   weight: '',
   is_hidden: false,
-  match_mode: 'EXACT',
+  match_mode: 'WHITESPACE_INSENSITIVE',
 }
 
 function toLocalDateTime(value) {
@@ -711,9 +711,11 @@ function LecturerAssignmentsPage() {
                     {matchModes.map((mode) => <option key={mode}>{mode}</option>)}
                   </select>
                   <p className="mt-1 text-sm text-slate-600" id="match-mode-help">
-                    EXACT membandingkan seluruh keluaran, termasuk spasi dan baris baru. Jika
-                    program menggunakan print(), sertakan baris baru di keluaran yang diharapkan
-                    atau pilih WHITESPACE_INSENSITIVE.
+                    WHITESPACE_INSENSITIVE (bawaan) mengabaikan perbedaan spasi, tab, dan baris
+                    baru, sehingga baris baru di akhir keluaran print() tidak menggagalkan jawaban
+                    yang benar. EXACT membandingkan seluruh keluaran, termasuk spasi dan baris
+                    baru; pilih EXACT bila keduanya harus ikut dinilai, dan sertakan baris baru di
+                    keluaran yang diharapkan.
                   </p>
                 </div>
                 <label className="flex items-center gap-2">

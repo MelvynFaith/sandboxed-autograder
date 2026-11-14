@@ -42,7 +42,9 @@ hentikan UAT backend tanpa menjalankan migrasi/server dan tandai bukti sebagai
    Atur resource limit ke CPU 1000 ms, memori 64 MB, maksimum 4 proses,
    timeout 5 detik, output 1048576 byte, dan tmpfs 32 MB.
 5. Buat lima test case melalui UI; masing-masing berbobot 20 dan memakai
-   pencocokan EXACT. Tandai `uat_05` sebagai tersembunyi:
+   pencocokan EXACT (pilih `EXACT` secara eksplisit pada "Mode pencocokan
+   output": bawaan formulir adalah `WHITESPACE_INSENSITIVE`, yang membuat
+   `UAT-P07` lulus). Tandai `uat_05` sebagai tersembunyi:
 
    | ID | Input | Expected output | Bobot | Visibilitas |
    | --- | --- | --- | ---: | --- |
