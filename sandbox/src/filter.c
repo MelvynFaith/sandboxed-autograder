@@ -15,7 +15,10 @@
  * The list is what CPython 3.11+ and its standard library need with no
  * network, mount, ptrace, namespace or credential changes. Extending it is a
  * security-sensitive change: say in the review what the syscall exposes.
- * To find what a program needs, run it under `strace -f -c` outside the sandbox.
+ * To find what a program needs, run it under `strace -f` outside the sandbox. The summary of
+ * `strace -c` leaves out calls that never return, such as exit_group. tests/syscall_census.py
+ * does this for a corpus of programs and compares the result with this list; see
+ * docs/qa/syscall-census.md.
  */
 #include <errno.h>
 #include <fcntl.h>

@@ -1,7 +1,6 @@
 version: 2
 updates:
-  # Keeps workflow action versions current. Add gomod, pip, and npm entries
-  # as scheduler/, grader/, and frontend/ gain their manifests.
+  # Keeps workflow action versions current.
   - package-ecosystem: github-actions
     directory: /
     target-branch: develop
@@ -10,3 +9,59 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+
+  # Go modules of the scheduler. Minor and patch updates arrive as one pull request; a major update
+  # gets its own. The Go version in go.mod is not a dependency: it is raised by hand when a standard
+  # library advisory needs it. Dependabot proposes a version only after it is 7 days old, so a
+  # release that is withdrawn or found malicious in its first days is not offered.
+  - package-ecosystem: gomod
+    directory: /scheduler
+    target-branch: develop
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    groups:
+      go-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: chore(scheduler)
+
+  # PyYAML and the development tools of the Grading Harness (grader/pyproject.toml). The sandbox
+  # runs student code with the standard library only, so these are the host's dependencies, not the
+  # student's.
+  - package-ecosystem: pip
+    directory: /grader
+    target-branch: develop
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    groups:
+      python-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: chore(grader)
+
+  # The dashboard (frontend/package.json and package-lock.json).
+  - package-ecosystem: npm
+    directory: /frontend
+    target-branch: develop
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: chore(frontend)
