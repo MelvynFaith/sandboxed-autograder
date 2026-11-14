@@ -148,3 +148,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   student lists, preserve live grading status if a later upload is rejected, refresh recap rows during
   regrading, and explain visible failure verdicts and empty output without revealing hidden-case
   details (issues #129–#134).
+- Dashboard (`frontend/`): the test-case form now defaults the match mode to `WHITESPACE_INSENSITIVE`, so a
+  lecturer who types the expected output without a trailing newline no longer fails every correct
+  submission (#129). `EXACT` is still offered and is sent as chosen; the UAT scenario now says to pick it.
