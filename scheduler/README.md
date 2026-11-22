@@ -232,8 +232,11 @@ runs daily as `grader`, does that for every submission whose assignment's `late_
 a calendar year ago. `--dry-run` only counts them.
 
 - It needs `DATABASE_URL` and an absolute `CODE_DIR`, and applies the migrations first.
-- The row stays: score, results and audit entries are untouched, and `submissions.code_deleted_at`
-  records when the file went. A handler that reads the code (FR-20) or queues a regrade (FR-17) should
+- The row stays: score, the results (verdict, score, timings) and audit entries are kept, and
+  `submissions.code_deleted_at` records when the file went. What the program printed,
+  `results.actual_output`, and the last line it wrote to stderr, `results.error_message`, are cleared in
+  the same transaction, because NFR-13 deletes the "berkas hasil" with the file; a report of such a
+  submission shows an empty output and no message. A handler that reads the code (FR-20) or queues a regrade (FR-17) should
   check that column and say the file has been deleted; the worker would otherwise fail the regrade
   on the missing file.
 - A `QUEUED` or `RUNNING` submission keeps its file. Each row is locked while its file is deleted, so
