@@ -26,7 +26,8 @@ filter; whether to narrow it is a separate decision.
 Environment: Ubuntu 26.04 (WSL2), kernel 6.18.33.2-microsoft-standard-WSL2, glibc 2.43, Python 3.14.4,
 strace 6.19, x86-64. **This is not the campus server**, which runs Ubuntu 24.04, kernel 6.8.0-139 and
 Python 3.12.3. The calls a program makes depend on the interpreter, the C library and the kernel, so the
-result must be repeated there before it is relied on (commands at the end).
+result must be repeated there before it is relied on (commands at the end). It was, on 14 Nov: see "Campus server
+run" below.
 
 ## Results
 
@@ -94,9 +95,36 @@ Many of these are the other names of a call glibc chose differently on this syst
 `newfstatat`, `fork` for `clone`, `time` for `clock_gettime`), and the older glibc on the campus server
 may pick some of them; that is another reason to repeat the run there.
 
+## Campus server run (14 Nov 2026)
+
+The same corpus, repeated on the campus server (Ubuntu 24.04, kernel 6.8.0-139-generic, Python 3.12.3,
+strace 6.8) with the commands under "Repeating it".
+
+- **71 distinct calls**: 66 on the allowlist outright, the four with an argument rule (`clone`, `ioctl`,
+  `prctl`, `socketpair`) and `clone3`, answered with `ENOSYS` by design. **None was outside the list.** The five
+  calls the WSL run found outside it (`socket`, `bind`, `listen`, `connect`, `accept4`) came from the
+  `multiprocessing` fork server of Python 3.14, and Python 3.12 does not use it by default, which is consistent
+  with their absence here.
+- **In the real sandbox, 0 of 31 programs were stopped by the filter.** The two `multiprocessing` pool programs
+  exit with 1 and `FileNotFoundError`, as in the WSL run (the sandbox's `/dev` has no `/dev/shm`), so pools,
+  queues and locks of `multiprocessing` cannot work on the server either. The programs that end with an error
+  ended as they should: `uncaught_exception` with exit 1 and the `ZeroDivisionError` traceback,
+  `assert_fail` with exit 1 and its `AssertionError`, `exit_code` with 3.
+- **One argument check was flagged.** Under `strace`, outside the sandbox, the two programs that end with an
+  exception (`uncaught_exception`, `assert_fail`) make `prctl(PR_CAPBSET_READ, ...)` calls (six each), an option
+  that is not among the `prctl` options the filter allows. In the sandbox the same two programs were not
+  stopped and their tracebacks were reported. This run does not show why: whether the calls are not made inside
+  the sandbox or are made and their refusal changes nothing was not examined, and neither was what makes
+  Python call it.
+- **139 of the 205 calls allowed outright were not used** (132 in the WSL run). Of the candidates named on
+  12 Nov, `memfd_create`, `sysinfo`, `setsockopt`, `splice` and `tee` were not used, and `uname` was. The two
+  machines choose different calls for the same job: `copy_file_range` was used in the WSL run and not here,
+  where `sendfile` was (the file-copy program is the likely user, not checked), so narrowing by the WSL list
+  alone would have been wrong for the server. The allowlist is unchanged.
+
 ## What this does not show
 
-- Another Python, C library or kernel: only this one combination was run.
+- Another Python, C library or kernel: only the WSL and the campus server combinations were run.
 - Programs students really write: the corpus is mine. The UAT programs are a better test of the
   standard-library surface and have not been run through this.
 - Calls made by native code reached through `ctypes` or an extension module, other than loading
