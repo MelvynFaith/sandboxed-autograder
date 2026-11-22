@@ -27,7 +27,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Syscall census (`sandbox/tests/syscall_census.py`, `docs/qa/syscall-census.md`): runs a corpus of 31
   typical Python programs under `strace -f` and in the sandbox and compares the calls they use with the
   seccomp allowlist, including the arguments of `clone`, `ioctl`, `prctl` and `socketpair`. The allowlist is
-  unchanged.
+  unchanged. The result of the run on the campus server (Python 3.12.3) is recorded in the same note.
 - Sandbox host setup (`infra/`): an AppArmor profile that lets `sandbox-exec` create user
   namespaces on Ubuntu 24.04, a systemd unit with cgroup delegation, and install and verification
   steps.
