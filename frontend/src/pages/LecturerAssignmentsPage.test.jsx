@@ -338,7 +338,7 @@ describe('LecturerAssignmentsPage', () => {
       target: { value: 'tc_01' },
     })
     fireEvent.change(screen.getByLabelText('Mode pencocokan output'), {
-      target: { value: 'WHITESPACE_INSENSITIVE' },
+      target: { value: 'EXACT' },
     })
     fireEvent.click(screen.getByLabelText('Test case tersembunyi'))
     fireEvent.click(screen.getByRole('button', { name: 'Tambah test case' }))
@@ -353,7 +353,7 @@ describe('LecturerAssignmentsPage', () => {
       expected_output: '5',
       weight: 10,
       is_hidden: true,
-      match_mode: 'WHITESPACE_INSENSITIVE',
+      match_mode: 'EXACT',
     })
   })
 
@@ -373,7 +373,7 @@ describe('LecturerAssignmentsPage', () => {
     await fillAssignmentForm()
     fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
     await screen.findByRole('heading', { name: 'Tambah test case' })
-    expect(screen.getByLabelText('Mode pencocokan output')).toHaveValue('EXACT')
+    expect(screen.getByLabelText('Mode pencocokan output')).toHaveValue('WHITESPACE_INSENSITIVE')
     expect(screen.getByText(/EXACT membandingkan seluruh keluaran, termasuk spasi dan baris baru/))
       .toBeInTheDocument()
 
@@ -388,6 +388,50 @@ describe('LecturerAssignmentsPage', () => {
     expect(createTestCase).toHaveBeenCalledWith('assignment-1', expect.objectContaining({
       external_id: '',
       weight: 1,
+    }))
+  })
+
+  // #129: a lecturer who types "9" without a trailing newline and leaves the mode alone must not
+  // fail every correct submission, and EXACT stays a choice that is sent as chosen.
+  it('sends WHITESPACE_INSENSITIVE unless the lecturer picks EXACT', async () => {
+    setUser()
+    createTestCase.mockResolvedValue({
+      id: 'testcase-1',
+      assignmentId: 'assignment-1',
+      externalId: 'tc_01',
+      input: '3',
+      expectedOutput: '9',
+      weight: 1,
+      hidden: false,
+      matchMode: 'WHITESPACE_INSENSITIVE',
+    })
+    render(<App />)
+    await fillAssignmentForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
+    await screen.findByRole('heading', { name: 'Tambah test case' })
+
+    fireEvent.change(screen.getByLabelText('Input'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('Keluaran yang diharapkan'), { target: { value: '9' } })
+    fireEvent.change(screen.getByLabelText('Bobot'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah test case' }))
+    await screen.findByText('Test case berhasil ditambahkan.')
+    expect(createTestCase).toHaveBeenLastCalledWith('assignment-1', expect.objectContaining({
+      expected_output: '9',
+      match_mode: 'WHITESPACE_INSENSITIVE',
+    }))
+    expect(screen.getByLabelText('Mode pencocokan output')).toHaveValue('WHITESPACE_INSENSITIVE')
+
+    fireEvent.change(screen.getByLabelText('Input'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('Keluaran yang diharapkan'), {
+      target: { value: '9\n' },
+    })
+    fireEvent.change(screen.getByLabelText('Bobot'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Mode pencocokan output'), { target: { value: 'EXACT' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah test case' }))
+    await waitFor(() => expect(createTestCase).toHaveBeenCalledTimes(2))
+    expect(createTestCase).toHaveBeenLastCalledWith('assignment-1', expect.objectContaining({
+      expected_output: '9\n',
+      match_mode: 'EXACT',
     }))
   })
 

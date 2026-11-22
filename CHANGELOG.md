@@ -27,7 +27,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Syscall census (`sandbox/tests/syscall_census.py`, `docs/qa/syscall-census.md`): runs a corpus of 31
   typical Python programs under `strace -f` and in the sandbox and compares the calls they use with the
   seccomp allowlist, including the arguments of `clone`, `ioctl`, `prctl` and `socketpair`. The allowlist is
-  unchanged.
+  unchanged. The result of the run on the campus server (Python 3.12.3) is recorded in the same note.
 - Sandbox host setup (`infra/`): an AppArmor profile that lets `sandbox-exec` create user
   namespaces on Ubuntu 24.04, a systemd unit with cgroup delegation, and install and verification
   steps.
@@ -151,3 +151,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   student lists, preserve live grading status if a later upload is rejected, refresh recap rows during
   regrading, and explain visible failure verdicts and empty output without revealing hidden-case
   details (issues #129–#134).
+- Dashboard (`frontend/`): the test-case form now defaults the match mode to `WHITESPACE_INSENSITIVE`, so a
+  lecturer who types the expected output without a trailing newline no longer fails every correct
+  submission (#129). `EXACT` is still offered and is sent as chosen; the UAT scenario now says to pick it.
