@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getProfile } from '../api/profile.js'
+import ThemeSetting from '../components/ThemeSetting.jsx'
 import { useAuth } from '../context/useAuth.js'
 
 const roleNames = { STUDENT: 'Mahasiswa', LECTURER: 'Dosen', ADMIN: 'Admin' }
@@ -66,11 +67,12 @@ function ProfilePage() {
   }
 
   if (isLoading) {
-    return <main className="mx-auto max-w-2xl px-6 py-8">Memuat profil...</main>
+    return <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">Memuat profil...</main>
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-8">
+    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <div className="max-w-2xl">
       <h1 className="text-2xl font-semibold">Profil</h1>
       {error && <p className="mt-4 text-sm text-danger" role="alert">{error}</p>}
       {notice && <p className="mt-4 text-sm text-success" role="status">{notice}</p>}
@@ -81,6 +83,7 @@ function ProfilePage() {
             <div className="min-w-0"><dt className="font-medium">Email</dt><dd className="break-all">{profile.email}</dd></div>
             <div className="min-w-0"><dt className="font-medium">Peran</dt><dd>{roleNames[profile.role]}</dd></div>
           </dl>
+          <ThemeSetting />
           <form className="mt-6 space-y-4 rounded-md border border-line bg-surface p-4" onSubmit={handleNameSubmit}>
             <h2 className="text-lg font-semibold">Ubah nama</h2>
             <div>
@@ -134,6 +137,7 @@ function ProfilePage() {
           </form>
         </>
       )}
+      </div>
     </main>
   )
 }
