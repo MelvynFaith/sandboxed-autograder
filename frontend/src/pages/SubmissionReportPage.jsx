@@ -42,41 +42,41 @@ function SubmissionReportPage() {
   }, [submissionId])
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-10">
+    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
       <div className="flex flex-wrap gap-3">
         <button
-          className="rounded border border-slate-300 bg-white px-3 py-2 font-medium hover:bg-slate-100"
+          className="rounded-md border border-line-strong bg-surface px-3 py-2 font-medium hover:bg-raised"
           onClick={() => navigate(-1)}
           type="button"
         >
           Kembali
         </button>
         <Link
-          className="rounded border border-slate-300 bg-white px-3 py-2 font-medium hover:bg-slate-100"
+          className="rounded-md border border-line-strong bg-surface px-3 py-2 font-medium hover:bg-raised"
           to={`/submissions/${encodeURIComponent(submissionId)}/code`}
         >
           Lihat kode
         </Link>
       </div>
       <h1 className="mt-4 text-2xl font-semibold">Laporan Submission</h1>
-      {isLoading && <p className="mt-4 text-slate-600">Memuat laporan...</p>}
+      {isLoading && <p className="mt-4 text-muted">Memuat laporan...</p>}
       {loadError && (
-        <p className="mt-4 text-red-700" role="alert">
+        <p className="mt-4 text-danger" role="alert">
           Gagal memuat laporan: {loadError}
         </p>
       )}
       {report && (
         <section aria-label={`Laporan submission ${report.submissionId}`} className="mt-4">
-          <p className="text-sm text-slate-700">
+          <p className="text-sm text-ink">
             Skor total: {formatScore(report.totalScore, report.maxScore)}
           </p>
           {report.results.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">Belum ada hasil test case.</p>
+            <p className="mt-3 text-sm text-muted">Belum ada hasil test case.</p>
           ) : (
             <ul className="mt-3 space-y-3">
               {report.results.map((result, index) => (
                 <li
-                  className="rounded-md border border-slate-200 bg-white p-4"
+                  className="rounded-md border border-line bg-surface p-4"
                   key={result.testCaseId ?? `result-${index}`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -90,7 +90,7 @@ function SubmissionReportPage() {
                       {result.verdict}
                     </span>
                   </div>
-                  <p className="mt-2 text-sm text-slate-700">
+                  <p className="mt-2 text-sm text-ink">
                     Skor {result.score}, {result.executionTimeMs} ms, {result.memoryKb} KB
                   </p>
                   {!result.hidden && <ReportOutputs headingLevel={3} result={result} />}

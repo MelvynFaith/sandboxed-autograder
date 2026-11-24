@@ -74,12 +74,12 @@ function FocusTrapDialog({ labelledBy, onDismiss, returnFocusRef, children }) {
     <div
       aria-labelledby={labelledBy}
       aria-modal="true"
-      className="fixed inset-0 z-20 grid place-items-center bg-slate-950/40 p-6"
+      className="fixed inset-0 z-20 grid place-items-center bg-scrim p-6"
       ref={dialogRef}
       role="dialog"
       tabIndex={-1}
     >
-      <div className="w-full max-w-md space-y-4 rounded-lg bg-white p-6">
+      <div className="w-full max-w-md space-y-4 rounded-lg bg-surface p-6">
         {children}
       </div>
     </div>

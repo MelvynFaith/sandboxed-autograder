@@ -25,7 +25,7 @@ function CopyButton({ label, text }) {
     <>
       <button
         aria-label={label}
-        className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-medium hover:bg-slate-100"
+        className="rounded-md border border-line-strong bg-surface px-2 py-0.5 text-xs font-medium hover:bg-raised"
         onClick={handleClick}
         type="button"
       >

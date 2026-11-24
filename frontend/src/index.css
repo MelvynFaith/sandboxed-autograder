@@ -1,6 +1,170 @@
 @import "tailwindcss";
 
+/*
+ * Theme tokens. Light and dark share one set of names; components use the names only
+ * (bg-surface, text-muted, border-line), never a raw colour.
+ *
+ * Structure follows GitHub Primer (flat panels, thin borders, tinted status), surfaces follow
+ * Material's dark rule (a higher layer is a lighter one: canvas < surface < raised), and there is
+ * one accent. Values were checked for WCAG AA: text 4.5:1, control borders (line-strong) 3:1.
+ * The theme follows the system setting; [data-theme] forces one for tests and screenshots.
+ */
+:root {
+  color-scheme: light dark;
+
+  --canvas: #f6f8fa;
+  --surface: #ffffff;
+  --inset: #eff2f5;
+  --raised: #e6eaef;
+  --line: #d1d9e0;
+  --line-strong: #818b98;
+  --ink: #1f2328;
+  --muted: #59636e;
+  --link: #0860ca;
+  --accent: #0969da;
+  --accent-hover: #0550ae;
+  --accent-tint: #ddf4ff;
+  --success: #1a7f37;
+  --success-tint: #dafbe1;
+  --danger: #cf222e;
+  --danger-tint: #ffebe9;
+  --danger-solid: #cf222e;
+  --danger-solid-hover: #a40e26;
+  --attention: #9a6700;
+  --attention-tint: #fff8c5;
+  --done: #8250df;
+  --done-tint: #fbefff;
+  --scrim: #1f232899;
+  --syn-keyword: #cf222e;
+  --syn-string: #0a3069;
+  --syn-number: #0550ae;
+  --syn-comment: #59636e;
+  --syn-func: #8250df;
+  --syn-type: #953800;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #0d1117;
+    --surface: #151b23;
+    --inset: #010409;
+    --raised: #212830;
+    --line: #3d444d;
+    --line-strong: #656c76;
+    --ink: #f0f6fc;
+    --muted: #9198a1;
+    --link: #4493f8;
+    --accent: #1f6feb;
+    --accent-hover: #1b62d4;
+    --accent-tint: #388bfd1a;
+    --success: #3fb950;
+    --success-tint: #2ea04326;
+    --danger: #f85149;
+    --danger-tint: #f851491a;
+    --danger-solid: #da3633;
+    --danger-solid-hover: #b62324;
+    --attention: #d29922;
+    --attention-tint: #bb800926;
+    --done: #ab7df8;
+    --done-tint: #ab7df826;
+    --scrim: #010409b3;
+    --syn-keyword: #ff7b72;
+    --syn-string: #a5d6ff;
+    --syn-number: #79c0ff;
+    --syn-comment: #9198a1;
+    --syn-func: #d2a8ff;
+    --syn-type: #ffa657;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --canvas: #0d1117;
+  --surface: #151b23;
+  --inset: #010409;
+  --raised: #212830;
+  --line: #3d444d;
+  --line-strong: #656c76;
+  --ink: #f0f6fc;
+  --muted: #9198a1;
+  --link: #4493f8;
+  --accent: #1f6feb;
+  --accent-hover: #1b62d4;
+  --accent-tint: #388bfd1a;
+  --success: #3fb950;
+  --success-tint: #2ea04326;
+  --danger: #f85149;
+  --danger-tint: #f851491a;
+  --danger-solid: #da3633;
+  --danger-solid-hover: #b62324;
+  --attention: #d29922;
+  --attention-tint: #bb800926;
+  --done: #ab7df8;
+  --done-tint: #ab7df826;
+  --scrim: #010409b3;
+  --syn-keyword: #ff7b72;
+  --syn-string: #a5d6ff;
+  --syn-number: #79c0ff;
+  --syn-comment: #9198a1;
+  --syn-func: #d2a8ff;
+  --syn-type: #ffa657;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-inset: var(--inset);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-link: var(--link);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-tint: var(--accent-tint);
+  --color-success: var(--success);
+  --color-success-tint: var(--success-tint);
+  --color-danger: var(--danger);
+  --color-danger-tint: var(--danger-tint);
+  --color-danger-solid: var(--danger-solid);
+  --color-danger-solid-hover: var(--danger-solid-hover);
+  --color-attention: var(--attention);
+  --color-attention-tint: var(--attention-tint);
+  --color-done: var(--done);
+  --color-done-tint: var(--done-tint);
+  --color-scrim: var(--scrim);
+
+  /* System fonts only: the CSP (default-src 'self') blocks font CDNs. */
+  --font-sans: system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+}
+
 @layer base {
+  body {
+    background-color: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background-color: var(--accent);
+    color: #ffffff;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--link);
+    outline-offset: 2px;
+  }
+
   button,
   input:not([type="checkbox"]):not([type="radio"]),
   select,
@@ -8,12 +172,24 @@
     min-height: 44px;
   }
 
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    background-color: var(--surface);
+    color: var(--ink);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--muted);
+  }
+
   label:has(> input[type="checkbox"]) {
     min-height: 44px;
   }
 
   nav[aria-label="Navigasi utama"] a,
-  a.rounded {
+  a[class~="rounded-md"] {
     display: inline-flex;
     min-height: 44px;
     align-items: center;

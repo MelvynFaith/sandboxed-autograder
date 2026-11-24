@@ -16,16 +16,16 @@ function PageControls({ page, hasNext, onPageChange, label }) {
   return (
     <nav aria-label={label} className="mt-4 flex items-center justify-between gap-3">
       <button
-        className="rounded border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-md border border-line-strong px-3 py-2 text-sm font-medium hover:bg-raised disabled:cursor-not-allowed disabled:opacity-50"
         disabled={page <= 1}
         onClick={() => onPageChange(page - 1)}
         type="button"
       >
         Sebelumnya
       </button>
-      <span className="text-sm text-slate-600">Halaman {page}</span>
+      <span className="text-sm text-muted">Halaman {page}</span>
       <button
-        className="rounded border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-md border border-line-strong px-3 py-2 text-sm font-medium hover:bg-raised disabled:cursor-not-allowed disabled:opacity-50"
         disabled={!hasNext}
         onClick={() => onPageChange(page + 1)}
         type="button"
@@ -244,22 +244,22 @@ function CoursesPage() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
       <h1 className="text-2xl font-semibold">Course</h1>
-      <nav aria-label="Alur dosen" className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+      <nav aria-label="Alur dosen" className="mt-4 rounded-lg border border-line bg-surface p-4">
         <ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-          <li aria-current="step" className="font-semibold text-blue-800">
+          <li aria-current="step" className="font-semibold text-link">
             1. Course &amp; enrollment
           </li>
           <li>
             <Link
-              className="font-medium text-blue-700 underline"
+              className="font-medium text-link underline"
               to={`/lecturer/assignments${activeCourseId ? `?courseId=${encodeURIComponent(activeCourseId)}` : ''}`}
             >
               2. Assignment &amp; test case
             </Link>
           </li>
-          <li className="text-slate-600">3. Rekap nilai &amp; CSV</li>
+          <li className="text-muted">3. Rekap nilai &amp; CSV</li>
         </ol>
       </nav>
       <FormFeedback
@@ -268,38 +268,38 @@ function CoursesPage() {
         success={success}
       />
 
-      <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="mt-6 rounded-lg border border-line bg-surface p-4 sm:p-5">
         <h2 className="text-lg font-semibold">Buat Course baru</h2>
         <form className="mt-4 grid gap-4 md:grid-cols-3" onSubmit={handleCourseSubmit}>
-          <label className="block text-sm font-medium text-slate-700">
+          <label className="block text-sm font-medium text-ink">
             Nama
             <input
-              className="mt-1 block w-full min-w-0 rounded border border-slate-300 bg-white p-2"
+              className="mt-1 block w-full min-w-0 rounded-md border border-line-strong bg-surface p-2"
               onChange={(event) => setCourseForm((current) => ({ ...current, name: event.target.value }))}
               value={courseForm.name}
             />
           </label>
-          <label className="block text-sm font-medium text-slate-700">
+          <label className="block text-sm font-medium text-ink">
             Kode
             <input
-              className="mt-1 block w-full min-w-0 rounded border border-slate-300 bg-white p-2"
+              className="mt-1 block w-full min-w-0 rounded-md border border-line-strong bg-surface p-2"
               onChange={(event) => setCourseForm((current) => ({ ...current, code: event.target.value }))}
               value={courseForm.code}
             />
           </label>
-          <label className="block text-sm font-medium text-slate-700">
+          <label className="block text-sm font-medium text-ink">
             Term
             <input
-              className="mt-1 block w-full min-w-0 rounded border border-slate-300 bg-white p-2"
+              className="mt-1 block w-full min-w-0 rounded-md border border-line-strong bg-surface p-2"
               onChange={(event) => setCourseForm((current) => ({ ...current, term: event.target.value }))}
               value={courseForm.term}
             />
           </label>
           {isAdmin && (
-            <label className="block text-sm font-medium text-slate-700">
+            <label className="block text-sm font-medium text-ink">
               Email dosen pengampu
               <input
-                className="mt-1 block w-full min-w-0 rounded border border-slate-300 bg-white p-2"
+                className="mt-1 block w-full min-w-0 rounded-md border border-line-strong bg-surface p-2"
                 autoComplete="email"
                 onChange={(event) =>
                   setCourseForm((current) => ({ ...current, lecturerEmail: event.target.value }))
@@ -312,7 +312,7 @@ function CoursesPage() {
           )}
           <div className="md:col-span-3">
             <button
-              className="w-full rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 sm:w-auto"
+              className="w-full rounded-md bg-accent px-4 py-2 font-medium text-white hover:bg-accent-hover sm:w-auto"
               type="submit"
             >
               Simpan Course
@@ -324,9 +324,9 @@ function CoursesPage() {
       <section className="mt-6">
         <h2 className="text-xl font-semibold">Daftar Course</h2>
         {isLoading ? (
-          <p className="mt-4 text-slate-600">Memuat Course...</p>
+          <p className="mt-4 text-muted">Memuat Course...</p>
         ) : coursesPage.items.length === 0 ? (
-          <p className="mt-4 text-slate-600">Belum ada Course yang dapat dikelola.</p>
+          <p className="mt-4 text-muted">Belum ada Course yang dapat dikelola.</p>
         ) : (
           <>
             <ul className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -336,8 +336,8 @@ function CoursesPage() {
                     aria-pressed={activeCourseId === String(course.id)}
                     className={`w-full rounded-lg border p-4 text-left ${
                       activeCourseId === String(course.id)
-                        ? 'border-blue-600 bg-blue-50'
-                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                        ? 'border-accent bg-accent-tint'
+                        : 'border-line bg-surface hover:bg-raised'
                     }`}
                     onClick={() => {
                       setError('')
@@ -349,7 +349,7 @@ function CoursesPage() {
                     type="button"
                   >
                     <span className="block font-medium">{course.code} — {course.name}</span>
-                    <span className="mt-1 block text-sm text-slate-600">Term: {course.term}</span>
+                    <span className="mt-1 block text-sm text-muted">Term: {course.term}</span>
                   </button>
                 </li>
               ))}
@@ -370,12 +370,12 @@ function CoursesPage() {
       </section>
 
       {activeCourse && (
-        <section className="mt-8 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <section className="mt-8 rounded-lg border border-line bg-surface p-4 sm:p-5">
           <h2 className="text-lg font-semibold">Enrollment untuk {activeCourse.name}</h2>
           <form className="mt-4 flex flex-col gap-3 sm:flex-row" onSubmit={handleEnrollmentSubmit}>
             <label className="sr-only" htmlFor="enrollment-email">Email mahasiswa</label>
             <input
-              className="min-w-0 flex-1 rounded border border-slate-300 bg-white p-2"
+              className="min-w-0 flex-1 rounded-md border border-line-strong bg-surface p-2"
               id="enrollment-email"
               onChange={(event) => setEnrollmentEmail(event.target.value)}
               placeholder="Email mahasiswa"
@@ -383,16 +383,16 @@ function CoursesPage() {
               value={enrollmentEmail}
             />
             <button
-              className="rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800"
+              className="rounded-md bg-accent px-4 py-2 font-medium text-white hover:bg-accent-hover"
               type="submit"
             >
               Tambah enrollment
             </button>
           </form>
           {enrollmentsPage.items.length === 0 ? (
-            <p className="mt-4 text-slate-600">Belum ada mahasiswa yang terdaftar pada Course ini.</p>
+            <p className="mt-4 text-muted">Belum ada mahasiswa yang terdaftar pada Course ini.</p>
           ) : (
-            <ul className="mt-4 divide-y divide-slate-200">
+            <ul className="mt-4 divide-y divide-line">
               {enrollmentsPage.items.map((entry) => (
                 <li
                   className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
@@ -400,10 +400,10 @@ function CoursesPage() {
                 >
                   <div className="min-w-0">
                     <p className="break-words font-medium">{entry.name}</p>
-                    <p className="break-all text-sm text-slate-600">{entry.email}</p>
+                    <p className="break-all text-sm text-muted">{entry.email}</p>
                   </div>
                   <button
-                    className="self-start rounded border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50 sm:self-auto"
+                    className="self-start rounded-md border border-danger/50 px-3 py-2 text-sm text-danger hover:bg-danger-tint sm:self-auto"
                     onClick={() => handleDeleteEnrollment(entry.userId)}
                     type="button"
                   >

@@ -89,13 +89,13 @@ function loadQueueStatus() {
 function LoadError({ message, onRetry, subject }) {
   return (
     <div className="space-y-2">
-      <p className="text-red-700" role="alert">
+      <p className="text-danger" role="alert">
         Gagal memuat {subject}: {message}
       </p>
       {onRetry && (
         <button
           aria-label={`Coba lagi memuat ${subject}`}
-          className="rounded border border-slate-300 px-3 py-2"
+          className="rounded-md border border-line-strong px-3 py-2"
           onClick={onRetry}
           type="button"
         >
@@ -110,7 +110,7 @@ function Pagination({ disabled, hasNextPage, label, noun, onChange, page }) {
   return (
     <nav aria-label={`Paginasi ${label}`} className="flex flex-wrap items-center gap-3">
       <button
-        className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50"
+        className="rounded-md border border-line-strong px-3 py-2 disabled:opacity-50"
         disabled={page === 1 || disabled}
         onClick={() => onChange(page - 1)}
         type="button"
@@ -119,7 +119,7 @@ function Pagination({ disabled, hasNextPage, label, noun, onChange, page }) {
       </button>
       <span aria-current="page">Halaman {label} {page}</span>
       <button
-        className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50"
+        className="rounded-md border border-line-strong px-3 py-2 disabled:opacity-50"
         disabled={!hasNextPage || disabled}
         onClick={() => onChange(page + 1)}
         type="button"
@@ -161,24 +161,24 @@ function UsersPanel() {
       <h2 className="text-xl font-semibold" id="admin-users-title">
         Pengguna
       </h2>
-      <p aria-live="polite" className="text-sm text-green-800" role="status">
+      <p aria-live="polite" className="text-sm text-success" role="status">
         {notice}
       </p>
       {actionError && (
-        <p className="text-red-700" role="alert">
+        <p className="text-danger" role="alert">
           {actionError}
         </p>
       )}
       {error ? (
         <LoadError message={error} onRetry={retry} subject="pengguna" />
       ) : !data ? (
-        <p className="text-slate-600">Memuat pengguna...</p>
+        <p className="text-muted">Memuat pengguna...</p>
       ) : data.items.length === 0 ? (
-        <p className="text-slate-600">Belum ada pengguna.</p>
+        <p className="text-muted">Belum ada pengguna.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-line bg-surface">
           <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-100">
+            <thead className="bg-inset">
               <tr>
                 <th className="p-3" scope="col">Nama</th>
                 <th className="p-3" scope="col">Email</th>
@@ -188,14 +188,14 @@ function UsersPanel() {
             </thead>
             <tbody>
               {data.items.map((user) => (
-                <tr className="border-t border-slate-200" key={user.id}>
+                <tr className="border-t border-line" key={user.id}>
                   <td className="p-3">{user.name}</td>
                   <td className="p-3">{user.email}</td>
                   <td className="p-3">{roleLabels[user.role]}</td>
                   <td className="p-3">
                     <select
                       aria-label={`Ubah peran ${user.name}`}
-                      className="rounded border border-slate-300 p-2"
+                      className="rounded-md border border-line-strong p-2"
                       disabled={updatingUserId === user.id}
                       onChange={(event) => handleRoleChange(user, event.target.value)}
                       value={user.role}
@@ -239,7 +239,7 @@ function QueuePanel() {
           Antrian dan worker
         </h2>
         <button
-          className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50"
+          className="rounded-md border border-line-strong px-3 py-2 disabled:opacity-50"
           disabled={isLoading}
           onClick={retry}
           type="button"
@@ -250,25 +250,25 @@ function QueuePanel() {
       {error ? (
         <LoadError message={error} subject="status antrian" />
       ) : !data ? (
-        <p className="text-slate-600">Memuat status antrian...</p>
+        <p className="text-muted">Memuat status antrian...</p>
       ) : (
         <>
           <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {stats.map(({ label, value }) => (
-              <div className="rounded-lg border border-slate-200 bg-white p-4" key={label}>
-                <dt className="text-sm text-slate-600">{label}</dt>
+              <div className="rounded-lg border border-line bg-surface p-4" key={label}>
+                <dt className="text-sm text-muted">{label}</dt>
                 <dd className="mt-1 text-2xl font-semibold">{value}</dd>
               </div>
             ))}
           </dl>
           {data.workersAlive < data.workersConfigured && (
-            <p className="text-amber-800">
+            <p className="text-attention">
               Sebagian worker tidak berjalan; submission dinilai lebih lambat dari biasanya.
             </p>
           )}
         </>
       )}
-      <p aria-live="polite" className="text-sm text-slate-600" role="status">
+      <p aria-live="polite" className="text-sm text-muted" role="status">
         {data && !error && (
           <>
             Dimuat{' '}
@@ -322,11 +322,11 @@ function RateLimitForm({ initialLimits }) {
 
   return (
     <form
-      className="space-y-4 rounded-lg border border-slate-200 bg-white p-5"
+      className="space-y-4 rounded-lg border border-line bg-surface p-5"
       noValidate
       onSubmit={handleSubmit}
     >
-      <p className="text-sm text-slate-700">
+      <p className="text-sm text-ink">
         Batas berlaku untuk setiap mahasiswa pada setiap assignment. Submission yang melewati batas
         ditolak.
       </p>
@@ -338,7 +338,7 @@ function RateLimitForm({ initialLimits }) {
           <input
             aria-describedby={`rate-limit-${name}-hint`}
             aria-invalid={invalidField === name}
-            className="w-full rounded border border-slate-300 p-2"
+            className="w-full rounded-md border border-line-strong p-2"
             id={`rate-limit-${name}`}
             inputMode="numeric"
             max={rateLimitMaximums[name]}
@@ -352,21 +352,21 @@ function RateLimitForm({ initialLimits }) {
             type="number"
             value={values[name]}
           />
-          <p className="mt-1 text-sm text-slate-600" id={`rate-limit-${name}-hint`}>
+          <p className="mt-1 text-sm text-muted" id={`rate-limit-${name}-hint`}>
             {hint} Isi 0 untuk mematikan aturan ini. Rentang 0 sampai {rateLimitMaximums[name]}.
           </p>
         </div>
       ))}
       {error && (
-        <p className="text-red-700" role="alert">
+        <p className="text-danger" role="alert">
           {error}
         </p>
       )}
-      <p aria-live="polite" className="text-sm text-green-800" role="status">
+      <p aria-live="polite" className="text-sm text-success" role="status">
         {notice}
       </p>
       <button
-        className="rounded bg-blue-700 px-4 py-2 font-medium text-white disabled:opacity-50"
+        className="rounded-md bg-accent px-4 py-2 font-medium text-white disabled:opacity-50"
         disabled={isSaving}
         type="submit"
       >
@@ -387,7 +387,7 @@ function RateLimitPanel() {
       {error ? (
         <LoadError message={error} onRetry={retry} subject="batas laju" />
       ) : !data ? (
-        <p className="text-slate-600">Memuat batas laju...</p>
+        <p className="text-muted">Memuat batas laju...</p>
       ) : (
         <RateLimitForm initialLimits={data} />
       )}
@@ -408,29 +408,29 @@ function AuditLogPanel() {
       {error ? (
         <LoadError message={error} onRetry={retry} subject="audit log" />
       ) : !data ? (
-        <p className="text-slate-600">Memuat audit log...</p>
+        <p className="text-muted">Memuat audit log...</p>
       ) : data.items.length === 0 ? (
-        <p className="text-slate-600">Belum ada audit log.</p>
+        <p className="text-muted">Belum ada audit log.</p>
       ) : (
         <ul className="space-y-3">
           {data.items.map((entry) => (
-            <li className="rounded-lg border border-slate-200 bg-white p-4" key={entry.id}>
+            <li className="rounded-lg border border-line bg-surface p-4" key={entry.id}>
               <h3 className="font-semibold">{entry.eventType}</h3>
               <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
                 <div>
-                  <dt className="text-slate-600">Pengguna</dt>
+                  <dt className="text-muted">Pengguna</dt>
                   <dd>{entry.userId}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-600">Submission</dt>
+                  <dt className="text-muted">Submission</dt>
                   <dd>{entry.submissionId ?? 'Tidak terkait submission'}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-600">Syscall ditolak</dt>
+                  <dt className="text-muted">Syscall ditolak</dt>
                   <dd>{entry.syscallNumber ?? '—'}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-600">Waktu</dt>
+                  <dt className="text-muted">Waktu</dt>
                   <dd>
                     <time dateTime={entry.createdAt}>
                       {dateTimeFormatter.format(new Date(entry.createdAt))} WIB
@@ -457,7 +457,7 @@ function AuditLogPanel() {
 
 function AdminPage() {
   return (
-    <main className="mx-auto max-w-6xl space-y-8 px-6 py-10">
+    <main className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6 sm:py-10">
       <h1 className="text-2xl font-semibold">Administrasi</h1>
       <UsersPanel />
       <QueuePanel />

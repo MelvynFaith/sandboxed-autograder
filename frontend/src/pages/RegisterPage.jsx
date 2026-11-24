@@ -32,13 +32,13 @@ function RegisterPage() {
   return (
     <main className="mx-auto max-w-md px-6 py-12">
       <h1 className="text-2xl font-semibold">Registrasi</h1>
-      <p className="mt-2 text-slate-600">Buat akun mahasiswa baru.</p>
+      <p className="mt-2 text-muted">Buat akun mahasiswa baru.</p>
       <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
         <div>
           <label className="mb-1 block font-medium" htmlFor="register-name">Nama</label>
           <input
             autoComplete="name"
-            className="w-full rounded border border-slate-300 bg-white px-3 py-2"
+            className="w-full rounded-md border border-line-strong bg-surface px-3 py-2"
             id="register-name"
             name="name"
             onChange={(event) => setName(event.target.value)}
@@ -51,7 +51,7 @@ function RegisterPage() {
           <label className="mb-1 block font-medium" htmlFor="register-email">Email</label>
           <input
             autoComplete="email"
-            className="w-full rounded border border-slate-300 bg-white px-3 py-2"
+            className="w-full rounded-md border border-line-strong bg-surface px-3 py-2"
             id="register-email"
             name="email"
             onChange={(event) => setEmail(event.target.value)}
@@ -64,7 +64,7 @@ function RegisterPage() {
           <label className="mb-1 block font-medium" htmlFor="register-password">Password</label>
           <input
             autoComplete="new-password"
-            className="w-full rounded border border-slate-300 bg-white px-3 py-2"
+            className="w-full rounded-md border border-line-strong bg-surface px-3 py-2"
             id="register-password"
             name="password"
             onChange={(event) => setPassword(event.target.value)}
@@ -77,7 +77,7 @@ function RegisterPage() {
           <label className="mb-1 block font-medium" htmlFor="register-password-confirmation">Konfirmasi password</label>
           <input
             autoComplete="new-password"
-            className="w-full rounded border border-slate-300 bg-white px-3 py-2"
+            className="w-full rounded-md border border-line-strong bg-surface px-3 py-2"
             id="register-password-confirmation"
             name="password-confirmation"
             onChange={(event) => setPasswordConfirmation(event.target.value)}
@@ -86,17 +86,17 @@ function RegisterPage() {
             value={passwordConfirmation}
           />
         </div>
-        {error && <p className="text-sm text-red-700" role="alert">{error}</p>}
+        {error && <p className="text-sm text-danger" role="alert">{error}</p>}
         <button
-          className="w-full rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-60"
+          className="w-full rounded-md bg-accent px-4 py-2 font-medium text-white hover:bg-accent-hover disabled:opacity-60"
           disabled={isSubmitting}
           type="submit"
         >
           {isSubmitting ? 'Memproses...' : 'Daftar'}
         </button>
       </form>
-      <p className="mt-4 text-sm text-slate-700">
-        Sudah punya akun? <Link className="font-medium text-blue-700 underline" to="/login">Login</Link>
+      <p className="mt-4 text-sm text-ink">
+        Sudah punya akun? <Link className="font-medium text-link underline" to="/login">Login</Link>
       </p>
     </main>
   )

@@ -10,11 +10,11 @@ const statusLabels = {
 }
 
 const statusStyles = {
-  QUEUED: 'bg-amber-100 text-amber-900',
-  RUNNING: 'bg-blue-100 text-blue-900',
-  COMPLETED: 'bg-green-100 text-green-900',
-  FAILED: 'bg-red-100 text-red-900',
-  CANCELLED: 'bg-slate-200 text-slate-900',
+  QUEUED: 'bg-attention-tint text-attention',
+  RUNNING: 'bg-accent-tint text-link',
+  COMPLETED: 'bg-success-tint text-success',
+  FAILED: 'bg-danger-tint text-danger',
+  CANCELLED: 'bg-raised text-ink',
 }
 
 function SubmissionStatus({ submissionId }) {
@@ -51,7 +51,7 @@ function SubmissionStatus({ submissionId }) {
           {statusLabels[status.status]}
         </span>
         {status.total_tests > 0 && (
-          <span className="text-sm text-slate-700">
+          <span className="text-sm text-ink">
             Test {status.current_test} dari {status.total_tests}
           </span>
         )}
@@ -62,22 +62,22 @@ function SubmissionStatus({ submissionId }) {
           aria-valuemax={status.total_tests || 1}
           aria-valuemin={0}
           aria-valuenow={status.current_test}
-          className="h-2 overflow-hidden rounded-full bg-slate-200"
+          className="h-2 overflow-hidden rounded-full bg-raised"
           role="progressbar"
         >
           <div
-            className="h-full rounded-full bg-blue-700 transition-all"
+            className="h-full rounded-full bg-accent transition-all"
             style={{ width: `${progress}%` }}
           />
         </div>
       )}
       {fallbackMessage && (
-        <p className="text-sm text-amber-800" role="status">
+        <p className="text-sm text-attention" role="status">
           {fallbackMessage}
         </p>
       )}
       {errorMessage && (
-        <p className="text-sm text-red-700" role="alert">
+        <p className="text-sm text-danger" role="alert">
           Gagal memperbarui status: {errorMessage}
         </p>
       )}

@@ -3,6 +3,7 @@ import { Link, useOutletContext } from 'react-router-dom'
 import { cancelSubmission, getSubmissionHistory } from '../../api/submissionHistory.js'
 import { getSubmissionReport } from '../../api/submissionReport.js'
 import { subscribeToSubmissionStatus } from '../../api/submissionStatus.js'
+import ScoreMeter from '../../components/ScoreMeter.jsx'
 import StatusBadge from '../../components/StatusBadge.jsx'
 import SubmissionReport from '../../components/SubmissionReport.jsx'
 import {
@@ -113,12 +114,12 @@ function MySubmissionsTab() {
           status={status}
         />
         {status === 'RUNNING' && live?.id === submission.id && live.total_tests > 0 && (
-          <span className="text-xs text-slate-600">
+          <span className="text-xs text-muted">
             Test {live.current_test} dari {live.total_tests}
           </span>
         )}
         {submission.isLate && (
-          <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+          <span className="rounded-md bg-attention-tint px-2 py-0.5 text-xs font-medium text-attention">
             Terlambat
           </span>
         )}
@@ -132,23 +133,23 @@ function MySubmissionsTab() {
         Submission saya
       </h2>
       {loadError && (
-        <p className="text-red-700" role="alert">
+        <p className="text-danger" role="alert">
           Gagal memuat submission: {loadError}
         </p>
       )}
       {actionMessage && (
         <p
-          className={actionMessage.type === 'success' ? 'mb-3 text-blue-800' : 'mb-3 text-red-700'}
+          className={actionMessage.type === 'success' ? 'mb-3 text-link' : 'mb-3 text-danger'}
           role={actionMessage.type === 'success' ? 'status' : 'alert'}
         >
           {actionMessage.text}
         </p>
       )}
-      {!loadError && !result && <p className="text-slate-600">Memuat submission...</p>}
+      {!loadError && !result && <p className="text-muted">Memuat submission...</p>}
       {result?.items.length === 0 && page === 1 && (
-        <p className="text-slate-600">
+        <p className="text-muted">
           Belum ada submission untuk soal ini.{' '}
-          <Link className="text-blue-700 hover:underline" to="../submit">
+          <Link className="text-link hover:underline" to="../submit">
             Kirim kode
           </Link>
         </p>
@@ -159,7 +160,7 @@ function MySubmissionsTab() {
           <table className="w-full border-collapse text-left text-sm">
             <caption className="sr-only">Submission saya untuk {assignment.title}</caption>
             <thead>
-              <tr className="border-b border-slate-300 text-slate-600">
+              <tr className="border-b border-line-strong text-muted">
                 <th className="py-2 pr-3 font-medium" scope="col">
                   Waktu (WIB)
                 </th>
@@ -180,15 +181,18 @@ function MySubmissionsTab() {
                 const isOpen = openReport === submission.id
                 return (
                   <Fragment key={submission.id}>
-                    <tr className="border-b border-slate-200 align-middle">
+                    <tr className="border-b border-line align-middle">
                       <td className="py-3 pr-3">
                         <time dateTime={submission.submittedAt}>
                           {shortDate.format(new Date(submission.submittedAt))}
                         </time>
                       </td>
                       <td className="py-3 pr-3">{statusCell(submission)}</td>
-                      <td className="py-3 pr-3 font-medium">
-                        {formatScore(submission.totalScore, submission.maxScore)}
+                      <td className="py-3 pr-3 font-medium tabular-nums">
+                        <span className="inline-flex items-center gap-3">
+                          {formatScore(submission.totalScore, submission.maxScore)}
+                          <ScoreMeter max={submission.maxScore} total={submission.totalScore} />
+                        </span>
                       </td>
                       <td className="py-3">
                         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 leading-6">
@@ -196,7 +200,7 @@ function MySubmissionsTab() {
                             <button
                               aria-controls={`report-${submission.id}`}
                               aria-expanded={isOpen}
-                              className="font-medium text-blue-700 hover:underline"
+                              className="font-medium text-link hover:underline"
                               onClick={() => toggleReport(submission.id)}
                               type="button"
                             >
@@ -204,14 +208,14 @@ function MySubmissionsTab() {
                             </button>
                           )}
                           <Link
-                            className="inline-flex min-h-11 items-center font-medium text-blue-700 hover:underline"
+                            className="inline-flex min-h-11 items-center font-medium text-link hover:underline"
                             to={`/submissions/${encodeURIComponent(submission.id)}/code`}
                           >
                             Kode
                           </Link>
                           {currentStatus(submission) === 'QUEUED' && (
                             <button
-                              className="font-medium text-red-700 hover:underline"
+                              className="font-medium text-danger hover:underline"
                               onClick={() => handleCancel(submission.id)}
                               type="button"
                             >
@@ -222,11 +226,11 @@ function MySubmissionsTab() {
                       </td>
                     </tr>
                     {isOpen && (
-                      <tr className="border-b border-slate-200">
+                      <tr className="border-b border-line">
                         <td colSpan={4} id={`report-${submission.id}`}>
-                          {report?.loading && <p className="py-3 text-slate-600">Memuat laporan...</p>}
+                          {report?.loading && <p className="py-3 text-muted">Memuat laporan...</p>}
                           {report?.error && (
-                            <p className="py-3 text-red-700" role="alert">
+                            <p className="py-3 text-danger" role="alert">
                               Gagal memuat laporan: {report.error}
                             </p>
                           )}
@@ -247,16 +251,16 @@ function MySubmissionsTab() {
           className="mt-4 flex items-center justify-between gap-3"
         >
           <button
-            className="rounded border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
+            className="rounded-md border border-line-strong px-3 py-2 text-sm disabled:opacity-50"
             disabled={page <= 1}
             onClick={() => setPage((current) => current - 1)}
             type="button"
           >
             Sebelumnya
           </button>
-          <span className="text-sm text-slate-600">Halaman {page}</span>
+          <span className="text-sm text-muted">Halaman {page}</span>
           <button
-            className="rounded border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
+            className="rounded-md border border-line-strong px-3 py-2 text-sm disabled:opacity-50"
             disabled={!result.hasNextPage}
             onClick={() => setPage((current) => current + 1)}
             type="button"

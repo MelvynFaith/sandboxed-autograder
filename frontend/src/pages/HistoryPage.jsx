@@ -24,12 +24,12 @@ function CancelConfirmation({ assignmentTitle, isCancelling, onCancel, onDismiss
       <h2 className="text-lg font-semibold" id={titleId}>
         Konfirmasi pembatalan submission {assignmentTitle}
       </h2>
-      <p className="text-sm text-amber-950">
+      <p className="text-sm text-attention">
         Batalkan submission ini? Submission yang dibatalkan tidak akan dinilai.
       </p>
       <div className="flex flex-wrap gap-3">
         <button
-          className="rounded bg-red-700 px-4 py-2 font-medium text-white hover:bg-red-800 disabled:opacity-60"
+          className="rounded-md bg-danger-solid px-4 py-2 font-medium text-white hover:bg-danger-solid-hover disabled:opacity-60"
           disabled={isCancelling}
           onClick={onCancel}
           type="button"
@@ -37,7 +37,7 @@ function CancelConfirmation({ assignmentTitle, isCancelling, onCancel, onDismiss
           {isCancelling ? 'Membatalkan...' : 'Ya, batalkan'}
         </button>
         <button
-          className="rounded border border-slate-300 bg-white px-4 py-2 font-medium disabled:opacity-60"
+          className="rounded-md border border-line-strong bg-surface px-4 py-2 font-medium disabled:opacity-60"
           disabled={isCancelling}
           onClick={onDismiss}
           data-dialog-initial-focus
@@ -149,21 +149,21 @@ function HistoryPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-10">
+    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
       <h1 className="text-2xl font-semibold">Riwayat Submission</h1>
-      {isLoading && <p className="mt-4 text-slate-600">Memuat riwayat submission...</p>}
+      {isLoading && <p className="mt-4 text-muted">Memuat riwayat submission...</p>}
       {loadError && (
-        <p className="mt-4 text-red-700" role="alert">
+        <p className="mt-4 text-danger" role="alert">
           Gagal memuat riwayat submission: {loadError}
         </p>
       )}
       {!isLoading && !loadError && submissions.length === 0 && (
-        <p className="mt-4 text-slate-600">Belum ada submission.</p>
+        <p className="mt-4 text-muted">Belum ada submission.</p>
       )}
       {!isLoading && !loadError && (
         <nav aria-label="Paginasi riwayat submission" className="mt-5 flex items-center gap-3">
           <button
-            className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50"
+            className="rounded-md border border-line-strong px-3 py-2 disabled:opacity-50"
             disabled={page === 1}
             onClick={() => setPage((current) => Math.max(1, current - 1))}
             type="button"
@@ -172,7 +172,7 @@ function HistoryPage() {
           </button>
           <span aria-current="page">Halaman {page}</span>
           <button
-            className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50"
+            className="rounded-md border border-line-strong px-3 py-2 disabled:opacity-50"
             disabled={!hasNextPage}
             onClick={() => setPage((current) => current + 1)}
             type="button"
@@ -184,19 +184,19 @@ function HistoryPage() {
       <ul className="mt-6 space-y-4">
         {submissions.map((submission) => (
           <li
-            className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+            className="rounded-lg border border-line bg-surface p-5"
             key={submission.id}
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold">{submission.assignmentTitle}</h2>
-                <p className="mt-2 text-sm text-slate-700">
+                <p className="mt-2 text-sm text-ink">
                   Skor: {formatScore(submission.totalScore, submission.maxScore)}
                 </p>
                 {submission.isLate && (
-                  <p className="mt-1 text-sm font-medium text-amber-800">Terlambat</p>
+                  <p className="mt-1 text-sm font-medium text-attention">Terlambat</p>
                 )}
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="mt-1 text-sm text-muted">
                   Dikumpulkan:{' '}
                   <time dateTime={submission.submittedAt}>
                     {dateFormatter.format(new Date(submission.submittedAt))}
@@ -205,7 +205,7 @@ function HistoryPage() {
               </div>
               <StatusBadge
                 className={
-                  submissionStatusStyles[submission.status] ?? 'bg-slate-100 text-slate-800'
+                  submissionStatusStyles[submission.status] ?? 'bg-inset text-ink'
                 }
                 label={submissionStatusLabels[submission.status] ?? submission.status}
                 status={submission.status}
@@ -214,7 +214,7 @@ function HistoryPage() {
             <div className="mt-4 flex flex-wrap gap-3">
               <button
                 aria-expanded={selectedId === submission.id}
-                className="rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800"
+                className="rounded-md bg-accent px-4 py-2 font-medium text-white hover:bg-accent-hover"
                 onClick={() => toggleReport(submission.id)}
                 type="button"
               >
@@ -223,7 +223,7 @@ function HistoryPage() {
               {/* FR-20: the student may read their own submitted code. */}
               <Link
                 aria-label={`Lihat kode ${submission.assignmentTitle}`}
-                className="rounded border border-slate-300 px-4 py-2 font-medium hover:bg-slate-100"
+                className="rounded-md border border-line-strong px-4 py-2 font-medium hover:bg-raised"
                 to={`/submissions/${encodeURIComponent(submission.id)}/code`}
               >
                 Lihat kode
@@ -232,7 +232,7 @@ function HistoryPage() {
                 <button
                   aria-label={`Batalkan submission ${submission.assignmentTitle}`}
                   aria-hidden={confirmingId === submission.id}
-                  className="rounded border border-red-300 px-4 py-2 font-medium text-red-800 hover:bg-red-50"
+                  className="rounded-md border border-danger/50 px-4 py-2 font-medium text-danger hover:bg-danger-tint"
                   onClick={(event) => {
                     setCancelNotice(null)
                     cancelTrigger.current = event.currentTarget
@@ -258,8 +258,8 @@ function HistoryPage() {
               <p
                 className={
                   cancelNotice.type === 'success'
-                    ? 'mt-3 text-sm text-blue-800'
-                    : 'mt-3 text-sm text-red-700'
+                    ? 'mt-3 text-sm text-link'
+                    : 'mt-3 text-sm text-danger'
                 }
                 role={cancelNotice.type === 'success' ? 'status' : 'alert'}
               >
@@ -269,10 +269,10 @@ function HistoryPage() {
             {selectedId === submission.id && (
               <div>
                 {isReportLoading && (
-                  <p className="mt-4 text-slate-600">Memuat laporan...</p>
+                  <p className="mt-4 text-muted">Memuat laporan...</p>
                 )}
                 {reportError && (
-                  <p className="mt-4 text-red-700" role="alert">
+                  <p className="mt-4 text-danger" role="alert">
                     Gagal memuat laporan: {reportError}
                   </p>
                 )}

@@ -17,32 +17,32 @@ const components = {
   ul: ({ children }) => <ul className="mt-3 list-disc space-y-1 pl-6">{children}</ul>,
   ol: ({ children }) => <ol className="mt-3 list-decimal space-y-1 pl-6">{children}</ol>,
   blockquote: ({ children }) => (
-    <blockquote className="mt-3 border-l-4 border-slate-300 pl-4 text-slate-700">
+    <blockquote className="mt-3 border-l-4 border-line-strong pl-4 text-ink">
       {children}
     </blockquote>
   ),
   pre: ({ children }) => (
-    <pre className="mt-3 overflow-x-auto rounded border border-slate-200 bg-slate-50 p-3 text-sm [&_code]:bg-transparent [&_code]:p-0">
+    <pre className="mt-3 overflow-x-auto rounded-md border border-line bg-inset p-3 text-sm [&_code]:bg-transparent [&_code]:p-0">
       {children}
     </pre>
   ),
   code: ({ children }) => (
-    <code className="rounded bg-slate-100 px-1 font-mono text-sm">{children}</code>
+    <code className="rounded-md bg-inset px-1 font-mono text-sm">{children}</code>
   ),
   a: ({ children, href }) => (
-    <a className="text-blue-700 underline" href={href} rel="noopener noreferrer" target="_blank">
+    <a className="text-link underline" href={href} rel="noopener noreferrer" target="_blank">
       {children}
     </a>
   ),
-  hr: () => <hr className="my-4 border-slate-200" />,
+  hr: () => <hr className="my-4 border-line" />,
 }
 
 function AssignmentDescription({ text }) {
   if (!text.trim()) {
-    return <p className="mt-3 text-slate-600">Dosen belum menulis deskripsi soal.</p>
+    return <p className="mt-3 text-muted">Dosen belum menulis deskripsi soal.</p>
   }
   return (
-    <div className="text-slate-800" data-testid="assignment-description">
+    <div className="text-ink" data-testid="assignment-description">
       <Markdown
         components={components}
         disallowedElements={['img']}

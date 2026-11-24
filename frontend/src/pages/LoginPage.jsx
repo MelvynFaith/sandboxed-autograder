@@ -39,15 +39,15 @@ function LoginPage() {
   return (
     <main className="mx-auto max-w-md px-6 py-12">
       <h1 className="text-2xl font-semibold">Login</h1>
-      <p className="mt-2 text-slate-600">Masuk dengan email dan password akun Anda.</p>
+      <p className="mt-2 text-muted">Masuk dengan email dan password akun Anda.</p>
       {import.meta.env.VITE_USE_MOCK === 'true' && (
-        <p className="mt-4 rounded bg-blue-50 p-3 text-sm text-blue-900">
+        <p className="mt-4 rounded-md bg-accent-tint p-3 text-sm text-link">
           Mode mock: gunakan mahasiswa@example.test, dosen@example.test, atau admin@example.test
           dengan password password123.
         </p>
       )}
       {sessionNotice && (
-        <p className="mt-4 text-sm text-amber-800" role="status">
+        <p className="mt-4 text-sm text-attention" role="status">
           {sessionNotice}
         </p>
       )}
@@ -58,7 +58,7 @@ function LoginPage() {
           </label>
           <input
             autoComplete="email"
-            className="w-full rounded border border-slate-300 bg-white px-3 py-2"
+            className="w-full rounded-md border border-line-strong bg-surface px-3 py-2"
             id="email"
             name="email"
             onChange={(event) => setEmail(event.target.value)}
@@ -73,7 +73,7 @@ function LoginPage() {
           </label>
           <input
             autoComplete="current-password"
-            className="w-full rounded border border-slate-300 bg-white px-3 py-2"
+            className="w-full rounded-md border border-line-strong bg-surface px-3 py-2"
             id="password"
             name="password"
             onChange={(event) => setPassword(event.target.value)}
@@ -83,20 +83,20 @@ function LoginPage() {
           />
         </div>
         {error && (
-          <p className="text-sm text-red-700" role="alert">
+          <p className="text-sm text-danger" role="alert">
             {error}
           </p>
         )}
         <button
-          className="w-full rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-60"
+          className="w-full rounded-md bg-accent px-4 py-2 font-medium text-white hover:bg-accent-hover disabled:opacity-60"
           disabled={isSubmitting}
           type="submit"
         >
           {isSubmitting ? 'Memproses...' : 'Masuk'}
         </button>
       </form>
-      <p className="mt-4 text-sm text-slate-700">
-        Belum punya akun? <Link className="font-medium text-blue-700 underline" to="/register">Register</Link>
+      <p className="mt-4 text-sm text-ink">
+        Belum punya akun? <Link className="font-medium text-link underline" to="/register">Register</Link>
       </p>
     </main>
   )

@@ -42,37 +42,37 @@ function SubmissionCodePage() {
   const lines = submission ? submission.code.replace(/\n$/, '').split('\n') : []
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-10">
+    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
       <button
-        className="rounded border border-slate-300 bg-white px-3 py-2 font-medium hover:bg-slate-100"
+        className="rounded-md border border-line-strong bg-surface px-3 py-2 font-medium hover:bg-raised"
         onClick={() => navigate(-1)}
         type="button"
       >
         Kembali
       </button>
       <h1 className="mt-4 text-2xl font-semibold">Kode Submission</h1>
-      {isLoading && <p className="mt-4 text-slate-600">Memuat kode submission...</p>}
+      {isLoading && <p className="mt-4 text-muted">Memuat kode submission...</p>}
       {loadError && (
-        <p className="mt-4 text-red-700" role="alert">
+        <p className="mt-4 text-danger" role="alert">
           {loadError}
         </p>
       )}
       {submission && (
         <section aria-label={`Kode submission ${submission.submissionId}`} className="mt-4">
-          <p className="text-sm text-slate-700">
+          <p className="text-sm text-ink">
             Berkas: <span className="font-mono">{submission.originalFilename}</span>
           </p>
           {/* A scrollable region needs to be focusable so keyboard users can scroll it. */}
           <div
             aria-label={`Isi berkas ${submission.originalFilename}, ${lines.length} baris`}
-            className="mt-3 flex overflow-x-auto rounded-md border border-slate-300 bg-white font-mono text-sm"
+            className="mt-3 flex overflow-x-auto rounded-md border border-line-strong bg-surface font-mono text-sm"
             role="region"
             tabIndex={0}
           >
             {/* Line numbers are decoration and stay out of the selection and the a11y tree. */}
             <div
               aria-hidden="true"
-              className="select-none border-r border-slate-200 bg-slate-100 px-3 py-3 text-right text-slate-600"
+              className="select-none border-r border-line bg-inset px-3 py-3 text-right text-muted"
               data-testid="line-numbers"
             >
               {lines.map((_, index) => (

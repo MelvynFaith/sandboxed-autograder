@@ -406,22 +406,22 @@ function LecturerAssignmentsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl space-y-8 px-6 py-10">
+    <main className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6 sm:py-10">
       <h1 className="text-2xl font-semibold">Kelola Assignment</h1>
-      <nav aria-label="Alur dosen" className="rounded-lg border border-slate-200 bg-white p-4">
+      <nav aria-label="Alur dosen" className="rounded-lg border border-line bg-surface p-4">
         <ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
           <li>
             <Link
-              className="font-medium text-blue-700 underline"
+              className="font-medium text-link underline"
               to={`/courses${courseId ? `?courseId=${encodeURIComponent(courseId)}` : ''}`}
             >
               1. Course &amp; enrollment
             </Link>
           </li>
-          <li aria-current="step" className="font-semibold text-blue-800">
+          <li aria-current="step" className="font-semibold text-link">
             2. Assignment &amp; test case
           </li>
-          <li className="text-slate-600">3. Rekap nilai &amp; CSV (pilih assignment)</li>
+          <li className="text-muted">3. Rekap nilai &amp; CSV (pilih assignment)</li>
         </ol>
       </nav>
       <FormFeedback
@@ -430,15 +430,15 @@ function LecturerAssignmentsPage() {
         success={success}
       />
       {isLoading ? (
-        <p className="text-slate-600">Memuat Course...</p>
+        <p className="text-muted">Memuat Course...</p>
       ) : courses.length === 0 ? (
-        <p className="text-slate-600">Belum ada Course yang dapat dikelola.</p>
+        <p className="text-muted">Belum ada Course yang dapat dikelola.</p>
       ) : (
         <>
           <div>
             <label className="mb-1 block font-medium" htmlFor="course-select">Course</label>
             <select
-              className="w-full rounded border border-slate-300 p-2"
+              className="w-full rounded-md border border-line-strong p-2"
               id="course-select"
               onChange={(event) => {
                 setCourseId(event.target.value)
@@ -462,26 +462,26 @@ function LecturerAssignmentsPage() {
             <ul className="space-y-3">
               {assignments.map((assignment) => (
                 <li
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface p-4"
                   key={assignment.id}
                 >
                   <span className="font-medium">{assignment.title}</span>
                   <div className="flex flex-wrap gap-2">
                     <button
-                      className="rounded border border-slate-300 px-3 py-2"
+                      className="rounded-md border border-line-strong px-3 py-2"
                       onClick={() => selectAssignment(assignment)}
                       type="button"
                     >
                       Kelola
                     </button>
                     <Link
-                      className="rounded border border-slate-300 px-3 py-2 font-medium text-blue-700 hover:bg-slate-100"
+                      className="rounded-md border border-line-strong px-3 py-2 font-medium text-link hover:bg-raised"
                       to={`/lecturer/assignments/${encodeURIComponent(assignment.id)}/recap?courseId=${encodeURIComponent(courseId)}`}
                     >
                       Rekap nilai &amp; CSV
                     </Link>
                     <button
-                      className="rounded border border-red-300 px-3 py-2 text-red-800"
+                      className="rounded-md border border-danger/50 px-3 py-2 text-danger"
                       onClick={(event) => requestDelete('assignment', assignment.id, event)}
                       type="button"
                     >
@@ -494,7 +494,7 @@ function LecturerAssignmentsPage() {
           </section>
 
           <form
-            className="space-y-5 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+            className="space-y-5 rounded-lg border border-line bg-surface p-5"
             onSubmit={saveAssignment}
           >
             <h2 className="text-lg font-semibold">
@@ -503,7 +503,7 @@ function LecturerAssignmentsPage() {
             <label className="block">
               <span className="mb-1 block font-medium">Judul</span>
               <input
-                className="w-full rounded border border-slate-300 p-2"
+                className="w-full rounded-md border border-line-strong p-2"
                 name="title"
                 onChange={handleAssignmentFormChange}
                 required
@@ -513,7 +513,7 @@ function LecturerAssignmentsPage() {
             <label className="block">
               <span className="mb-1 block font-medium">Deskripsi</span>
               <textarea
-                className="w-full rounded border border-slate-300 p-2"
+                className="w-full rounded-md border border-line-strong p-2"
                 name="description"
                 onChange={handleAssignmentFormChange}
                 required
@@ -529,7 +529,7 @@ function LecturerAssignmentsPage() {
                 <label className="block" key={name}>
                   <span className="mb-1 block font-medium">{label}</span>
                   <input
-                    className="w-full rounded border border-slate-300 p-2"
+                    className="w-full rounded-md border border-line-strong p-2"
                     name={name}
                     onChange={handleAssignmentFormChange}
                     required
@@ -545,7 +545,7 @@ function LecturerAssignmentsPage() {
                 <label className="block" key={name}>
                   <span className="mb-1 block font-medium">{label}</span>
                   <input
-                    className="w-full rounded border border-slate-300 p-2"
+                    className="w-full rounded-md border border-line-strong p-2"
                     min="1"
                     name={name}
                     onChange={(event) =>
@@ -560,12 +560,12 @@ function LecturerAssignmentsPage() {
               ))}
             </fieldset>
             <div className="flex flex-wrap gap-3">
-              <button className="rounded bg-blue-700 px-4 py-2 font-medium text-white" type="submit">
+              <button className="rounded-md bg-accent px-4 py-2 font-medium text-white" type="submit">
                 {isEditingAssignment ? 'Simpan perubahan' : 'Buat assignment'}
               </button>
               {activeAssignment && !isEditingAssignment && (
                 <button
-                  className="rounded border border-slate-300 px-4 py-2"
+                  className="rounded-md border border-line-strong px-4 py-2"
                   disabled={!activeResourceLimits}
                   onClick={beginEditingAssignment}
                   type="button"
@@ -583,7 +583,7 @@ function LecturerAssignmentsPage() {
               </h2>
               <div className="flex flex-wrap gap-3">
                 <button
-                  className="rounded border border-slate-300 px-4 py-2 font-medium disabled:opacity-60"
+                  className="rounded-md border border-line-strong px-4 py-2 font-medium disabled:opacity-60"
                   disabled={isExportingYaml}
                   onClick={exportTestCases}
                   type="button"
@@ -592,7 +592,7 @@ function LecturerAssignmentsPage() {
                 </button>
               </div>
               <form
-                className="space-y-3 rounded-lg border border-slate-200 bg-white p-5"
+                className="space-y-3 rounded-lg border border-line bg-surface p-5"
                 onSubmit={importTestCases}
               >
                 <h3 className="text-lg font-semibold">Impor test case dari YAML</h3>
@@ -600,7 +600,7 @@ function LecturerAssignmentsPage() {
                   <span className="mb-1 block font-medium">Berkas YAML (maksimal 1 MiB)</span>
                   <input
                     accept=".yaml,.yml,application/yaml,text/yaml"
-                    className="block w-full min-w-0 rounded border border-slate-300 p-2"
+                    className="block w-full min-w-0 rounded-md border border-line-strong p-2"
                     onChange={(event) => {
                       const selectedFile = event.target.files?.[0] ?? null
                       setError('')
@@ -618,10 +618,10 @@ function LecturerAssignmentsPage() {
                   />
                 </label>
                 {yamlFile && (
-                  <p className="text-sm text-slate-600">Dipilih: {yamlFile.name}</p>
+                  <p className="text-sm text-muted">Dipilih: {yamlFile.name}</p>
                 )}
                 <button
-                  className="rounded bg-blue-700 px-4 py-2 font-medium text-white disabled:opacity-60"
+                  className="rounded-md bg-accent px-4 py-2 font-medium text-white disabled:opacity-60"
                   disabled={!yamlFile || isImportingYaml}
                   type="submit"
                 >
@@ -630,7 +630,7 @@ function LecturerAssignmentsPage() {
               </form>
               <ul className="space-y-3">
                 {testCases.map((testCase) => (
-                  <li className="rounded-lg border border-slate-200 bg-white p-4" key={testCase.id}>
+                  <li className="rounded-lg border border-line bg-surface p-4" key={testCase.id}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h3 className="font-semibold">{testCase.externalId}</h3>
@@ -639,14 +639,14 @@ function LecturerAssignmentsPage() {
                       </div>
                       <div className="flex gap-2">
                         <button
-                          className="rounded border border-slate-300 px-3 py-2"
+                          className="rounded-md border border-line-strong px-3 py-2"
                           onClick={() => editTestCase(testCase)}
                           type="button"
                         >
                           Ubah
                         </button>
                         <button
-                          className="rounded border border-red-300 px-3 py-2 text-red-800"
+                          className="rounded-md border border-danger/50 px-3 py-2 text-danger"
                           onClick={(event) => requestDelete('testcase', testCase.id, event)}
                           type="button"
                         >
@@ -657,7 +657,7 @@ function LecturerAssignmentsPage() {
                   </li>
                 ))}
               </ul>
-              <form className="space-y-4 rounded-lg border border-slate-200 bg-white p-5" onSubmit={saveTestCase}>
+              <form className="space-y-4 rounded-lg border border-line bg-surface p-5" onSubmit={saveTestCase}>
                 <h3 className="text-lg font-semibold">
                   {editingTestCaseId ? 'Ubah test case' : 'Tambah test case'}
                 </h3>
@@ -671,7 +671,7 @@ function LecturerAssignmentsPage() {
                     <span className="mb-1 block font-medium">{label}</span>
                     {multiline ? (
                       <textarea
-                        className="w-full rounded border border-slate-300 p-2"
+                        className="w-full rounded-md border border-line-strong p-2"
                         name={name}
                         onChange={(event) =>
                           setTestCaseForm((current) => ({ ...current, [name]: event.target.value }))
@@ -681,7 +681,7 @@ function LecturerAssignmentsPage() {
                       />
                     ) : (
                       <input
-                        className="w-full rounded border border-slate-300 p-2"
+                        className="w-full rounded-md border border-line-strong p-2"
                         min={type === 'number' ? '1' : undefined}
                         name={name}
                         onChange={(event) =>
@@ -701,7 +701,7 @@ function LecturerAssignmentsPage() {
                   </label>
                   <select
                     aria-describedby="match-mode-help"
-                    className="w-full rounded border border-slate-300 p-2"
+                    className="w-full rounded-md border border-line-strong p-2"
                     id="test-case-match-mode"
                     onChange={(event) =>
                       setTestCaseForm((current) => ({ ...current, match_mode: event.target.value }))
@@ -710,7 +710,7 @@ function LecturerAssignmentsPage() {
                   >
                     {matchModes.map((mode) => <option key={mode}>{mode}</option>)}
                   </select>
-                  <p className="mt-1 text-sm text-slate-600" id="match-mode-help">
+                  <p className="mt-1 text-sm text-muted" id="match-mode-help">
                     WHITESPACE_INSENSITIVE (bawaan) mengabaikan perbedaan spasi, tab, dan baris
                     baru, sehingga baris baru di akhir keluaran print() tidak menggagalkan jawaban
                     yang benar. EXACT membandingkan seluruh keluaran, termasuk spasi dan baris
@@ -729,12 +729,12 @@ function LecturerAssignmentsPage() {
                   Test case tersembunyi
                 </label>
                 <div className="flex flex-wrap gap-3">
-                  <button className="rounded bg-blue-700 px-4 py-2 font-medium text-white" type="submit">
+                  <button className="rounded-md bg-accent px-4 py-2 font-medium text-white" type="submit">
                     {editingTestCaseId ? 'Simpan test case' : 'Tambah test case'}
                   </button>
                   {editingTestCaseId && (
                     <button
-                      className="rounded border border-slate-300 px-4 py-2"
+                      className="rounded-md border border-line-strong px-4 py-2"
                       onClick={() => {
                         setEditingTestCaseId(null)
                         setTestCaseForm(emptyTestCase)
@@ -763,7 +763,7 @@ function LecturerAssignmentsPage() {
           <p>Data yang dihapus tidak dapat dipulihkan.</p>
           <div className="flex gap-3">
             <button
-              className="rounded bg-red-700 px-4 py-2 text-white"
+              className="rounded-md bg-danger-solid px-4 py-2 text-white"
               onClick={pendingDelete.type === 'assignment'
                 ? confirmDeleteAssignment
                 : confirmDeleteTestCase}
@@ -772,7 +772,7 @@ function LecturerAssignmentsPage() {
               Hapus
             </button>
             <button
-              className="rounded border border-slate-300 px-4 py-2"
+              className="rounded-md border border-line-strong px-4 py-2"
               data-dialog-initial-focus
               onClick={cancelDelete}
               type="button"

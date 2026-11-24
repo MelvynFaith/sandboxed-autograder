@@ -14,8 +14,8 @@ const tabs = [
 function tabClass({ isActive }) {
   return `-mb-px inline-flex min-h-11 items-center border-b-2 px-3 font-medium ${
     isActive
-      ? 'border-blue-700 text-blue-800'
-      : 'border-transparent text-slate-700 hover:border-slate-300 hover:text-slate-900'
+      ? 'border-accent font-semibold text-ink'
+      : 'border-transparent text-muted hover:border-line-strong hover:text-ink'
   }`
 }
 
@@ -50,26 +50,26 @@ function AssignmentLayout() {
   const windowState = assignment ? submissionWindow(assignment, now) : null
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
       <nav aria-label="Breadcrumb" className="text-sm">
-        <ol className="flex flex-wrap items-center gap-2 text-slate-600">
+        <ol className="flex flex-wrap items-center gap-2 text-muted">
           <li>
-            <Link className="text-blue-700 hover:underline" to="/assignments">
+            <Link className="text-link hover:underline" to="/assignments">
               Daftar Assignment
             </Link>
           </li>
           <li aria-hidden="true">/</li>
-          <li aria-current="page" className="min-w-0 truncate text-slate-900">
+          <li aria-current="page" className="min-w-0 truncate text-ink">
             {assignment?.title ?? 'Assignment'}
           </li>
         </ol>
       </nav>
       {loadError && (
-        <p className="mt-6 text-red-700" role="alert">
+        <p className="mt-6 text-danger" role="alert">
           Gagal memuat assignment: {loadError}
         </p>
       )}
-      {!loadError && !assignment && <p className="mt-6 text-slate-600">Memuat assignment...</p>}
+      {!loadError && !assignment && <p className="mt-6 text-muted">Memuat assignment...</p>}
       {assignment && (
         <>
           <header className="mt-3">
@@ -81,7 +81,7 @@ function AssignmentLayout() {
                 {windowLabels[windowState]}
               </span>
             </div>
-            <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm text-slate-700 sm:grid-cols-2">
+            <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm text-ink sm:grid-cols-2">
               <div className="flex flex-wrap gap-x-2">
                 <dt>Deadline:</dt>
                 <dd className="font-medium">
@@ -102,7 +102,7 @@ function AssignmentLayout() {
           </header>
           <nav
             aria-label="Bagian assignment"
-            className="mt-6 flex flex-wrap gap-1 border-b border-slate-200"
+            className="mt-6 flex flex-wrap gap-1 border-b border-line"
           >
             {tabs.map((tab) => (
               <NavLink className={tabClass} end={tab.end} key={tab.label} to={tab.to}>
@@ -110,7 +110,7 @@ function AssignmentLayout() {
               </NavLink>
             ))}
           </nav>
-          <Suspense fallback={<p className="mt-6 text-slate-600">Memuat...</p>}>
+          <Suspense fallback={<p className="mt-6 text-muted">Memuat...</p>}>
             <Outlet context={{ assignment, limits, windowState }} />
           </Suspense>
         </>
