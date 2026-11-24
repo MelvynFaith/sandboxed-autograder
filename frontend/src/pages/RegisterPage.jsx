@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { register } from '../api/auth.js'
+import AuthShell from '../components/AuthShell.jsx'
 
 function RegisterPage() {
   const navigate = useNavigate()
@@ -30,10 +31,8 @@ function RegisterPage() {
   }
 
   return (
-    <main className="mx-auto max-w-md px-6 py-12">
-      <h1 className="text-2xl font-semibold">Registrasi</h1>
-      <p className="mt-2 text-muted">Buat akun mahasiswa baru.</p>
-      <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+    <AuthShell subtitle="Buat akun mahasiswa baru." title="Registrasi">
+      <form className="mt-6 space-y-4 rounded-lg border border-line bg-surface p-5" onSubmit={handleSubmit}>
         <div>
           <label className="mb-1 block font-medium" htmlFor="register-name">Nama</label>
           <input
@@ -95,10 +94,10 @@ function RegisterPage() {
           {isSubmitting ? 'Memproses...' : 'Daftar'}
         </button>
       </form>
-      <p className="mt-4 text-sm text-ink">
+      <p className="mt-4 rounded-lg border border-line p-4 text-center text-sm text-ink">
         Sudah punya akun? <Link className="font-medium text-link underline" to="/login">Login</Link>
       </p>
-    </main>
+    </AuthShell>
   )
 }
 

@@ -28,7 +28,7 @@ const theme = EditorView.theme({
   '&': { fontSize: '0.875rem', backgroundColor: 'var(--surface)', color: 'var(--ink)' },
   '&.cm-focused': { outline: '2px solid var(--link)', outlineOffset: '2px' },
   '.cm-scroller': {
-    fontFamily: 'ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace',
+    fontFamily: '"Google Sans Code Variable", ui-monospace, Menlo, Consolas, monospace',
     minHeight: '16rem',
     maxHeight: '32rem',
   },
