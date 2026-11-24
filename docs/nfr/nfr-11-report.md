@@ -46,6 +46,7 @@ kepemilikan course/submission tetap di luar cakupan audit UI ini.
 | `/courses` | Dosen, admin | Halaman konten diukur untuk peran yang diizinkan; mahasiswa ditolak melalui redirect ke `/assignments` (runtime belum diverifikasi). |
 | `/history` | Mahasiswa | Halaman konten diukur untuk mahasiswa; dosen/admin ditolak melalui redirect (runtime belum diverifikasi). |
 | `/lecturer/assignments` | Dosen, admin | Halaman konten diukur untuk peran yang diizinkan; mahasiswa ditolak melalui redirect (runtime belum diverifikasi). |
+| `/assignments/:assignmentId`, `.../submit`, `.../submissions` | Mahasiswa | Ditambahkan 24 Nov 2026 (#150), sesudah pengukuran ini; dosen dan admin diarahkan ke `/assignments`. Belum diukur pada 360/768/1280 px. Diperiksa di Chrome desktop pada stack lokal: Tab di editor menambah indentasi, Esc lalu Tab keluar dari editor, target sentuh 44 px pada tautan dan tab, tabel menggulir di dalam kotaknya sendiri. |
 | `/admin` | Admin | Halaman konten diukur untuk admin; mahasiswa/dosen ditolak melalui redirect (runtime belum diverifikasi). |
 | `/profile` | Mahasiswa, dosen, admin | Halaman konten diukur untuk semua peran. |
 | `/lecturer/assignments/:assignmentId/recap` | Dosen, admin | Halaman konten diukur untuk peran yang diizinkan; mahasiswa ditolak melalui redirect (runtime belum diverifikasi). |
