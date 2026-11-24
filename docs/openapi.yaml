@@ -680,7 +680,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '429':
-          description: A submission rate limit was reached.
+          description: |
+            A submission rate limit was reached (FR-14). When the minimum interval between submissions
+            refused the upload, Retry-After gives the wait in whole seconds, rounded up; the other limits
+            (one active submission, the per-assignment quota) have no known wait and send no header.
+          headers:
+            Retry-After:
+              description: Seconds until the interval limit allows the next submission (at least 1).
+              schema:
+                type: integer
+                minimum: 1
           content:
             application/json:
               schema:
