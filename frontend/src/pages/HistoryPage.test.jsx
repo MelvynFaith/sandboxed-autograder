@@ -241,7 +241,7 @@ describe('HistoryPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Lihat laporan' }))
 
     const report = await screen.findByRole('region', { name: 'Laporan submission submission-1' })
-    expect(within(report).getByText('(kosong)')).toBeInTheDocument()
+    expect(within(report).getByText('Program tidak mencetak apa pun.')).toBeInTheDocument()
     expect(report).toHaveTextContent(`Pesan error: ${explanation}`)
   })
 
@@ -275,7 +275,7 @@ describe('HistoryPage', () => {
     expect(within(report).getByText('7 ms')).toBeInTheDocument()
     expect(within(report).getByText('512 KB')).toBeInTheDocument()
     expect(within(report).queryByText('Pesan error:')).not.toBeInTheDocument()
-    expect(within(report).queryByText('Output aktual')).not.toBeInTheDocument()
+    expect(within(report).queryByText('Output program')).not.toBeInTheDocument()
   })
 
   it('links each submission to its code view', async () => {

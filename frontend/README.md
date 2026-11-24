@@ -22,9 +22,12 @@ npm run build
 ## Frontend scope
 
 - Students can browse assignments, submit Python files, follow grading status,
-  and view submission history and test-case reports. Visible reports explain
-  failed verdicts and mark empty output as `(kosong)`; hidden-case details remain
-  private.
+  and view submission history and test-case reports. A visible result shows its
+  input, the expected output and the program output side by side, explains the
+  verdict, says when the output was cut at the output limit, and adds a hint when
+  an import fails because only the standard library is available; hidden-case
+  details remain private. Lecturers and administrators see the same layout on the
+  report page opened from the recap.
 - Students see only their enrolled courses and course-grouped assignments;
   course assignment access uses `GET /api/v1/courses/{id}/assignments`.
 - Lecturers create Courses for themselves; administrators assign a lecturer

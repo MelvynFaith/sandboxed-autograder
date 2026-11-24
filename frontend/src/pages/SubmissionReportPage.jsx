@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getSubmissionReport } from '../api/submissionReport.js'
 import { formatScore, verdictStyles } from '../components/gradingLabels.js'
+import ReportOutputs from '../components/ReportOutputs.jsx'
 
 // The report of one submission for lecturers and admins, opened from the recap (FR-11).
 function SubmissionReportPage() {
@@ -92,17 +93,7 @@ function SubmissionReportPage() {
                   <p className="mt-2 text-sm text-slate-700">
                     Skor {result.score}, {result.executionTimeMs} ms, {result.memoryKb} KB
                   </p>
-                  {result.errorMessage && (
-                    <p className="mt-2 text-sm text-red-800">
-                      <span className="font-medium">Pesan error: </span>
-                      {result.errorMessage}
-                    </p>
-                  )}
-                  {result.actualOutput != null && (
-                    <pre className="mt-2 overflow-x-auto rounded bg-slate-50 p-3 text-sm">
-                      {result.actualOutput}
-                    </pre>
-                  )}
+                  {!result.hidden && <ReportOutputs headingLevel={3} result={result} />}
                 </li>
               ))}
             </ul>

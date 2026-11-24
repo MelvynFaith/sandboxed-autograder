@@ -27,6 +27,8 @@ const mockSubmissionReport = {
       error_message: null,
       is_hidden: false,
       actual_output: '42',
+      input: '6 7\n',
+      expected_output: '42\n',
     },
     {
       testcase_id: 'testcase-2',
@@ -56,6 +58,8 @@ const mockSubmissionReport = {
       error_message: null,
       is_hidden: false,
       actual_output: '0',
+      input: '3\n',
+      expected_output: '9\n',
     },
     {
       testcase_id: 'testcase-5',
@@ -112,7 +116,10 @@ function readResult(result) {
     !Number.isFinite(result.memory_kb) ||
     (result.error_message != null && typeof result.error_message !== 'string') ||
     (result.is_hidden !== undefined && typeof result.is_hidden !== 'boolean') ||
-    (result.actual_output != null && typeof result.actual_output !== 'string')
+    (result.actual_output != null && typeof result.actual_output !== 'string') ||
+    (result.input != null && typeof result.input !== 'string') ||
+    (result.expected_output != null && typeof result.expected_output !== 'string') ||
+    (result.is_truncated != null && typeof result.is_truncated !== 'boolean')
   ) {
     throw new Error('Data hasil test case tidak sesuai format yang diharapkan.')
   }
@@ -128,6 +135,10 @@ function readResult(result) {
     hidden,
     errorMessage: hidden ? null : result.error_message ?? null,
     actualOutput: hidden ? null : result.actual_output ?? null,
+    // The test case itself, sent for visible results only (FR-03, FR-10).
+    input: hidden ? null : result.input ?? null,
+    expectedOutput: hidden ? null : result.expected_output ?? null,
+    truncated: hidden ? false : result.is_truncated === true,
   }
 }
 
