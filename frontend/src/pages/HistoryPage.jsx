@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { cancelSubmission, getSubmissionHistory } from '../api/submissionHistory.js'
 import { getSubmissionReport } from '../api/submissionReport.js'
+import ScoreMeter from '../components/ScoreMeter.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
 import SubmissionReport from '../components/SubmissionReport.jsx'
 import FocusTrapDialog from '../components/FocusTrapDialog.jsx'
@@ -160,38 +161,18 @@ function HistoryPage() {
       {!isLoading && !loadError && submissions.length === 0 && (
         <p className="mt-4 text-muted">Belum ada submission.</p>
       )}
-      {!isLoading && !loadError && (
-        <nav aria-label="Paginasi riwayat submission" className="mt-5 flex items-center gap-3">
-          <button
-            className="rounded-md border border-line-strong px-3 py-2 disabled:opacity-50"
-            disabled={page === 1}
-            onClick={() => setPage((current) => Math.max(1, current - 1))}
-            type="button"
-          >
-            Sebelumnya
-          </button>
-          <span aria-current="page">Halaman {page}</span>
-          <button
-            className="rounded-md border border-line-strong px-3 py-2 disabled:opacity-50"
-            disabled={!hasNextPage}
-            onClick={() => setPage((current) => current + 1)}
-            type="button"
-          >
-            Berikutnya
-          </button>
-        </nav>
-      )}
-      <ul className="mt-6 space-y-4">
+      <ul className="mt-6 divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface empty:hidden">
         {submissions.map((submission) => (
           <li
-            className="rounded-lg border border-line bg-surface p-5"
+            className="p-4 sm:p-5"
             key={submission.id}
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold">{submission.assignmentTitle}</h2>
-                <p className="mt-2 text-sm text-ink">
+                <p className="mt-2 inline-flex items-center gap-3 text-sm text-ink tabular-nums">
                   Skor: {formatScore(submission.totalScore, submission.maxScore)}
+                  <ScoreMeter max={submission.maxScore} total={submission.totalScore} />
                 </p>
                 {submission.isLate && (
                   <p className="mt-1 text-sm font-medium text-attention">Terlambat</p>
@@ -282,6 +263,27 @@ function HistoryPage() {
           </li>
         ))}
       </ul>
+      {!isLoading && !loadError && (
+        <nav aria-label="Paginasi riwayat submission" className="mt-4 flex items-center gap-3">
+          <button
+            className="rounded-md border border-line-strong px-3 py-2 disabled:opacity-50"
+            disabled={page === 1}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            type="button"
+          >
+            Sebelumnya
+          </button>
+          <span aria-current="page">Halaman {page}</span>
+          <button
+            className="rounded-md border border-line-strong px-3 py-2 disabled:opacity-50"
+            disabled={!hasNextPage}
+            onClick={() => setPage((current) => current + 1)}
+            type="button"
+          >
+            Berikutnya
+          </button>
+        </nav>
+      )}
     </main>
   )
 }
