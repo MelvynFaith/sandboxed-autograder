@@ -9,6 +9,23 @@ function invalidateStoredSession() {
   window.dispatchEvent(new Event(AUTH_SESSION_INVALIDATED))
 }
 
+// Retry-After of a 429 in whole seconds, or null. The API sends it with every rate-limit refusal
+// (FR-14), so the dashboard can count down instead of only quoting the number.
+function retryAfterSeconds(response) {
+  if (response.status !== 429) {
+    return null
+  }
+  const value = response.headers?.get('Retry-After')
+  return value && /^\d+$/.test(value) ? Number(value) : null
+}
+
+function apiFailure(message, response) {
+  const error = new Error(message)
+  error.status = response.status
+  error.retryAfter = retryAfterSeconds(response)
+  return error
+}
+
 export async function throwApiError(response, fallbackMessage, statusMessages = {}) {
   let payload
   try {
@@ -26,25 +43,26 @@ export async function throwApiError(response, fallbackMessage, statusMessages = 
     typeof apiError.message === 'string' &&
     apiError.message.trim()
   ) {
-    throw new Error(apiError.message)
+    throw apiFailure(apiError.message, response)
   }
 
   const statusMessage = statusMessages[response.status]
   if (statusMessage) {
-    throw new Error(
+    throw apiFailure(
       typeof statusMessage === 'function' ? statusMessage(response) : statusMessage,
+      response,
     )
   }
 
   if (response.status === 429) {
     const retryAfter = response.headers?.get('Retry-After')
     if (retryAfter && /^\d+$/.test(retryAfter)) {
-      throw new Error(`Terlalu banyak permintaan. Coba lagi dalam ${retryAfter} detik.`)
+      throw apiFailure(`Terlalu banyak permintaan. Coba lagi dalam ${retryAfter} detik.`, response)
     }
-    throw new Error('Terlalu banyak permintaan. Silakan coba lagi nanti.')
+    throw apiFailure('Terlalu banyak permintaan. Silakan coba lagi nanti.', response)
   }
 
-  throw new Error(fallbackMessage)
+  throw apiFailure(fallbackMessage, response)
 }
 
 export async function throwMockApiError(code, message, status = 400) {

@@ -129,6 +129,29 @@ describe('getSubmissionHistory', () => {
     )
   })
 
+  it('narrows the history to one assignment', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [], page: 1, page_size: 1, has_next: false }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await getSubmissionHistory({ page: 1, pageSize: 1, assignmentId: 'a/1' })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/submissions?page=1&page_size=1&assignment_id=a%2F1',
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    )
+  })
+
+  it('filters the mock history by assignment', async () => {
+    vi.stubEnv('VITE_USE_MOCK', 'true')
+
+    const result = await getSubmissionHistory({ assignmentId: 'assignment-2' })
+
+    expect(result.items.map((item) => item.id)).toEqual(['submission-3', 'submission-2'])
+  })
+
   it('surfaces failed requests and invalid response shapes', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }))
 

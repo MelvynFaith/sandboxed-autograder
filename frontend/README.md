@@ -21,7 +21,8 @@ npm run build
 
 ## Frontend scope
 
-- Students can browse assignments, submit Python files, follow grading status,
+- Students can browse assignments, read each assignment as a problem page,
+  submit Python code typed in an editor or as a `.py` file, follow grading status,
   and view submission history and test-case reports. A visible result shows its
   input, the expected output and the program output side by side, explains the
   verdict, says when the output was cut at the output limit, and adds a hint when
@@ -47,13 +48,37 @@ npm run build
   export results as CSV (FR-11). Recap rows refresh while regraded submissions
   are queued or running.
 
+## Problem pages
+
+- The statement is Markdown, rendered by `react-markdown` with `remark-breaks`
+  (a single newline stays a line break, so plain-text statements read as
+  typed). Raw HTML is skipped, unsafe link schemes such as `javascript:` are
+  dropped, and images are not shown because the CSP allows only this origin.
+  A line that starts with an HTML tag is an HTML block in CommonMark, so the
+  whole line is dropped.
+- The code editor is CodeMirror 6 with Python highlighting. It runs inside a
+  shadow root: CodeMirror injects its styles at run time, as `<style>` elements
+  in a document (blocked by the site's CSP, `default-src 'self'` without
+  `'unsafe-inline'`) but as constructed style sheets in a shadow root (allowed).
+  The CSP stays unchanged. The editor's label and hint live in the same shadow
+  tree so its accessible name and description resolve.
+- Code typed in the editor is sent as `main.py` through the same upload
+  endpoint as a chosen file (FR-04).
+- The problem pages, the editor and the Markdown renderer are loaded on first
+  use, so the login and list pages keep the previous bundle size.
+- Copy buttons use the Clipboard API on HTTPS and fall back to a hidden textarea
+  on plain HTTP.
+
 ## Routes
 
 | Route | Roles | Page |
 | --- | --- | --- |
 | `/login` | Public | Sign in |
 | `/register` | Public | Student registration |
-| `/assignments` | Student, lecturer | Student assignment list and upload; lecturer assignment list |
+| `/assignments` | Student, lecturer | Student: each Course as a table of assignments with deadlines and the latest submission. Lecturer: assignment list |
+| `/assignments/:id` | Student | Problem view: limits, Markdown statement, visible test cases as examples |
+| `/assignments/:id/submit` | Student | Submit code from the editor (CodeMirror) or a `.py` file; live status |
+| `/assignments/:id/submissions` | Student | This assignment's submissions, reports in place, cancel while queued |
 | `/history` | Student | Submission history and report |
 | `/courses` | Lecturer, administrator | Course creation and enrollment management |
 | `/lecturer/assignments` | Lecturer, administrator | Assignment, resource-limit, and test-case management; YAML import/export |

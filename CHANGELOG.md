@@ -157,6 +157,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dashboard (`frontend/`): the test-case form now defaults the match mode to `WHITESPACE_INSENSITIVE`, so a
   lecturer who types the expected output without a trailing newline no longer fails every correct
   submission (#129). `EXACT` is still offered and is sent as chosen; the UAT scenario now says to pick it.
+- Dashboard (`frontend/`): students work per assignment, like a problem on Codeforces. **Daftar Assignment**
+  shows each Course as a table of assignments with both deadlines and the latest submission, without upload
+  forms. Each assignment has a page with three views: the problem (limits, a Markdown statement, every
+  visible test case as an example with copy buttons), a submit view (a Python editor, CodeMirror 6, or a
+  `.py` file; live status; a late warning after the deadline; no form after the late deadline; a countdown
+  when the API sends `Retry-After`), and the student's own submissions for that assignment with reports in
+  place and cancel while queued. API errors carry the HTTP status and the `Retry-After` seconds. New
+  dependencies: `@codemirror/*` and `react-markdown` with `remark-breaks`; the editor and the Markdown
+  renderer load on first use.
 - Dashboard (`frontend/`): the test-case report now shows the input and the expected output of a visible
   test case next to the program output; the API already sent them, the dashboard dropped them. The report also
   says when the output was cut at the output limit, and explains a failed import (only the Python standard

@@ -19,15 +19,22 @@ Lecturer recap and CSV controls:
 
 1. Sign in with a student account. The navigation shows **Daftar Assignment**,
    **Riwayat**, and **Profil**.
-2. In **Daftar Assignment**, find the assignment under its Course. Choose a
-   Python `.py` file no larger than 256 KB; **Upload kode Python** becomes
-   available after a file is selected.
-3. Submit the file and follow the submission status. If the live connection
-   drops, the page falls back to the submission status endpoint; it does not
-   invent a test-case progress count.
-4. Open **Riwayat** to find prior submissions and open a report for its
-   test-case verdicts, score, execution time, and memory use.
-5. A hidden test case may show its status and score, but not its input or
+2. **Daftar Assignment** shows each Course as a table: assignment, deadline,
+   the late deadline (wider screens), and the latest submission. Open an
+   assignment by its title.
+3. The assignment page has three views. **Soal** shows the limits (CPU time,
+   total time, memory, output), the statement, and every test case the lecturer
+   left visible as an example, each with copy buttons. **Kirim kode** takes code
+   typed in the editor (Tab indents; Esc then Tab leaves the editor) or a `.py`
+   file of at most 256 KB, and follows the grading status live. After the
+   deadline it warns that the submission is marked late; after the late
+   deadline it offers no form. **Submission saya** lists this assignment's
+   submissions with their status and score, opens each report in place, and
+   cancels a queued one.
+4. If the live connection drops, the status falls back to the submission status
+   endpoint; it does not invent a test-case progress count.
+5. **Riwayat** still lists every submission across assignments.
+6. A hidden test case may show its status and score, but not its input or
    expected output.
 
 ## Lecturer
