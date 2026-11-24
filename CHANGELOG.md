@@ -142,6 +142,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Submission rate limit (`scheduler/`): a 429 from the minimum-interval rule (FR-14) now sends `Retry-After`
+  in whole seconds, rounded up like the message, so the dashboard can count down; the other rate-limit
+  refusals send no header because their wait is unknown.
 - Submission file expiry (`scheduler/`): `autograder expire-code` now also clears `results.actual_output` and
   `results.error_message` of the submissions whose file it deletes, in the same transaction, so what a student's program printed
   does not outlive the file (NFR-13, "berkas hasil"); verdicts, scores and timings stay.
