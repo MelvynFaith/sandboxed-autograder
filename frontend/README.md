@@ -145,7 +145,10 @@ change the backend contract.
 API failures read the SRS `{ "error": { "code", "message" } }` envelope and
 display its message. Upload HTTP 409, 413, and 429 responses show specific
 deadline, file-size, and frequency-limit messages. HTTP 429 responses honor a
-numeric `Retry-After` header when present (FR-04/FR-14).
+numeric `Retry-After` header when present (FR-04/FR-14): the error carries the
+seconds, and the submit view of an assignment disables its button and counts
+down until the next submission is allowed. The API sends the header for the
+minimum-interval rule only (#151); the other refusals show the message.
 
 The WebSocket ticket is placed in the connection URL because the browser
 WebSocket API does not support custom Authorization headers. A one-time ticket
