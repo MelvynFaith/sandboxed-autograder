@@ -23,7 +23,7 @@ export const verdictStyles = {
   MEMORY_LIMIT_EXCEEDED: 'bg-done-tint text-done',
   RUNTIME_ERROR: 'bg-danger-tint text-danger',
   SYNTAX_ERROR: 'bg-danger-tint text-danger',
-  SECURITY_VIOLATION: 'bg-ink text-white',
+  SECURITY_VIOLATION: 'bg-ink text-canvas',
 }
 
 // Timestamps are stored in UTC and shown in WIB (UTC+7).
