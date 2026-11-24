@@ -1,280 +1,74 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { getAssignments } from '../api/assignments.js'
 import { getCourses } from '../api/courses.js'
+import { deleteLecturerAssignment } from '../api/lecturerAssignments.js'
+import ConfirmDeleteDialog from '../components/ConfirmDeleteDialog.jsx'
 import FormFeedback from '../components/FormFeedback.jsx'
-import FocusTrapDialog from '../components/FocusTrapDialog.jsx'
-import {
-  createLecturerAssignment,
-  deleteLecturerAssignment,
-  getResourceLimit,
-  updateLecturerAssignment,
-  updateResourceLimit,
-} from '../api/lecturerAssignments.js'
-import {
-  createTestCase,
-  deleteTestCase,
-  exportTestCasesYaml,
-  getTestCases,
-  importTestCasesYaml,
-  updateTestCase,
-} from '../api/testcases.js'
+import { dateFormatter } from '../components/submissionLabels.js'
+import { useFeedback } from './lecturer/useFeedback.js'
 
-const resourceLimitFields = [
-  { name: 'cpu_time_ms', label: 'Batas waktu CPU (ms)' },
-  { name: 'memory_mb', label: 'Batas memori (MB)' },
-  { name: 'max_processes', label: 'Jumlah proses maksimum' },
-  { name: 'timeout_s', label: 'Waktu maksimum (detik)' },
-  { name: 'max_output_bytes', label: 'Output maksimum (byte)' },
-  { name: 'tmpfs_size_mb', label: 'Ukuran tmpfs (MB)' },
-]
-
-const emptyLimits = Object.fromEntries(resourceLimitFields.map(({ name }) => [name, '']))
-const emptyAssignment = { title: '', description: '', deadline_at: '', late_until_at: '' }
-const matchModes = ['EXACT', 'WHITESPACE_INSENSITIVE']
-const MAX_YAML_SIZE = 1024 * 1024
-const emptyTestCase = {
-  external_id: '',
-  input: '',
-  expected_output: '',
-  weight: '',
-  is_hidden: false,
-  match_mode: 'WHITESPACE_INSENSITIVE',
-}
-
-function toLocalDateTime(value) {
-  if (!value) {
-    return ''
-  }
-  const date = new Date(value)
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-    .toISOString()
-    .slice(0, 16)
-}
-
-function validateResourceLimits(limits) {
-  if (Object.values(limits).some(
-    (value) => !Number.isInteger(value) || value <= 0 || value > 2_147_483_647,
-  )) {
-    return 'Semua batas sumber daya harus berupa bilangan bulat positif.'
-  }
-  if (limits.tmpfs_size_mb + 16 > limits.memory_mb) {
-    return 'Ukuran tmpfs ditambah 16 MB tidak boleh melebihi batas memori.'
-  }
-  if (2 * limits.max_output_bytes >= limits.tmpfs_size_mb * 1024 ** 2) {
-    return 'Dua kali batas output harus lebih kecil dari ukuran tmpfs dalam byte.'
-  }
-  return null
-}
-
+// The lecturer's list of assignments of one course. Each row leads to the assignment's own pages
+// (statement and settings, test cases, recap); creating one has its own page.
 function LecturerAssignmentsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const requestedCourseId = searchParams.get('courseId')
-  const initialCourseId = useRef(requestedCourseId)
+  const location = useLocation()
+  const initialCourseId = useRef(searchParams.get('courseId'))
   const [courses, setCourses] = useState([])
-  const [courseId, setCourseId] = useState(() => requestedCourseId ?? '')
+  const [courseId, setCourseId] = useState(() => initialCourseId.current ?? '')
   const [assignments, setAssignments] = useState([])
-  const [activeAssignment, setActiveAssignment] = useState(null)
-  const [activeResourceLimits, setActiveResourceLimits] = useState(null)
-  const [testCases, setTestCases] = useState([])
-  const [editingTestCaseId, setEditingTestCaseId] = useState(null)
-  const [assignmentForm, setAssignmentForm] = useState(emptyAssignment)
-  const [resourceLimits, setResourceLimits] = useState(emptyLimits)
-  const [testCaseForm, setTestCaseForm] = useState(emptyTestCase)
-  const [isEditingAssignment, setIsEditingAssignment] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setErrorState] = useState('')
-  const [success, setSuccessState] = useState('')
-  const [feedbackRevision, setFeedbackRevision] = useState(0)
-  function setError(message) {
-    setErrorState(message)
-    if (message) setFeedbackRevision((revision) => revision + 1)
-  }
-  function setSuccess(message) {
-    setSuccessState(message)
-    if (message) setFeedbackRevision((revision) => revision + 1)
-  }
   const [pendingDelete, setPendingDelete] = useState(null)
-  const [yamlFile, setYamlFile] = useState(null)
-  const [isImportingYaml, setIsImportingYaml] = useState(false)
-  const [isExportingYaml, setIsExportingYaml] = useState(false)
-  const yamlFileInput = useRef(null)
   const deleteTrigger = useRef(null)
+  const { error, success, revision, setError, setSuccess } = useFeedback(
+    location.state?.notice ?? '',
+  )
 
   useEffect(() => {
-    let current = true
+    let isCurrent = true
     getCourses()
       .then((results) => {
-        if (current) {
-          setCourses(results)
-          const requestedCourse = results.find(
-            (course) => String(course.id) === initialCourseId.current,
-          )
-          const selectedId = String(requestedCourse?.id ?? results[0]?.id ?? '')
-          setCourseId(selectedId)
-        }
+        if (!isCurrent) return
+        setCourses(results)
+        const requested = results.find((course) => String(course.id) === initialCourseId.current)
+        setCourseId(String(requested?.id ?? results[0]?.id ?? ''))
       })
       .catch((loadError) => {
-        if (current) {
-          setError(loadError.message)
-        }
+        if (isCurrent) setError(loadError.message)
       })
       .finally(() => {
-        if (current) {
-          setIsLoading(false)
-        }
+        if (isCurrent) setIsLoading(false)
       })
     return () => {
-      current = false
+      isCurrent = false
     }
+    // setError only sets state; the courses are loaded once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
-    let current = true
+    let isCurrent = true
     if (!courseId) {
       return undefined
     }
     getAssignments({ courseId })
       .then((results) => {
-        if (current) {
-          setAssignments(results)
-        }
+        if (isCurrent) setAssignments(results)
       })
       .catch((loadError) => {
-        if (current) {
-          setError(loadError.message)
-        }
+        if (isCurrent) setError(loadError.message)
       })
     return () => {
-      current = false
+      isCurrent = false
     }
+    // setError only sets state; the list is loaded once per course.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId])
 
-  async function selectAssignment(assignment) {
-    setActiveAssignment(assignment)
-    setActiveResourceLimits(null)
-    setIsEditingAssignment(false)
-    setAssignmentForm({
-      title: assignment.title,
-      description: assignment.description,
-      deadline_at: toLocalDateTime(assignment.deadlineAt),
-      late_until_at: toLocalDateTime(assignment.lateUntilAt),
-    })
-    setError('')
-    try {
-      const [results, limits] = await Promise.all([
-        getTestCases(assignment.id),
-        getResourceLimit(assignment.id),
-      ])
-      setTestCases(results)
-      setActiveResourceLimits(limits)
-      setResourceLimits(
-        Object.fromEntries(resourceLimitFields.map(({ name }) => [name, String(limits[name])])),
-      )
-    } catch (loadError) {
-      setError(loadError.message)
-      setTestCases([])
-    }
-  }
-
-  function handleAssignmentFormChange(event) {
-    setAssignmentForm((current) => ({ ...current, [event.target.name]: event.target.value }))
-  }
-
-  async function saveAssignment(event) {
-    event.preventDefault()
-    setError('')
-    setSuccess('')
-    const limits = Object.fromEntries(
-      Object.entries(resourceLimits).map(([name, value]) => [name, Number(value)]),
-    )
-    const resourceLimitError = validateResourceLimits(limits)
-    if (resourceLimitError) {
-      setError(resourceLimitError)
-      return
-    }
-
-    const deadlineValid = Number.isFinite(Date.parse(assignmentForm.deadline_at))
-    const lateUntilValid = Number.isFinite(Date.parse(assignmentForm.late_until_at))
-    if (
-      !assignmentForm.title.trim() ||
-      !assignmentForm.description.trim() ||
-      !deadlineValid ||
-      !lateUntilValid
-    ) {
-      setError('Judul, deskripsi, deadline, dan batas akhir keterlambatan wajib diisi.')
-      return
-    }
-    if (Date.parse(assignmentForm.late_until_at) < Date.parse(assignmentForm.deadline_at)) {
-      setError('Batas akhir keterlambatan harus sama dengan atau setelah deadline.')
-      return
-    }
-    const assignmentPayload = {
-      title: assignmentForm.title.trim(),
-      description: assignmentForm.description.trim(),
-      deadline_at: new Date(assignmentForm.deadline_at).toISOString(),
-      late_until_at: new Date(assignmentForm.late_until_at).toISOString(),
-    }
-
-    try {
-      // A new assignment is created together with its limits; an existing one updates them
-      // through the resource-limit endpoint after its own fields are saved.
-      const savedAssignment = isEditingAssignment
-        ? await updateLecturerAssignment(activeAssignment.id, assignmentPayload)
-        : await createLecturerAssignment(courseId, assignmentPayload, limits)
-      setAssignments((current) => {
-        const remaining = current.filter((entry) => entry.id !== savedAssignment.id)
-        return [...remaining, savedAssignment]
-      })
-      setActiveAssignment(savedAssignment)
-      if (isEditingAssignment) {
-        await updateResourceLimit(savedAssignment.id, limits)
-      }
-      setActiveResourceLimits(limits)
-      setIsEditingAssignment(false)
-      setSuccess(isEditingAssignment ? 'Assignment berhasil diperbarui.' : 'Assignment berhasil dibuat.')
-      if (!isEditingAssignment) {
-        setAssignmentForm(emptyAssignment)
-        setResourceLimits(emptyLimits)
-        setTestCases([])
-        setTestCaseForm(emptyTestCase)
-      }
-    } catch (saveError) {
-      setError(saveError.message)
-    }
-  }
-
-  function beginEditingAssignment() {
-    if (!activeAssignment || !activeResourceLimits) return
-
-    setError('')
-    setSuccess('')
-    setAssignmentForm({
-      title: activeAssignment.title,
-      description: activeAssignment.description,
-      deadline_at: toLocalDateTime(activeAssignment.deadlineAt),
-      late_until_at: toLocalDateTime(activeAssignment.lateUntilAt),
-    })
-    setResourceLimits(
-      Object.fromEntries(
-        resourceLimitFields.map(({ name }) => [name, String(activeResourceLimits[name])]),
-      ),
-    )
-    setIsEditingAssignment(true)
-  }
-
-  async function confirmDeleteAssignment() {
-    if (!pendingDelete || pendingDelete.type !== 'assignment') {
-      return
-    }
+  async function confirmDelete() {
     try {
       await deleteLecturerAssignment(pendingDelete.id)
       setAssignments((current) => current.filter((entry) => entry.id !== pendingDelete.id))
-      if (activeAssignment?.id === pendingDelete.id) {
-        setActiveAssignment(null)
-        setActiveResourceLimits(null)
-        setTestCases([])
-      }
       setSuccess('Assignment berhasil dihapus.')
     } catch (deleteError) {
       setError(deleteError.message)
@@ -283,504 +77,121 @@ function LecturerAssignmentsPage() {
     }
   }
 
-  async function saveTestCase(event) {
-    event.preventDefault()
-    setError('')
-    setSuccess('')
-    const weight = Number(testCaseForm.weight)
-    if (!Number.isInteger(weight) || weight <= 0 || weight > 2_147_483_647) {
-      setError('Bobot harus berupa bilangan bulat positif.')
-      return
-    }
-    const payload = { ...testCaseForm, external_id: testCaseForm.external_id.trim(), weight }
-    try {
-      const savedTestCase = editingTestCaseId
-        ? await updateTestCase(editingTestCaseId, payload)
-        : await createTestCase(activeAssignment.id, payload)
-      setTestCases((current) => {
-        const remaining = current.filter((entry) => entry.id !== savedTestCase.id)
-        return [...remaining, savedTestCase]
-      })
-      setEditingTestCaseId(null)
-      setTestCaseForm(emptyTestCase)
-      setSuccess(editingTestCaseId ? 'Test case berhasil diperbarui.' : 'Test case berhasil ditambahkan.')
-    } catch (saveError) {
-      setError(saveError.message)
-    }
-  }
-
-  async function exportTestCases() {
-    setError('')
-    setSuccess('')
-    setIsExportingYaml(true)
-    try {
-      const { blob, filename } = await exportTestCasesYaml(activeAssignment.id)
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.setTimeout(() => URL.revokeObjectURL(url), 0)
-      setSuccess('Test case berhasil diekspor sebagai YAML.')
-    } catch (exportError) {
-      setError(exportError.message)
-    } finally {
-      setIsExportingYaml(false)
-    }
-  }
-
-  async function importTestCases(event) {
-    event.preventDefault()
-    if (!yamlFile || !activeAssignment) return
-
-    setError('')
-    setSuccess('')
-    setIsImportingYaml(true)
-    try {
-      const result = await importTestCasesYaml(activeAssignment.id, await yamlFile.text())
-      setYamlFile(null)
-      if (yamlFileInput.current) {
-        yamlFileInput.current.value = ''
-      }
-      setSuccess(`Impor YAML selesai: ${result.created} dibuat, ${result.updated} diperbarui.`)
-      try {
-        const [updatedTestCases, updatedLimits] = await Promise.all([
-          getTestCases(activeAssignment.id),
-          getResourceLimit(activeAssignment.id),
-        ])
-        setTestCases(updatedTestCases)
-        setActiveResourceLimits(updatedLimits)
-        setResourceLimits(
-          Object.fromEntries(
-            resourceLimitFields.map(({ name }) => [name, String(updatedLimits[name])]),
-          ),
-        )
-      } catch (refreshError) {
-        setError(`YAML berhasil diimpor, tetapi data terbaru gagal dimuat: ${refreshError.message}`)
-      }
-    } catch (importError) {
-      setError(importError.message)
-    } finally {
-      setIsImportingYaml(false)
-    }
-  }
-
-  async function confirmDeleteTestCase() {
-    if (!pendingDelete || pendingDelete.type !== 'testcase') {
-      return
-    }
-
-    try {
-      await deleteTestCase(pendingDelete.id)
-      setTestCases((current) => current.filter((entry) => entry.id !== pendingDelete.id))
-      setSuccess('Test case berhasil dihapus.')
-    } catch (deleteError) {
-      setError(deleteError.message)
-    } finally {
-      setPendingDelete(null)
-    }
-  }
-
-  function requestDelete(type, id, event) {
-    deleteTrigger.current = event.currentTarget
-    event.currentTarget.focus()
-    setPendingDelete({ type, id })
-  }
-
-  function cancelDelete() {
-    setPendingDelete(null)
-  }
-
-  function editTestCase(testCase) {
-    setEditingTestCaseId(testCase.id)
-    setTestCaseForm({
-      external_id: testCase.externalId,
-      input: testCase.input,
-      expected_output: testCase.expectedOutput,
-      weight: String(testCase.weight),
-      is_hidden: testCase.hidden,
-      match_mode: testCase.matchMode,
-    })
-  }
+  const courseQuery = courseId ? `?courseId=${encodeURIComponent(courseId)}` : ''
 
   return (
-    <main className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6 sm:py-10">
+    <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6 sm:py-10">
       <h1 className="text-2xl font-semibold">Kelola Assignment</h1>
-      <nav aria-label="Alur dosen" className="rounded-lg border border-line bg-surface p-4">
-        <ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-          <li>
-            <Link
-              className="font-medium text-link underline"
-              to={`/courses${courseId ? `?courseId=${encodeURIComponent(courseId)}` : ''}`}
-            >
-              1. Course &amp; enrollment
-            </Link>
-          </li>
-          <li aria-current="step" className="font-semibold text-link">
-            2. Assignment &amp; test case
-          </li>
-          <li className="text-muted">3. Rekap nilai &amp; CSV (pilih assignment)</li>
-        </ol>
-      </nav>
-      <FormFeedback
-        announcementKey={feedbackRevision}
-        error={error}
-        success={success}
-      />
+      <FormFeedback announcementKey={revision} error={error} success={success} />
       {isLoading ? (
         <p className="text-muted">Memuat Course...</p>
       ) : courses.length === 0 ? (
         <p className="text-muted">Belum ada Course yang dapat dikelola.</p>
       ) : (
         <>
-          <div>
-            <label className="mb-1 block font-medium" htmlFor="course-select">Course</label>
-            <select
-              className="w-full rounded-md border border-line-strong p-2"
-              id="course-select"
-              onChange={(event) => {
-                setCourseId(event.target.value)
-                setSearchParams({ courseId: event.target.value })
-                setActiveAssignment(null)
-                setActiveResourceLimits(null)
-                setAssignments([])
-              }}
-              value={courseId}
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="min-w-0 flex-1 sm:max-w-md">
+              <label className="mb-1 block font-medium" htmlFor="course-select">Course</label>
+              <select
+                className="w-full rounded-md border border-line-strong p-2"
+                id="course-select"
+                onChange={(event) => {
+                  setCourseId(event.target.value)
+                  setSearchParams({ courseId: event.target.value })
+                  setAssignments([])
+                }}
+                value={courseId}
+              >
+                {courses.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.code} — {course.name} ({course.term})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Link
+              className="rounded-md bg-accent px-4 py-2 font-medium text-white hover:bg-accent-hover"
+              to={`/lecturer/assignments/new${courseQuery}`}
             >
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.code} — {course.name} ({course.term})
-                </option>
-              ))}
-            </select>
+              Buat assignment
+            </Link>
           </div>
 
           <section aria-labelledby="assignments-title" className="space-y-3">
             <h2 className="text-xl font-semibold" id="assignments-title">Assignment pada Course</h2>
-            <ul className="space-y-3">
-              {assignments.map((assignment) => (
-                <li
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface p-4"
-                  key={assignment.id}
-                >
-                  <span className="font-medium">{assignment.title}</span>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      className="rounded-md border border-line-strong px-3 py-2"
-                      onClick={() => selectAssignment(assignment)}
-                      type="button"
-                    >
-                      Kelola
-                    </button>
-                    <Link
-                      className="rounded-md border border-line-strong px-3 py-2 font-medium text-link hover:bg-raised"
-                      to={`/lecturer/assignments/${encodeURIComponent(assignment.id)}/recap?courseId=${encodeURIComponent(courseId)}`}
-                    >
-                      Rekap nilai &amp; CSV
-                    </Link>
-                    <button
-                      className="rounded-md border border-danger/50 px-3 py-2 text-danger"
-                      onClick={(event) => requestDelete('assignment', assignment.id, event)}
-                      type="button"
-                    >
-                      Hapus
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <form
-            className="space-y-5 rounded-lg border border-line bg-surface p-5"
-            onSubmit={saveAssignment}
-          >
-            <h2 className="text-lg font-semibold">
-              {isEditingAssignment ? 'Ubah assignment' : 'Buat assignment'}
-            </h2>
-            <label className="block">
-              <span className="mb-1 block font-medium">Judul</span>
-              <input
-                className="w-full rounded-md border border-line-strong p-2"
-                name="title"
-                onChange={handleAssignmentFormChange}
-                required
-                value={assignmentForm.title}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block font-medium">Deskripsi</span>
-              <textarea
-                className="w-full rounded-md border border-line-strong p-2"
-                name="description"
-                onChange={handleAssignmentFormChange}
-                required
-                rows="3"
-                value={assignmentForm.description}
-              />
-            </label>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {[
-                { name: 'deadline_at', label: 'Deadline' },
-                { name: 'late_until_at', label: 'Batas akhir keterlambatan' },
-              ].map(({ name, label }) => (
-                <label className="block" key={name}>
-                  <span className="mb-1 block font-medium">{label}</span>
-                  <input
-                    className="w-full rounded-md border border-line-strong p-2"
-                    name={name}
-                    onChange={handleAssignmentFormChange}
-                    required
-                    type="datetime-local"
-                    value={assignmentForm[name]}
-                  />
-                </label>
-              ))}
-            </div>
-            <fieldset className="grid gap-4 sm:grid-cols-2">
-              <legend className="mb-3 font-semibold">Batas sumber daya</legend>
-              {resourceLimitFields.map(({ name, label }) => (
-                <label className="block" key={name}>
-                  <span className="mb-1 block font-medium">{label}</span>
-                  <input
-                    className="w-full rounded-md border border-line-strong p-2"
-                    min="1"
-                    name={name}
-                    onChange={(event) =>
-                      setResourceLimits((current) => ({ ...current, [name]: event.target.value }))
-                    }
-                    required
-                    step="1"
-                    type="number"
-                    value={resourceLimits[name]}
-                  />
-                </label>
-              ))}
-            </fieldset>
-            <div className="flex flex-wrap gap-3">
-              <button className="rounded-md bg-accent px-4 py-2 font-medium text-white" type="submit">
-                {isEditingAssignment ? 'Simpan perubahan' : 'Buat assignment'}
-              </button>
-              {activeAssignment && !isEditingAssignment && (
-                <button
-                  className="rounded-md border border-line-strong px-4 py-2"
-                  disabled={!activeResourceLimits}
-                  onClick={beginEditingAssignment}
-                  type="button"
-                >
-                  Ubah assignment terpilih
-                </button>
-              )}
-            </div>
-          </form>
-
-          {activeAssignment && (
-            <section aria-labelledby="testcases-title" className="space-y-5">
-              <h2 className="text-xl font-semibold" id="testcases-title">
-                Test case — {activeAssignment.title}
-              </h2>
-              <div className="flex flex-wrap gap-3">
-                <button
-                  className="rounded-md border border-line-strong px-4 py-2 font-medium disabled:opacity-60"
-                  disabled={isExportingYaml}
-                  onClick={exportTestCases}
-                  type="button"
-                >
-                  {isExportingYaml ? 'Mengekspor YAML...' : 'Ekspor YAML'}
-                </button>
+            {assignments.length === 0 ? (
+              <p className="text-muted">Course ini belum punya assignment.</p>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+                <table className="w-full border-collapse text-left text-sm">
+                  <caption className="sr-only">Assignment pada Course yang dipilih</caption>
+                  <thead>
+                    <tr className="border-b border-line-strong">
+                      <th className="px-4 py-2" scope="col">Judul</th>
+                      <th className="px-4 py-2" scope="col">Deadline</th>
+                      <th className="px-4 py-2" scope="col">Batas terlambat</th>
+                      <th className="px-4 py-2" scope="col">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {assignments.map((assignment) => (
+                      <tr className="align-top" key={assignment.id}>
+                        <th className="px-4 py-3 font-medium" scope="row">{assignment.title}</th>
+                        <td className="px-4 py-3">
+                          <time dateTime={assignment.deadlineAt}>
+                            {dateFormatter.format(new Date(assignment.deadlineAt))}
+                          </time>
+                        </td>
+                        <td className="px-4 py-3">
+                          <time dateTime={assignment.lateUntilAt}>
+                            {dateFormatter.format(new Date(assignment.lateUntilAt))}
+                          </time>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            <Link
+                              aria-label={`Kelola ${assignment.title}`}
+                              className="rounded-md border border-line-strong px-3 py-1.5 font-medium hover:bg-raised"
+                              to={`/lecturer/assignments/${encodeURIComponent(assignment.id)}${courseQuery}`}
+                            >
+                              Kelola
+                            </Link>
+                            <Link
+                              aria-label={`Rekap nilai ${assignment.title}`}
+                              className="rounded-md border border-line-strong px-3 py-1.5 font-medium text-link hover:bg-raised"
+                              to={`/lecturer/assignments/${encodeURIComponent(assignment.id)}/recap${courseQuery}`}
+                            >
+                              Rekap nilai &amp; CSV
+                            </Link>
+                            <button
+                              aria-label={`Hapus ${assignment.title}`}
+                              className="rounded-md border border-danger/50 px-3 py-1.5 font-medium text-danger"
+                              onClick={(event) => {
+                                deleteTrigger.current = event.currentTarget
+                                event.currentTarget.focus()
+                                setPendingDelete({ id: assignment.id })
+                              }}
+                              type="button"
+                            >
+                              Hapus
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <form
-                className="space-y-3 rounded-lg border border-line bg-surface p-5"
-                onSubmit={importTestCases}
-              >
-                <h3 className="text-lg font-semibold">Impor test case dari YAML</h3>
-                <label className="block">
-                  <span className="mb-1 block font-medium">Berkas YAML (maksimal 1 MiB)</span>
-                  <input
-                    accept=".yaml,.yml,application/yaml,text/yaml"
-                    className="block w-full min-w-0 rounded-md border border-line-strong p-2"
-                    onChange={(event) => {
-                      const selectedFile = event.target.files?.[0] ?? null
-                      setError('')
-                      setSuccess('')
-                      if (selectedFile && selectedFile.size > MAX_YAML_SIZE) {
-                        event.target.value = ''
-                        setYamlFile(null)
-                        setError('Berkas YAML maksimal 1 MiB.')
-                        return
-                      }
-                      setYamlFile(selectedFile)
-                    }}
-                    ref={yamlFileInput}
-                    type="file"
-                  />
-                </label>
-                {yamlFile && (
-                  <p className="text-sm text-muted">Dipilih: {yamlFile.name}</p>
-                )}
-                <button
-                  className="rounded-md bg-accent px-4 py-2 font-medium text-white disabled:opacity-60"
-                  disabled={!yamlFile || isImportingYaml}
-                  type="submit"
-                >
-                  {isImportingYaml ? 'Mengimpor YAML...' : 'Impor YAML'}
-                </button>
-              </form>
-              <ul className="space-y-3">
-                {testCases.map((testCase) => (
-                  <li className="rounded-lg border border-line bg-surface p-4" key={testCase.id}>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-semibold">{testCase.externalId}</h3>
-                        <p className="text-sm">Bobot: {testCase.weight}; mode: {testCase.matchMode}</p>
-                        <p className="text-sm">{testCase.hidden ? 'Tersembunyi' : 'Terlihat'}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          className="rounded-md border border-line-strong px-3 py-2"
-                          onClick={() => editTestCase(testCase)}
-                          type="button"
-                        >
-                          Ubah
-                        </button>
-                        <button
-                          className="rounded-md border border-danger/50 px-3 py-2 text-danger"
-                          onClick={(event) => requestDelete('testcase', testCase.id, event)}
-                          type="button"
-                        >
-                          Hapus
-                        </button>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              <form className="space-y-4 rounded-lg border border-line bg-surface p-5" onSubmit={saveTestCase}>
-                <h3 className="text-lg font-semibold">
-                  {editingTestCaseId ? 'Ubah test case' : 'Tambah test case'}
-                </h3>
-                {[
-                  { name: 'external_id', label: 'ID eksternal (opsional)' },
-                  { name: 'input', label: 'Input', multiline: true },
-                  { name: 'expected_output', label: 'Keluaran yang diharapkan', multiline: true },
-                  { name: 'weight', label: 'Bobot', type: 'number' },
-                ].map(({ name, label, multiline, type }) => (
-                  <label className="block" key={name}>
-                    <span className="mb-1 block font-medium">{label}</span>
-                    {multiline ? (
-                      <textarea
-                        className="w-full rounded-md border border-line-strong p-2"
-                        name={name}
-                        onChange={(event) =>
-                          setTestCaseForm((current) => ({ ...current, [name]: event.target.value }))
-                        }
-                        rows="3"
-                        value={testCaseForm[name]}
-                      />
-                    ) : (
-                      <input
-                        className="w-full rounded-md border border-line-strong p-2"
-                        min={type === 'number' ? '1' : undefined}
-                        name={name}
-                        onChange={(event) =>
-                          setTestCaseForm((current) => ({ ...current, [name]: event.target.value }))
-                        }
-                        required={name === 'weight'}
-                        step={type === 'number' ? '1' : undefined}
-                        type={type ?? 'text'}
-                        value={testCaseForm[name]}
-                      />
-                    )}
-                  </label>
-                ))}
-                <div>
-                  <label className="mb-1 block font-medium" htmlFor="test-case-match-mode">
-                    Mode pencocokan output
-                  </label>
-                  <select
-                    aria-describedby="match-mode-help"
-                    className="w-full rounded-md border border-line-strong p-2"
-                    id="test-case-match-mode"
-                    onChange={(event) =>
-                      setTestCaseForm((current) => ({ ...current, match_mode: event.target.value }))
-                    }
-                    value={testCaseForm.match_mode}
-                  >
-                    {matchModes.map((mode) => <option key={mode}>{mode}</option>)}
-                  </select>
-                  <p className="mt-1 text-sm text-muted" id="match-mode-help">
-                    WHITESPACE_INSENSITIVE (bawaan) mengabaikan perbedaan spasi, tab, dan baris
-                    baru, sehingga baris baru di akhir keluaran print() tidak menggagalkan jawaban
-                    yang benar. EXACT membandingkan seluruh keluaran, termasuk spasi dan baris
-                    baru; pilih EXACT bila keduanya harus ikut dinilai, dan sertakan baris baru di
-                    keluaran yang diharapkan.
-                  </p>
-                </div>
-                <label className="flex items-center gap-2">
-                  <input
-                    checked={testCaseForm.is_hidden}
-                    onChange={(event) =>
-                      setTestCaseForm((current) => ({ ...current, is_hidden: event.target.checked }))
-                    }
-                    type="checkbox"
-                  />
-                  Test case tersembunyi
-                </label>
-                <div className="flex flex-wrap gap-3">
-                  <button className="rounded-md bg-accent px-4 py-2 font-medium text-white" type="submit">
-                    {editingTestCaseId ? 'Simpan test case' : 'Tambah test case'}
-                  </button>
-                  {editingTestCaseId && (
-                    <button
-                      className="rounded-md border border-line-strong px-4 py-2"
-                      onClick={() => {
-                        setEditingTestCaseId(null)
-                        setTestCaseForm(emptyTestCase)
-                      }}
-                      type="button"
-                    >
-                      Batal ubah
-                    </button>
-                  )}
-                </div>
-              </form>
-            </section>
-          )}
+            )}
+          </section>
         </>
       )}
-
       {pendingDelete && (
-        <FocusTrapDialog
-          labelledBy="confirm-delete-title"
-          onDismiss={cancelDelete}
+        <ConfirmDeleteDialog
+          onConfirm={confirmDelete}
+          onDismiss={() => setPendingDelete(null)}
           returnFocusRef={deleteTrigger}
-        >
-          <h2 className="text-lg font-semibold" id="confirm-delete-title">
-            Konfirmasi penghapusan
-          </h2>
-          <p>Data yang dihapus tidak dapat dipulihkan.</p>
-          <div className="flex gap-3">
-            <button
-              className="rounded-md bg-danger-solid px-4 py-2 text-white"
-              onClick={pendingDelete.type === 'assignment'
-                ? confirmDeleteAssignment
-                : confirmDeleteTestCase}
-              type="button"
-            >
-              Hapus
-            </button>
-            <button
-              className="rounded-md border border-line-strong px-4 py-2"
-              data-dialog-initial-focus
-              onClick={cancelDelete}
-              type="button"
-            >
-              Batal
-            </button>
-          </div>
-        </FocusTrapDialog>
+        />
       )}
     </main>
   )

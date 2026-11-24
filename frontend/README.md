@@ -100,7 +100,9 @@ The dashboard has a light and a dark theme. It follows the system setting (`pref
 | `/assignments/:id/submissions` | Student | This assignment's submissions, reports in place, cancel while queued |
 | `/history` | Student | Submission history and report |
 | `/courses` | Lecturer, administrator | Course creation and enrollment management |
-| `/lecturer/assignments` | Lecturer, administrator | Assignment, resource-limit, and test-case management; YAML import/export |
+| `/lecturer/assignments` | Lecturer, administrator | Assignments of a Course as a table, with links to manage, to the recap, and to create one |
+| `/lecturer/assignments/new` | Lecturer, administrator | New assignment with its resource limits; after the save, the test cases of the new assignment open |
+| `/lecturer/assignments/:id` | Lecturer, administrator | One assignment in three tabs: statement and settings (and deletion), test cases (YAML import/export), recap (`/recap`, grade summary, CSV, regrade) |
 | `/admin` | Administrator | User administration and audit log |
 | `/profile` | Authenticated users | Profile and password settings |
 

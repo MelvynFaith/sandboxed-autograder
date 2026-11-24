@@ -2,13 +2,17 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App.jsx'
+import { getAssignment } from '../api/assignments.js'
 import {
   downloadRecapCsv,
   getAssignmentRecap,
   regradeAssignment,
   regradeSubmission,
 } from '../api/gradeRecap.js'
+import { getResourceLimit } from '../api/lecturerAssignments.js'
 
+vi.mock('../api/assignments.js', () => ({ getAssignment: vi.fn() }))
+vi.mock('../api/lecturerAssignments.js', () => ({ getResourceLimit: vi.fn() }))
 vi.mock('../api/gradeRecap.js', () => ({
   downloadRecapCsv: vi.fn(),
   getAssignmentRecap: vi.fn(),
@@ -79,6 +83,15 @@ function rowOf(name) {
 beforeEach(() => {
   localStorage.clear()
   window.history.pushState({}, '', '/lecturer/assignments/4/recap')
+  getAssignment.mockResolvedValue({
+    id: '4',
+    courseId: 'course-1',
+    title: 'Dasar Algoritma',
+    description: 'Soal',
+    deadlineAt: '2026-10-12T16:59:00Z',
+    lateUntilAt: '2026-10-13T16:59:00Z',
+  })
+  getResourceLimit.mockResolvedValue({})
   getAssignmentRecap.mockResolvedValue(recap)
   downloadRecapCsv.mockResolvedValue('rekap-assignment-4.csv')
   regradeSubmission.mockResolvedValue({ id: '11', status: 'QUEUED' })
@@ -97,7 +110,7 @@ describe('RecapPage', () => {
 
     expect(await screen.findByText('Ayu Lestari')).toBeInTheDocument()
     expect(getAssignmentRecap).toHaveBeenCalledWith('4', { page: 1, pageSize: 50 })
-    expect(screen.getByText('Dasar Algoritma')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Dasar Algoritma' })).toBeInTheDocument()
 
     const graded = within(rowOf('Ayu Lestari'))
     expect(graded.getByText('80 / 100')).toBeInTheDocument()

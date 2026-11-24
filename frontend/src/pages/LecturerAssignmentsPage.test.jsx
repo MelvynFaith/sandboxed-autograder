@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App.jsx'
+import { getAssignment } from '../api/assignments.js'
 import {
   createLecturerAssignment,
   deleteLecturerAssignment,
@@ -20,6 +21,11 @@ import {
 
 const deadlineAt = new Date('2026-10-12T23:59').toISOString()
 const lateUntilAt = new Date('2026-10-13T23:59').toISOString()
+
+vi.mock('../api/assignments.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  getAssignment: vi.fn(),
+}))
 
 vi.mock('../api/lecturerAssignments.js', () => ({
   createLecturerAssignment: vi.fn(),
@@ -84,9 +90,17 @@ async function fillAssignmentForm() {
 
 beforeEach(() => {
   localStorage.clear()
-  window.history.pushState({}, '', '/lecturer/assignments')
+  window.history.pushState({}, '', '/lecturer/assignments/new?courseId=course-1')
   vi.stubEnv('VITE_USE_MOCK', 'true')
   createLecturerAssignment.mockResolvedValue({
+    id: 'assignment-1',
+    courseId: 'course-1',
+    title: 'Latihan Algoritma',
+    description: 'Latihan dasar',
+    deadlineAt,
+    lateUntilAt,
+  })
+  getAssignment.mockResolvedValue({
     id: 'assignment-1',
     courseId: 'course-1',
     title: 'Latihan Algoritma',
@@ -127,7 +141,7 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe('LecturerAssignmentsPage', () => {
+describe('lecturer assignment pages', () => {
   it('creates an assignment together with its resource limits', async () => {
     setUser()
     render(<App />)
@@ -154,22 +168,9 @@ describe('LecturerAssignmentsPage', () => {
     )
     expect(updateResourceLimit).not.toHaveBeenCalled()
     expect(await screen.findByRole('status')).toHaveFocus()
-    expect(screen.getByLabelText('Judul')).toHaveValue('')
-    expect(screen.getByLabelText('Deskripsi')).toHaveValue('')
-    expect(screen.getByLabelText('Deadline')).toHaveValue('')
-    expect(screen.getByLabelText('Batas akhir keterlambatan')).toHaveValue('')
-    for (const label of [
-      'Batas waktu CPU (ms)',
-      'Batas memori (MB)',
-      'Jumlah proses maksimum',
-      'Waktu maksimum (detik)',
-      'Output maksimum (byte)',
-      'Ukuran tmpfs (MB)',
-    ]) {
-      expect(screen.getByLabelText(label)).toHaveValue(null)
-    }
+    expect(window.location.pathname).toBe('/lecturer/assignments/assignment-1/testcases')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ubah assignment terpilih' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Soal dan pengaturan' }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Ubah assignment' })).toBeInTheDocument()
       expect(screen.getByLabelText('Judul')).toHaveValue('Latihan Algoritma')
@@ -252,7 +253,8 @@ describe('LecturerAssignmentsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
     await screen.findByText('Assignment berhasil dibuat.')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ubah assignment terpilih' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Soal dan pengaturan' }))
+    await screen.findByRole('heading', { name: 'Ubah assignment' })
     fireEvent.change(screen.getByLabelText('Batas waktu CPU (ms)'), {
       target: { value: '2000' },
     })
@@ -526,8 +528,9 @@ describe('LecturerAssignmentsPage', () => {
 
   it('confirms assignment deletion and supports Escape to dismiss the dialog', async () => {
     setUser()
+    window.history.pushState({}, '', '/lecturer/assignments')
     render(<App />)
-    const deleteButton = await screen.findAllByRole('button', { name: 'Hapus', exact: true })
+    const deleteButton = await screen.findAllByRole('button', { name: /^Hapus / })
     fireEvent.click(deleteButton[0])
 
     const dialog = screen.getByRole('dialog')

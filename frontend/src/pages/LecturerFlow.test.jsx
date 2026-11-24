@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App.jsx'
 import {
@@ -8,9 +8,9 @@ import {
   getCourses,
   getCoursesPage,
 } from '../api/courses.js'
-import { getAssignments } from '../api/assignments.js'
-import { createLecturerAssignment } from '../api/lecturerAssignments.js'
-import { createTestCase } from '../api/testcases.js'
+import { getAssignment, getAssignments } from '../api/assignments.js'
+import { createLecturerAssignment, getResourceLimit } from '../api/lecturerAssignments.js'
+import { createTestCase, getTestCases } from '../api/testcases.js'
 import { downloadRecapCsv, getAssignmentRecap } from '../api/gradeRecap.js'
 
 vi.mock('../api/courses.js', () => ({
@@ -23,6 +23,7 @@ vi.mock('../api/courses.js', () => ({
 }))
 
 vi.mock('../api/assignments.js', () => ({
+  getAssignment: vi.fn(),
   getAssignments: vi.fn(),
 }))
 
@@ -116,6 +117,16 @@ beforeEach(() => {
   getCourses.mockResolvedValue([{ id: 'course-1', code: 'CS101', name: 'Algoritma', term: '2026' }])
   createEnrollment.mockResolvedValue({})
   getAssignments.mockResolvedValue([])
+  getAssignment.mockResolvedValue({
+    id: 'assignment-1',
+    courseId: 'course-1',
+    title: 'Latihan UAT',
+    description: 'Latihan alur dosen',
+    deadlineAt: '2026-10-12T16:59:00.000Z',
+    lateUntilAt: '2026-10-13T16:59:00.000Z',
+  })
+  getResourceLimit.mockResolvedValue({})
+  getTestCases.mockResolvedValue([])
   createLecturerAssignment.mockResolvedValue({
     id: 'assignment-1',
     courseId: 'course-1',
@@ -171,6 +182,7 @@ describe('lecturer workflow navigation', () => {
     fireEvent.click(screen.getByRole('link', { name: '2. Assignment & test case' }))
     expect(await screen.findByLabelText('Course')).toHaveValue('course-1')
     expect(window.location.search).toBe('?courseId=course-1')
+    fireEvent.click(screen.getByRole('link', { name: 'Buat assignment' }))
     await fillAssignmentForm()
     fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
     expect(await screen.findByRole('heading', { name: 'Test case — Latihan UAT' })).toBeInTheDocument()
@@ -207,13 +219,13 @@ describe('lecturer workflow navigation', () => {
       weight: 1,
     }))
 
-    const recapLink = screen.getByRole('link', { name: 'Rekap nilai & CSV' })
+    const recapLink = screen.getByRole('link', { name: 'Rekap nilai' })
     expect(recapLink).toHaveAttribute(
       'href',
       '/lecturer/assignments/assignment-1/recap?courseId=course-1',
     )
     fireEvent.click(recapLink)
-    expect(await screen.findByText('Latihan UAT')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Rekap Nilai' })).toBeInTheDocument()
     expect(getAssignmentRecap).toHaveBeenCalledWith('assignment-1', {
       page: 1,
       pageSize: 50,
@@ -223,14 +235,13 @@ describe('lecturer workflow navigation', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('rekap-assignment-1.csv')
     expect(downloadRecapCsv).toHaveBeenCalledWith('assignment-1')
 
-    fireEvent.click(screen.getByRole('link', { name: '1. Course & enrollment' }))
-    expect(window.location.search).toBe('?courseId=course-1')
-    expect(await screen.findByRole('button', { name: /CS101 — Algoritma/ })).toHaveAttribute(
-      'aria-pressed',
-      'true',
+    fireEvent.click(
+      within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('link', {
+        name: 'Kelola Assignment',
+      }),
     )
-    fireEvent.click(screen.getByRole('link', { name: '2. Assignment & test case' }))
     expect(await screen.findByLabelText('Course')).toHaveValue('course-1')
+    expect(window.location.search).toBe('?courseId=course-1')
   }, 15_000)
 
   it('does not reload Courses when the selected Course query changes', async () => {
@@ -255,6 +266,7 @@ describe('lecturer workflow navigation', () => {
     render(<App />)
 
     fireEvent.click(await screen.findByRole('link', { name: '2. Assignment & test case' }))
+    fireEvent.click(await screen.findByRole('link', { name: 'Buat assignment' }))
     await fillAssignmentForm()
     fireEvent.click(screen.getByRole('button', { name: 'Buat assignment' }))
     await screen.findByRole('heading', { name: 'Test case — Latihan UAT' })
