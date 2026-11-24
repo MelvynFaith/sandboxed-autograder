@@ -66,7 +66,7 @@ function SubmitTab() {
 
   if (windowState === 'closed') {
     return (
-      <p className="mt-6 rounded-lg border border-slate-200 bg-white p-4 text-slate-700">
+      <p className="mt-6 rounded-lg border border-line bg-surface p-4 text-ink">
         Pengumpulan untuk assignment ini sudah ditutup.
       </p>
     )
@@ -115,7 +115,7 @@ function SubmitTab() {
   return (
     <form className="mt-6 space-y-5" noValidate onSubmit={handleSubmit}>
       {windowState === 'late' && (
-        <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        <p className="rounded-md border border-attention/50 bg-attention-tint p-3 text-sm text-attention">
           Deadline sudah lewat. Kode yang dikirim sekarang tetap dinilai, tetapi ditandai terlambat.
         </p>
       )}
@@ -124,7 +124,7 @@ function SubmitTab() {
           Bahasa
         </label>
         <select
-          className="w-full max-w-xs rounded border border-slate-300 bg-white p-2"
+          className="w-full max-w-xs rounded-md border border-line-strong bg-surface p-2"
           defaultValue="python3"
           id={languageId}
         >
@@ -159,7 +159,7 @@ function SubmitTab() {
       </fieldset>
 
       {source === 'editor' ? (
-        <Suspense fallback={<p className="text-slate-600">Memuat editor...</p>}>
+        <Suspense fallback={<p className="text-muted">Memuat editor...</p>}>
           <CodeEditor label="Kode Python" onChange={setCode} value={code} />
         </Suspense>
       ) : (
@@ -169,7 +169,7 @@ function SubmitTab() {
           </label>
           <input
             accept=".py"
-            className="block w-full min-w-0 rounded border border-slate-300 bg-white p-2"
+            className="block w-full min-w-0 rounded-md border border-line-strong bg-surface p-2"
             id={fileInputId}
             onChange={(event) => {
               setFile(event.target.files?.[0] ?? null)
@@ -177,13 +177,13 @@ function SubmitTab() {
             }}
             type="file"
           />
-          <p className="mt-1 text-sm text-slate-600">Berkas .py, maksimal 256 KB.</p>
+          <p className="mt-1 text-sm text-muted">Berkas .py, maksimal 256 KB.</p>
         </div>
       )}
 
       {message && (
         <p
-          className={message.type === 'success' ? 'text-sm text-blue-800' : 'text-sm text-red-700'}
+          className={message.type === 'success' ? 'text-sm text-link' : 'text-sm text-danger'}
           role={message.type === 'success' ? 'status' : 'alert'}
         >
           {message.text}
@@ -192,13 +192,13 @@ function SubmitTab() {
 
       <div className="flex flex-wrap items-center gap-3">
         <button
-          className="rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-60"
+          className="rounded-md bg-accent px-4 py-2 font-medium text-white hover:bg-accent-hover disabled:opacity-60"
           disabled={isSubmitting || waiting}
           type="submit"
         >
           {buttonLabel}
         </button>
-        <Link className="text-blue-700 hover:underline" to="../submissions">
+        <Link className="text-link hover:underline" to="../submissions">
           Lihat submission saya
         </Link>
       </div>

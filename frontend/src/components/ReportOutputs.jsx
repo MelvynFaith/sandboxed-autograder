@@ -4,8 +4,8 @@ function OutputBox({ empty, heading, Heading, text }) {
   return (
     <div className="min-w-0">
       <Heading className="font-medium">{heading}</Heading>
-      <pre className="mt-1 max-h-64 overflow-auto rounded border border-slate-200 bg-white p-3 text-slate-800">
-        {text === '' ? <span className="italic text-slate-500">{empty}</span> : text}
+      <pre className="mt-1 max-h-64 overflow-auto rounded-md border border-line bg-surface p-3 text-ink">
+        {text === '' ? <span className="italic text-muted">{empty}</span> : text}
       </pre>
     </div>
   )
@@ -35,12 +35,12 @@ function ReportOutputs({ headingLevel = 5, result }) {
   return (
     <div className="mt-3 space-y-3 text-sm">
       {message && (
-        <div className="text-red-800">
+        <div className="text-danger">
           <p>
             <span className="font-medium">Pesan error: </span>
             {message}
           </p>
-          {hint && <p className="mt-1 text-slate-700">{hint}</p>}
+          {hint && <p className="mt-1 text-ink">{hint}</p>}
         </div>
       )}
       <div className={`grid gap-3 ${boxes.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
@@ -49,7 +49,7 @@ function ReportOutputs({ headingLevel = 5, result }) {
         ))}
       </div>
       {result.truncated && (
-        <p className="text-amber-900">
+        <p className="text-attention">
           Output program dipotong karena melebihi batas ukuran keluaran.
         </p>
       )}

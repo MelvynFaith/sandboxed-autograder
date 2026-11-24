@@ -19,10 +19,10 @@ function FormFeedback({ error, success, announcementKey }) {
 
   return (
     <p
-      className={`sticky top-0 z-10 mt-4 rounded border px-4 py-3 shadow-sm focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-blue-700 ${
+      className={`sticky top-0 z-10 mt-4 rounded-md border px-4 py-3 focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-blue-700 ${
         isError
-          ? 'border-red-200 bg-red-50 text-red-700'
-          : 'border-blue-200 bg-blue-50 text-blue-800'
+          ? 'border-danger/40 bg-danger-tint text-danger'
+          : 'border-accent/40 bg-accent-tint text-link'
       }`}
       ref={noticeRef}
       role={isError ? 'alert' : 'status'}

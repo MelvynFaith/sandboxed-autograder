@@ -15,16 +15,16 @@ function SubmissionReport({ report }) {
   return (
     <section aria-label={`Laporan submission ${report.submissionId}`} className="mt-5 space-y-4">
       <h3 className="text-lg font-semibold">Laporan per test case</h3>
-      <p className="text-sm text-slate-700">
+      <p className="text-sm text-ink">
         Skor total: {formatScore(report.totalScore, report.maxScore)}
       </p>
       {report.results.length === 0 ? (
-        <p className="text-sm text-slate-600">Belum ada hasil test case.</p>
+        <p className="text-sm text-muted">Belum ada hasil test case.</p>
       ) : (
         <ul className="space-y-3">
           {report.results.map((result, index) => (
             <li
-              className="rounded-md border border-slate-200 bg-slate-50 p-4"
+              className="rounded-md border border-line bg-surface p-4"
               key={result.testCaseId ?? `hidden-${index}`}
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -36,15 +36,15 @@ function SubmissionReport({ report }) {
               </div>
               <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
                 <div>
-                  <dt className="text-slate-600">Skor</dt>
+                  <dt className="text-muted">Skor</dt>
                   <dd className="font-medium">{result.score}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-600">Waktu eksekusi</dt>
+                  <dt className="text-muted">Waktu eksekusi</dt>
                   <dd className="font-medium">{result.executionTimeMs} ms</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-600">Penggunaan memori</dt>
+                  <dt className="text-muted">Penggunaan memori</dt>
                   <dd className="font-medium">{result.memoryKb} KB</dd>
                 </div>
               </dl>

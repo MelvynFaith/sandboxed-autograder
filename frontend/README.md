@@ -69,6 +69,25 @@ npm run build
 - Copy buttons use the Clipboard API on HTTPS and fall back to a hidden textarea
   on plain HTTP.
 
+## Theme
+
+The dashboard has a light and a dark theme. It follows the system setting (`prefers-color-scheme`);
+`data-theme="light"` or `data-theme="dark"` on `<html>` forces one, which the browser tests use.
+
+- Colours are semantic tokens in `src/index.css` (`canvas`, `surface`, `inset`, `raised`, `line`,
+  `line-strong`, `ink`, `muted`, `link`, `accent`, and the status pairs `success`, `danger`, `attention`,
+  `done` with their `-tint` background). Components use the token classes (`bg-surface`, `text-muted`,
+  `border-line`), never a raw palette colour.
+- A higher layer is a lighter one in dark mode (canvas, surface, raised), as in Material's dark theme.
+  Panels are flat: a border and a tone step, no shadow.
+- There is one accent (azure). Status colours are only for status, and every status also has a text
+  label, so colour is never the only signal (NFR-11).
+- `src/theme.test.js` reads the tokens and checks WCAG contrast: text 4.5:1, control borders 3:1, status
+  text on its tint 4.5:1, white text on the filled buttons 4.5:1, in both themes.
+- Fonts are the system fonts: the Content-Security-Policy (`default-src 'self'`) blocks font CDNs.
+- The code editor reads the same tokens; custom properties pass through its shadow root, and the syntax
+  colours are `--syn-*` tokens.
+
 ## Routes
 
 | Route | Roles | Page |

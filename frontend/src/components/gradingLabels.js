@@ -9,21 +9,21 @@ export const statusLabels = {
 }
 
 export const statusStyles = {
-  QUEUED: 'bg-amber-100 text-amber-900',
-  RUNNING: 'bg-blue-100 text-blue-900',
-  COMPLETED: 'bg-green-100 text-green-900',
-  FAILED: 'bg-red-100 text-red-900',
-  CANCELLED: 'bg-slate-200 text-slate-900',
+  QUEUED: 'bg-attention-tint text-attention',
+  RUNNING: 'bg-accent-tint text-link',
+  COMPLETED: 'bg-success-tint text-success',
+  FAILED: 'bg-danger-tint text-danger',
+  CANCELLED: 'bg-raised text-ink',
 }
 
 export const verdictStyles = {
-  PASSED: 'bg-green-100 text-green-900',
-  FAILED: 'bg-red-100 text-red-900',
-  TIMEOUT: 'bg-amber-100 text-amber-900',
-  MEMORY_LIMIT_EXCEEDED: 'bg-purple-100 text-purple-900',
-  RUNTIME_ERROR: 'bg-orange-100 text-orange-900',
-  SYNTAX_ERROR: 'bg-pink-100 text-pink-900',
-  SECURITY_VIOLATION: 'bg-slate-900 text-white',
+  PASSED: 'bg-success-tint text-success',
+  FAILED: 'bg-danger-tint text-danger',
+  TIMEOUT: 'bg-attention-tint text-attention',
+  MEMORY_LIMIT_EXCEEDED: 'bg-done-tint text-done',
+  RUNTIME_ERROR: 'bg-danger-tint text-danger',
+  SYNTAX_ERROR: 'bg-danger-tint text-danger',
+  SECURITY_VIOLATION: 'bg-ink text-white',
 }
 
 // Timestamps are stored in UTC and shown in WIB (UTC+7).

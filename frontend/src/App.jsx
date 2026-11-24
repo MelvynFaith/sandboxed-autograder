@@ -1,12 +1,14 @@
 import { lazy, Suspense, useState } from 'react'
 import {
   BrowserRouter,
+  Link,
   Navigate,
   NavLink,
   Outlet,
   Route,
   Routes,
 } from 'react-router-dom'
+import BrandMark from './components/BrandMark.jsx'
 import AuthProvider from './context/AuthContext.jsx'
 import { useAuth } from './context/useAuth.js'
 import AssignmentsPage from './pages/AssignmentsPage.jsx'
@@ -29,7 +31,7 @@ const ProblemTab = lazy(() => import('./pages/assignment/ProblemTab.jsx'))
 const SubmitTab = lazy(() => import('./pages/assignment/SubmitTab.jsx'))
 
 function PageLoading() {
-  return <p className="px-6 py-10 text-slate-600">Memuat halaman...</p>
+  return <p className="px-6 py-10 text-muted">Memuat halaman...</p>
 }
 
 const roleMenus = {
@@ -49,6 +51,12 @@ const roleMenus = {
   ],
 }
 
+function navLinkClass({ isActive }) {
+  return `rounded-md px-3 text-sm font-medium ${
+    isActive ? 'bg-raised text-ink' : 'text-muted hover:bg-inset hover:text-ink'
+  }`
+}
+
 function ProtectedLayout() {
   const { user, logout } = useAuth()
   const [logoutError, setLogoutError] = useState('')
@@ -57,38 +65,56 @@ function ProtectedLayout() {
     return <Navigate replace to="/login" />
   }
 
+  const initial = (user.nama || user.email || '?').trim().charAt(0).toUpperCase()
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-canvas text-ink">
       <nav
         aria-label="Navigasi utama"
-        className="flex flex-wrap items-center gap-4 border-b border-slate-200 bg-white px-6 py-4"
+        className="border-b border-line bg-surface"
       >
-        <span className="mr-auto font-medium capitalize">{user.role}</span>
-        {roleMenus[user.role].map(({ label, to }) => (
-          <NavLink className="font-medium text-slate-700 hover:text-blue-700" key={to} to={to}>
-            {label}
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-1 gap-y-1 px-4 py-2 sm:px-6">
+          <Link className="mr-3 gap-2 rounded-md pr-2 font-semibold tracking-tight" to="/">
+            <BrandMark />
+            <span>Autograder</span>
+          </Link>
+          {roleMenus[user.role].map(({ label, to }) => (
+            <NavLink className={navLinkClass} key={to} to={to}>
+              {label}
+            </NavLink>
+          ))}
+          <span className="ml-auto flex items-center gap-2 text-sm">
+            <span
+              aria-hidden="true"
+              className="hidden h-7 w-7 items-center justify-center rounded-full bg-accent-tint text-xs font-semibold text-link sm:inline-flex"
+            >
+              {initial}
+            </span>
+            <span className="hidden rounded-full border border-line px-2.5 py-0.5 text-xs font-medium text-muted capitalize sm:inline">
+              {user.role}
+            </span>
+          </span>
+          <NavLink className={navLinkClass} to="/profile">
+            Profil
           </NavLink>
-        ))}
-        <NavLink className="font-medium text-slate-700 hover:text-blue-700" to="/profile">
-          Profil
-        </NavLink>
-        <button
-          className="rounded border border-slate-300 px-3 py-1.5 font-medium hover:bg-slate-100"
-          onClick={async () => {
-            setLogoutError('')
-            try {
-              await logout()
-            } catch (error) {
-              setLogoutError(error.message)
-            }
-          }}
-          type="button"
-        >
-          Logout
-        </button>
+          <button
+            className="rounded-md border border-line-strong px-3 text-sm font-medium hover:bg-raised"
+            onClick={async () => {
+              setLogoutError('')
+              try {
+                await logout()
+              } catch (error) {
+                setLogoutError(error.message)
+              }
+            }}
+            type="button"
+          >
+            Logout
+          </button>
+        </div>
       </nav>
       {logoutError && (
-        <p className="bg-red-50 px-6 py-3 text-sm text-red-800" role="alert">
+        <p className="bg-danger-tint px-6 py-3 text-sm text-danger" role="alert">
           {logoutError}
         </p>
       )}

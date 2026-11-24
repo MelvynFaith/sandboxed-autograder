@@ -19,9 +19,9 @@ export const windowLabels = {
 }
 
 export const windowStyles = {
-  open: 'bg-green-100 text-green-900',
-  late: 'bg-amber-100 text-amber-900',
-  closed: 'bg-slate-200 text-slate-900',
+  open: 'bg-success-tint text-success',
+  late: 'bg-attention-tint text-attention',
+  closed: 'bg-raised text-ink',
 }
 
 // The current time, refreshed every intervalMs, so a page left open moves from "open" to "late"

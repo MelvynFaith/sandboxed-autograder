@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { getAssignments } from '../api/assignments.js'
 import { getCourseAssignmentsPage, getCoursesPage } from '../api/courses.js'
 import { getSubmissionHistory } from '../api/submissionHistory.js'
+import ScoreMeter from '../components/ScoreMeter.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
 import {
   formatScore,
@@ -45,13 +46,13 @@ function LatestSubmission({ assignment }) {
   }, [assignment.id])
 
   if (state.loading) {
-    return <span className="text-slate-500">Memuat...</span>
+    return <span className="text-muted">Memuat...</span>
   }
   if (state.failed) {
-    return <span className="text-slate-500">Status tidak tersedia</span>
+    return <span className="text-muted">Status tidak tersedia</span>
   }
   if (!state.latest) {
-    return <span className="text-slate-600">Belum mengumpulkan</span>
+    return <span className="text-muted">Belum mengumpulkan</span>
   }
   const { status, totalScore, maxScore } = state.latest
   return (
@@ -62,7 +63,10 @@ function LatestSubmission({ assignment }) {
         status={status}
       />
       {status === 'COMPLETED' && (
-        <span className="font-medium">{formatScore(totalScore, maxScore)}</span>
+        <span className="inline-flex items-center gap-2 font-medium tabular-nums">
+          {formatScore(totalScore, maxScore)}
+          <ScoreMeter max={maxScore} total={totalScore} />
+        </span>
       )}
     </span>
   )
@@ -72,16 +76,16 @@ function Pager({ label, page, hasNext, onChange }) {
   return (
     <nav aria-label={label} className="mt-4 flex items-center justify-between gap-3">
       <button
-        className="rounded border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
+        className="rounded-md border border-line-strong px-3 py-2 text-sm disabled:opacity-50"
         disabled={page <= 1}
         onClick={() => onChange(page - 1)}
         type="button"
       >
         Sebelumnya
       </button>
-      <span className="text-sm text-slate-600">Halaman {page}</span>
+      <span className="text-sm text-muted">Halaman {page}</span>
       <button
-        className="rounded border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
+        className="rounded-md border border-line-strong px-3 py-2 text-sm disabled:opacity-50"
         disabled={!hasNext}
         onClick={() => onChange(page + 1)}
         type="button"
@@ -181,7 +185,7 @@ function AssignmentsPage() {
         <table className="w-full border-collapse text-left text-sm">
           <caption className="sr-only">Assignment pada {group.course.name}</caption>
           <thead>
-            <tr className="border-b border-slate-300 text-slate-600">
+            <tr className="border-b border-line-strong text-muted">
               <th className="py-2 pr-3 font-medium" scope="col">
                 Assignment
               </th>
@@ -200,10 +204,10 @@ function AssignmentsPage() {
             {group.items.map((assignment) => {
               const windowState = submissionWindow(assignment, now)
               return (
-                <tr className="border-b border-slate-200 align-middle" key={assignment.id}>
+                <tr className="border-b border-line align-middle" key={assignment.id}>
                   <td className="py-3 pr-3">
                     <Link
-                      className="inline-flex min-h-11 items-center font-medium break-words text-blue-700 hover:underline"
+                      className="inline-flex min-h-11 items-center font-medium break-words text-link hover:underline"
                       to={`/assignments/${encodeURIComponent(assignment.id)}`}
                     >
                       {assignment.title}
@@ -215,7 +219,7 @@ function AssignmentsPage() {
                     </time>
                     {windowState !== 'open' && (
                       <span
-                        className={`mt-1 block w-fit rounded px-2 py-0.5 text-xs font-medium ${windowStyles[windowState]}`}
+                        className={`mt-1 block w-fit rounded-md px-2 py-0.5 text-xs font-medium ${windowStyles[windowState]}`}
                       >
                         {windowLabels[windowState]}
                       </span>
@@ -239,33 +243,33 @@ function AssignmentsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
       <h1 className="text-2xl font-semibold">Daftar Assignment</h1>
-      {isLoading && <p className="mt-4 text-slate-600">Memuat assignment...</p>}
+      {isLoading && <p className="mt-4 text-muted">Memuat assignment...</p>}
       {loadError && (
-        <p className="mt-4 text-red-700" role="alert">
+        <p className="mt-4 text-danger" role="alert">
           Gagal memuat assignment: {loadError}
         </p>
       )}
       {!isLoading && !loadError && user.role === 'mahasiswa' && courseGroups.length === 0 && (
-        <p className="mt-4 text-slate-600">Belum ada Course yang diikuti.</p>
+        <p className="mt-4 text-muted">Belum ada Course yang diikuti.</p>
       )}
       {!isLoading && !loadError && user.role !== 'mahasiswa' && assignments.length === 0 && (
-        <p className="mt-4 text-slate-600">Belum ada assignment yang tersedia.</p>
+        <p className="mt-4 text-muted">Belum ada assignment yang tersedia.</p>
       )}
       {user.role === 'mahasiswa' ? (
         <>
           {courseGroups.map((group) => (
             <section
               aria-labelledby={`course-${group.course.id}`}
-              className="mt-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+              className="mt-6 rounded-lg border border-line bg-surface p-4 sm:p-5"
               key={group.course.id}
             >
               <h2 className="text-xl font-semibold" id={`course-${group.course.id}`}>
                 {group.course.code} — {group.course.name}
               </h2>
               {group.items.length === 0 ? (
-                <p className="mt-3 text-slate-600">Belum ada assignment pada Course ini.</p>
+                <p className="mt-3 text-muted">Belum ada assignment pada Course ini.</p>
               ) : (
                 renderAssignmentTable(group)
               )}
@@ -292,14 +296,14 @@ function AssignmentsPage() {
         <ul className="mt-6 space-y-4">
           {assignments.map((assignment) => (
             <li
-              className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+              className="rounded-lg border border-line bg-surface p-5"
               key={assignment.id}
             >
               <h2 className="text-lg font-semibold">{assignment.title}</h2>
-              <Suspense fallback={<p className="mt-3 text-slate-600">{assignment.description}</p>}>
+              <Suspense fallback={<p className="mt-3 text-muted">{assignment.description}</p>}>
                 <AssignmentDescription text={assignment.description} />
               </Suspense>
-              <p className="mt-3 text-sm text-slate-600">
+              <p className="mt-3 text-sm text-muted">
                 Deadline:{' '}
                 <time dateTime={assignment.deadlineAt}>
                   {deadlineFormatter.format(new Date(assignment.deadlineAt))} WIB
