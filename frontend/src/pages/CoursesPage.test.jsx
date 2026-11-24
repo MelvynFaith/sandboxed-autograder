@@ -169,13 +169,16 @@ describe('Course management and student assignment routes', () => {
           late_until_at: '2026-10-13T16:59:00Z',
         },
       ])))
+      .mockResolvedValueOnce(jsonResponse(200, paginated([])))
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: 'Tugas Algoritma' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'Tugas Algoritma' })).toBeInTheDocument()
+    expect(await screen.findByText('Belum mengumpulkan')).toBeInTheDocument()
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       '/api/v1/courses?page=1&page_size=10',
       '/api/v1/courses/1/assignments?page=1&page_size=10',
+      '/api/v1/submissions?page=1&page_size=1&assignment_id=4',
     ])
   })
 

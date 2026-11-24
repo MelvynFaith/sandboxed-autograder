@@ -1,13 +1,7 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App.jsx'
-import { submitSubmission } from '../api/submissions.js'
-
-vi.mock('../api/submissions.js', async (importOriginal) => ({
-  ...(await importOriginal()),
-  submitSubmission: vi.fn(),
-}))
 
 vi.mock('../api/submissionStatus.js', () => ({
   subscribeToSubmissionStatus: vi.fn((_submissionId, { onStatus }) => {
@@ -30,149 +24,88 @@ function setUser(role) {
   )
 }
 
-function jsonResponse(payload) {
-  return {
-    ok: true,
-    status: 200,
-    json: async () => payload,
-  }
-}
+beforeAll(async () => {
+  await Promise.all([
+    import('./assignment/AssignmentLayout.jsx'),
+    import('./assignment/ProblemTab.jsx'),
+    import('../components/AssignmentDescription.jsx'),
+  ])
+})
 
 beforeEach(() => {
   localStorage.clear()
   window.history.pushState({}, '', '/assignments')
   vi.stubEnv('VITE_USE_MOCK', 'true')
-  submitSubmission.mockResolvedValue({
-    id: 'submission-1',
-    status: 'QUEUED',
-    isLate: false,
-    submittedAt: '2026-10-12T10:00:00Z',
-  })
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-10-13T12:00:00+07:00'))
 })
 
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  vi.useRealTimers()
   vi.unstubAllEnvs()
   vi.unstubAllGlobals()
   vi.clearAllMocks()
 })
 
-describe('student assignment submissions', () => {
-  it('shows assignments from the API', async () => {
+describe('student assignment list', () => {
+  it('lists each course as a table of assignments with deadlines and the latest submission', async () => {
     setUser('mahasiswa')
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: 'Dasar Algoritma' })).toBeInTheDocument()
-    expect(screen.getByText(/Buat program Python/)).toBeInTheDocument()
-    expect(screen.getAllByText(/Deadline:/)).toHaveLength(2)
-    expect(screen.getByText('12 Oktober 2026 pukul 23.59')).toBeInTheDocument()
-  })
+    const table = await screen.findByRole('table', { name: 'Assignment pada Pemrograman Dasar' })
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual([
+      'Assignment',
+      'Deadline (WIB)',
+      'Batas terlambat (WIB)',
+      'Submission terakhir',
+    ])
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(rows).toHaveLength(2)
 
-  it('uploads a valid Python file and shows success', async () => {
-    setUser('mahasiswa')
-    render(<App />)
-    await screen.findByRole('heading', { name: 'Dasar Algoritma' })
-
-    const file = new File(['print("hello")'], 'solution.py', { type: 'text/x-python' })
-    fireEvent.change(screen.getByLabelText('Kode Python untuk Dasar Algoritma'), {
-      target: { files: [file] },
-    })
-    fireEvent.click(screen.getAllByRole('button', { name: 'Upload kode Python' })[0])
-
-    expect(await screen.findByText('Kode berhasil diunggah.')).toBeInTheDocument()
-    expect(await screen.findByTestId('submission-status-badge')).toHaveTextContent('Antre')
-  })
-
-  it('hides single-page pagination and preserves an earlier status when a new upload is rate limited', async () => {
-    setUser('mahasiswa')
-    vi.stubEnv('VITE_USE_MOCK', 'false')
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({
-        items: [{ id: 1, code: 'CS101', name: 'Algoritma', term: '2026' }],
-        page: 1,
-        page_size: 10,
-        has_next: false,
-      }))
-      .mockResolvedValueOnce(jsonResponse({
-        items: [{
-          id: 4,
-          course_id: 1,
-          title: 'Tugas Algoritma',
-          description: 'Deskripsi',
-          deadline_at: '2026-10-12T16:59:00Z',
-          late_until_at: '2026-10-13T16:59:00Z',
-        }],
-        page: 1,
-        page_size: 10,
-        has_next: false,
-      }))
-    vi.stubGlobal('fetch', fetchMock)
-    submitSubmission
-      .mockResolvedValueOnce({
-        id: 'submission-1',
-        status: 'QUEUED',
-        isLate: false,
-        submittedAt: '2026-10-12T10:00:00Z',
-      })
-      .mockRejectedValueOnce(new Error('Tunggu setidaknya 14 detik sebelum mengirim submission berikutnya.'))
-    render(<App />)
-
-    expect(await screen.findByRole('heading', { name: 'Tugas Algoritma' })).toBeInTheDocument()
-    expect(screen.queryByRole('navigation', { name: /Halaman/ })).not.toBeInTheDocument()
-
-    const fileInput = screen.getByLabelText('Kode Python untuk Tugas Algoritma')
-    const firstFile = new File(['print(1)'], 'first.py', { type: 'text/x-python' })
-    fireEvent.change(fileInput, { target: { files: [firstFile] } })
-    fireEvent.click(screen.getByRole('button', { name: 'Upload kode Python' }))
-    expect(await screen.findByRole('region', { name: 'Status submission submission-1' }))
-      .toBeInTheDocument()
-
-    const secondFile = new File(['print(2)'], 'second.py', { type: 'text/x-python' })
-    fireEvent.change(fileInput, { target: { files: [secondFile] } })
-    fireEvent.click(screen.getByRole('button', { name: 'Upload kode Python' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Tunggu setidaknya 14 detik')
-    expect(screen.queryByRole('region', { name: 'Status submission submission-1' }))
-      .toBeInTheDocument()
-  })
-
-  it('rejects files that do not have a Python extension', async () => {
-    setUser('mahasiswa')
-    render(<App />)
-    await screen.findByRole('heading', { name: 'Dasar Algoritma' })
-
-    const file = new File(['not python'], 'solution.txt', { type: 'text/plain' })
-    fireEvent.change(screen.getByLabelText('Kode Python untuk Dasar Algoritma'), {
-      target: { files: [file] },
-    })
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Pilih berkas dengan ekstensi .py.',
+    const first = within(rows[0])
+    expect(first.getByRole('link', { name: 'Dasar Algoritma' })).toHaveAttribute(
+      'href',
+      '/assignments/assignment-1',
     )
-    expect(screen.getAllByRole('button', { name: 'Upload kode Python' })[0]).toBeDisabled()
+    expect(first.getByText('12 Okt 2026, 23.59')).toBeInTheDocument()
+    expect(first.getByText('Masa terlambat')).toBeInTheDocument()
+    expect(await first.findByText('Selesai')).toBeInTheDocument()
+    expect(first.getByText('85 / 100')).toBeInTheDocument()
+
+    const second = within(rows[1])
+    expect(second.queryByText('Masa terlambat')).not.toBeInTheDocument()
+    expect(await second.findByText('Antre')).toBeInTheDocument()
   })
 
-  it('rejects Python files larger than 256 KiB', async () => {
+  it('keeps the statement, the upload and the submissions off the list', async () => {
     setUser('mahasiswa')
     render(<App />)
-    await screen.findByRole('heading', { name: 'Dasar Algoritma' })
 
-    const file = new File([new Uint8Array(256 * 1024 + 1)], 'large.py')
-    fireEvent.change(screen.getByLabelText('Kode Python untuk Dasar Algoritma'), {
-      target: { files: [file] },
-    })
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Ukuran berkas maksimal 256 KB.')
-    expect(screen.getAllByRole('button', { name: 'Upload kode Python' })[0]).toBeDisabled()
+    await screen.findByRole('link', { name: 'Dasar Algoritma' })
+    expect(screen.queryByText(/Buat program Python/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Kode Python/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Upload|Kirim/ })).not.toBeInTheDocument()
   })
 
-  it('does not show upload controls to non-student roles', async () => {
+  it('opens the problem page from the list', async () => {
+    setUser('mahasiswa')
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('link', { name: 'Dasar Algoritma' }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Dasar Algoritma' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/assignments/assignment-1')
+  })
+
+  it('shows lecturers the plain list without links to the student pages', async () => {
     setUser('dosen')
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: 'Dasar Algoritma' })).toBeInTheDocument()
-    expect(screen.queryByLabelText('Kode Python untuk Dasar Algoritma')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Upload kode Python' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Buat program Python/)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Dasar Algoritma' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Kode Python/)).not.toBeInTheDocument()
   })
 })
