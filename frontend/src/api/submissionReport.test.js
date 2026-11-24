@@ -29,6 +29,9 @@ describe('getSubmissionReport', () => {
           error_message: 'Batas waktu terlampaui',
           is_hidden: false,
           actual_output: '',
+          is_truncated: true,
+          input: '5\n',
+          expected_output: '25\n',
         },
       ],
     }
@@ -53,6 +56,9 @@ describe('getSubmissionReport', () => {
           hidden: false,
           errorMessage: 'Batas waktu terlampaui',
           actualOutput: '',
+          input: '5\n',
+          expectedOutput: '25\n',
+          truncated: true,
         },
       ],
     })
@@ -82,6 +88,9 @@ describe('getSubmissionReport', () => {
       hidden: true,
       errorMessage: null,
       actualOutput: null,
+      input: null,
+      expectedOutput: null,
+      truncated: false,
     })
   })
 
@@ -103,6 +112,9 @@ describe('getSubmissionReport', () => {
             is_hidden: true,
             error_message: 'Pesan tersembunyi',
             actual_output: 'OUTPUT-TERSEMBUNYI',
+            input: 'INPUT-TERSEMBUNYI',
+            expected_output: 'EXPECTED-TERSEMBUNYI',
+            is_truncated: true,
           },
         ],
       }),
@@ -116,8 +128,13 @@ describe('getSubmissionReport', () => {
       externalId: null,
       errorMessage: null,
       actualOutput: null,
+      input: null,
+      expectedOutput: null,
+      truncated: false,
     })
     expect(JSON.stringify(report)).not.toContain('OUTPUT-TERSEMBUNYI')
+    expect(JSON.stringify(report)).not.toContain('INPUT-TERSEMBUNYI')
+    expect(JSON.stringify(report)).not.toContain('EXPECTED-TERSEMBUNYI')
     expect(JSON.stringify(report)).not.toContain('Pesan tersembunyi')
     expect(JSON.stringify(report)).not.toContain('tc_secret')
   })
@@ -189,6 +206,34 @@ describe('getSubmissionReport', () => {
         },
       ],
     })
+  })
+
+  it.each([
+    ['input', 5],
+    ['expected_output', ['9']],
+    ['is_truncated', 'yes'],
+  ])('rejects a visible result whose %s has the wrong type', async (field, value) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        submission_id: 'submission-1',
+        results: [
+          {
+            testcase_id: 1,
+            status: 'FAILED',
+            score: 0,
+            exec_time_ms: 1,
+            memory_kb: 1,
+            is_hidden: false,
+            [field]: value,
+          },
+        ],
+      }),
+    }))
+
+    await expect(getSubmissionReport('submission-1')).rejects.toThrow(
+      'Data hasil test case tidak sesuai format yang diharapkan.',
+    )
   })
 
   it('rejects unknown verdicts and surfaces failed requests', async () => {
