@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "@fontsource-variable/mona-sans";
+@import "@fontsource-variable/google-sans-code";
 
 /*
  * Theme tokens. Light and dark share one set of names; components use the names only
@@ -140,11 +142,15 @@
   --color-done-tint: var(--done-tint);
   --color-scrim: var(--scrim);
 
-  /* System fonts only: the CSP (default-src 'self') blocks font CDNs. */
-  --font-sans: system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, "Liberation Mono",
-    monospace;
+  /*
+   * Fonts from Google Fonts, served from this site (Fontsource packages, bundled by Vite), so the
+   * CSP (default-src 'self') stays as it is and no request leaves the site. Mona Sans is GitHub's
+   * typeface; Google Sans Code is Google's monospace, used for code, ids and figures that must align.
+   */
+  --font-sans: "Mona Sans Variable", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  --font-mono: "Google Sans Code Variable", ui-monospace, "Cascadia Code", Menlo, Consolas,
+    "Liberation Mono", monospace;
 }
 
 @layer base {
