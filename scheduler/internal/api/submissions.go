@@ -170,6 +170,11 @@ func (a *API) createSubmission(w http.ResponseWriter, r *http.Request, user auth
 		}
 		var limitErr *ratelimit.Error
 		if errors.As(err, &limitErr) {
+			// Only the interval rule has a known wait; the others clear when a submission finishes
+			// or never (the quota), so they carry no Retry-After.
+			if limitErr.Rule == ratelimit.RuleInterval {
+				w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSeconds(limitErr.RetryAfter), 10))
+			}
 			writeError(w, http.StatusTooManyRequests, "rate_limit_exceeded", submissionRateLimitMessage(limitErr))
 			return
 		}
@@ -289,19 +294,23 @@ func (a *API) getSubmissionReport(w http.ResponseWriter, r *http.Request, user a
 	writeJSON(w, http.StatusOK, report)
 }
 
+// retryAfterSeconds rounds a wait up to whole seconds, at least one: Retry-After takes whole
+// seconds (RFC 9110, 10.2.3), and a client that waits a rounded-down value is refused again.
+func retryAfterSeconds(wait time.Duration) int64 {
+	seconds := int64(wait / time.Second)
+	if wait%time.Second != 0 {
+		seconds++
+	}
+	return max(seconds, 1)
+}
+
 func submissionRateLimitMessage(limitErr *ratelimit.Error) string {
 	switch limitErr.Rule {
 	case ratelimit.RuleActive:
 		return "Masih ada submission yang sedang antre atau dinilai untuk assignment ini."
 	case ratelimit.RuleInterval:
-		retrySeconds := int64(limitErr.RetryAfter / time.Second)
-		if limitErr.RetryAfter%time.Second != 0 {
-			retrySeconds++
-		}
-		if retrySeconds < 1 {
-			retrySeconds = 1
-		}
-		return fmt.Sprintf("Tunggu setidaknya %d detik sebelum mengirim submission berikutnya.", retrySeconds)
+		return fmt.Sprintf("Tunggu setidaknya %d detik sebelum mengirim submission berikutnya.",
+			retryAfterSeconds(limitErr.RetryAfter))
 	case ratelimit.RuleQuota:
 		return fmt.Sprintf("Batas pengumpulan untuk assignment ini tercapai (maksimal %d submission).", limitErr.Limit)
 	default:

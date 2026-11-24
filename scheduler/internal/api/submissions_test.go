@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -205,6 +206,9 @@ func TestSubmissionRateLimitAndHistoryPagination(t *testing.T) {
 	if message, _ := limitedPayload["error"].(map[string]any)["message"].(string); !strings.Contains(message, "antre atau dinilai") || strings.Contains(message, "ratelimit:") {
 		t.Fatalf("active-submission message = %q", message)
 	}
+	if got := limited.Header.Get("Retry-After"); got != "" {
+		t.Fatalf("active-submission Retry-After = %q; want none, the wait is unknown", got)
+	}
 
 	if _, err := env.pool.Exec(t.Context(), `UPDATE submissions SET status = 'COMPLETED' WHERE id = $1`, int64Field(t, firstPayload, "id")); err != nil {
 		t.Fatalf("complete first submission for interval test: %v", err)
@@ -219,8 +223,16 @@ func TestSubmissionRateLimitAndHistoryPagination(t *testing.T) {
 	if intervalLimited.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("upload under interval limit = %d, %#v; want 429", intervalLimited.StatusCode, intervalPayload)
 	}
-	if message, _ := intervalPayload["error"].(map[string]any)["message"].(string); !strings.Contains(message, "Tunggu") || strings.Contains(message, "ratelimit:") {
-		t.Fatalf("interval message = %q", message)
+	intervalMessage, _ := intervalPayload["error"].(map[string]any)["message"].(string)
+	if !strings.Contains(intervalMessage, "Tunggu") || strings.Contains(intervalMessage, "ratelimit:") {
+		t.Fatalf("interval message = %q", intervalMessage)
+	}
+	retryAfter, err := strconv.Atoi(intervalLimited.Header.Get("Retry-After"))
+	if err != nil || retryAfter < 1 || retryAfter > 30 {
+		t.Fatalf("interval Retry-After = %q; want whole seconds in 1..30", intervalLimited.Header.Get("Retry-After"))
+	}
+	if !strings.Contains(intervalMessage, fmt.Sprintf("%d detik", retryAfter)) {
+		t.Fatalf("interval message %q and Retry-After %d disagree", intervalMessage, retryAfter)
 	}
 	if _, err := env.pool.Exec(t.Context(), `
 		UPDATE settings SET max_active_submissions = 0, min_submission_interval_s = 0,
@@ -234,6 +246,9 @@ func TestSubmissionRateLimitAndHistoryPagination(t *testing.T) {
 	}
 	if message, _ := quotaPayload["error"].(map[string]any)["message"].(string); !strings.Contains(message, "maksimal 1 submission") || strings.Contains(message, "ratelimit:") {
 		t.Fatalf("quota message = %q", message)
+	}
+	if got := quotaLimited.Header.Get("Retry-After"); got != "" {
+		t.Fatalf("quota Retry-After = %q; want none, waiting does not lift the quota", got)
 	}
 
 	disableSubmissionRateLimits(t, env)
@@ -544,5 +559,24 @@ func TestSubmissionReportRedactsHiddenCasesAndSurvivesConcurrentDelete(t *testin
 		fmt.Sprintf("/api/v1/submissions/%d/report", submissionID), nil, fixture.studentAccess)
 	if runningReportResponse.StatusCode != http.StatusOK || len(pageItems(t, map[string]any{"items": runningReport["results"]})) != len(statuses)+1 {
 		t.Fatalf("report after running deletion = %d, %#v", runningReportResponse.StatusCode, runningReport)
+	}
+}
+
+func TestRetryAfterSecondsRoundsUp(t *testing.T) {
+	for _, tc := range []struct {
+		wait time.Duration
+		want int64
+	}{
+		{0, 1},
+		{-time.Second, 1},
+		{time.Millisecond, 1},
+		{time.Second, 1},
+		{time.Second + time.Nanosecond, 2},
+		{29*time.Second + 500*time.Millisecond, 30},
+		{30 * time.Second, 30},
+	} {
+		if got := retryAfterSeconds(tc.wait); got != tc.want {
+			t.Errorf("retryAfterSeconds(%v) = %d; want %d", tc.wait, got, tc.want)
+		}
 	}
 }
