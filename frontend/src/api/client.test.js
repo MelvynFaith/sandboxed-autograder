@@ -107,4 +107,30 @@ describe('API errors', () => {
       'Terlalu banyak permintaan. Coba lagi dalam 12 detik.',
     )
   })
+
+  it('carries the status and the Retry-After seconds on the error, also with an API message', async () => {
+    const response = {
+      status: 429,
+      headers: new Headers({ 'Retry-After': '30' }),
+      json: async () => ({ error: { code: 'rate_limited', message: 'Tunggu 30 detik.' } }),
+    }
+
+    await expect(throwApiError(response, 'Permintaan gagal.')).rejects.toMatchObject({
+      message: 'Tunggu 30 detik.',
+      status: 429,
+      retryAfter: 30,
+    })
+  })
+
+  it.each([
+    [429, 'soon', null],
+    [503, '30', null],
+  ])('gives no countdown for status %d with Retry-After %s', async (status, header, expected) => {
+    const response = { status, headers: new Headers({ 'Retry-After': header }), json: async () => ({}) }
+
+    await expect(throwApiError(response, 'Permintaan gagal.')).rejects.toMatchObject({
+      status,
+      retryAfter: expected,
+    })
+  })
 })

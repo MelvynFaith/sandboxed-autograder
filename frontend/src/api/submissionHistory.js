@@ -102,16 +102,30 @@ function mockSubmissions() {
   )
 }
 
-export async function getSubmissionHistory({ page = 1, pageSize = 50 } = {}) {
+// assignmentId narrows the caller's own history to one assignment (newest first).
+export async function getSubmissionHistory({ page = 1, pageSize = 50, assignmentId } = {}) {
   if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
     throw new Error('Nomor halaman dan ukuran halaman harus bilangan bulat positif.')
   }
 
   if (import.meta.env.VITE_USE_MOCK === 'true') {
-    return readHistoryResponse(mockSubmissions(), page, pageSize)
+    const items = mockSubmissions().filter(
+      (submission) =>
+        assignmentId == null || String(submission.assignment_id) === String(assignmentId),
+    )
+    const start = (page - 1) * pageSize
+    return readHistoryResponse(
+      { items: items.slice(start, start + pageSize), page, page_size: pageSize,
+        has_next: start + pageSize < items.length },
+      page,
+      pageSize,
+    )
   }
 
-  const response = await apiRequest(`/submissions?page=${page}&page_size=${pageSize}`)
+  const filter = assignmentId == null
+    ? ''
+    : `&assignment_id=${encodeURIComponent(assignmentId)}`
+  const response = await apiRequest(`/submissions?page=${page}&page_size=${pageSize}${filter}`)
   if (!response.ok) {
     await throwApiError(response, `Gagal memuat riwayat submission (${response.status}).`)
   }

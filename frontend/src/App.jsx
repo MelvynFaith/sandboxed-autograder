@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import {
   BrowserRouter,
   Navigate,
@@ -20,6 +20,17 @@ import ProfilePage from './pages/ProfilePage.jsx'
 import RecapPage from './pages/RecapPage.jsx'
 import SubmissionCodePage from './pages/SubmissionCodePage.jsx'
 import SubmissionReportPage from './pages/SubmissionReportPage.jsx'
+
+// The problem pages bring the Markdown renderer and the code editor; they load on first visit so
+// the login and list pages stay small.
+const AssignmentLayout = lazy(() => import('./pages/assignment/AssignmentLayout.jsx'))
+const MySubmissionsTab = lazy(() => import('./pages/assignment/MySubmissionsTab.jsx'))
+const ProblemTab = lazy(() => import('./pages/assignment/ProblemTab.jsx'))
+const SubmitTab = lazy(() => import('./pages/assignment/SubmitTab.jsx'))
+
+function PageLoading() {
+  return <p className="px-6 py-10 text-slate-600">Memuat halaman...</p>
+}
 
 const roleMenus = {
   mahasiswa: [
@@ -86,6 +97,17 @@ function ProtectedLayout() {
   )
 }
 
+// The problem page of an assignment is the student's way to submit; staff use their own pages.
+function StudentRoute({ children }) {
+  const { user } = useAuth()
+
+  if (user.role !== 'mahasiswa') {
+    return <Navigate replace to="/assignments" />
+  }
+
+  return children
+}
+
 function StudentHistoryRoute() {
   const { user } = useAuth()
 
@@ -146,6 +168,20 @@ function App() {
           <Route element={<ProtectedLayout />}>
             <Route path="/" element={<Navigate replace to="/assignments" />} />
             <Route path="/assignments" element={<AssignmentsPage />} />
+            <Route
+              path="/assignments/:assignmentId"
+              element={
+                <StudentRoute>
+                  <Suspense fallback={<PageLoading />}>
+                    <AssignmentLayout />
+                  </Suspense>
+                </StudentRoute>
+              }
+            >
+              <Route index element={<ProblemTab />} />
+              <Route path="submit" element={<SubmitTab />} />
+              <Route path="submissions" element={<MySubmissionsTab />} />
+            </Route>
             <Route path="/courses" element={<CoursesRoute />} />
             <Route path="/history" element={<StudentHistoryRoute />} />
             <Route path="/lecturer/assignments" element={<LecturerAssignmentsRoute />} />

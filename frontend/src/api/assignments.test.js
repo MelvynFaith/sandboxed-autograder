@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getAssignments } from './assignments.js'
+import { getAssignment, getAssignments } from './assignments.js'
 
 beforeEach(() => {
   localStorage.clear()
@@ -70,5 +70,46 @@ describe('getAssignments', () => {
     await expect(getAssignments()).rejects.toThrow(
       'Respons daftar assignment tidak sesuai format yang diharapkan.',
     )
+  })
+})
+
+describe('getAssignment', () => {
+  const assignment = {
+    id: 7,
+    course_id: 2,
+    title: 'Kuadrat',
+    description: '# Soal',
+    deadline_at: '2026-10-12T16:59:00Z',
+    late_until_at: '2026-10-13T16:59:00Z',
+  }
+
+  it('gets and validates one assignment', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => assignment })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(getAssignment('7')).resolves.toEqual({
+      id: '7',
+      courseId: '2',
+      title: 'Kuadrat',
+      description: '# Soal',
+      deadlineAt: '2026-10-12T16:59:00Z',
+      lateUntilAt: '2026-10-13T16:59:00Z',
+    })
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/assignments/7')
+  })
+
+  it('says not found for a 404 without an error body', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) }))
+
+    await expect(getAssignment('9')).rejects.toThrow('Assignment tidak ditemukan.')
+  })
+
+  it('rejects a malformed assignment', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...assignment, deadline_at: 'besok' }),
+    }))
+
+    await expect(getAssignment('7')).rejects.toThrow('Respons assignment tidak sesuai format yang diharapkan.')
   })
 })

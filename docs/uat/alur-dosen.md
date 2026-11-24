@@ -17,8 +17,9 @@ mengakses halaman pengelolaan dosen.
    keenam batas sumber daya yang valid. Tambahkan sedikitnya 5 test case dan
    pastikan seluruhnya tampil setelah disimpan. Tandai satu kasus sebagai
    tersembunyi.
-4. Masuk sebagai tiap mahasiswa melalui UI dan kirim satu berkas Python melalui
-   halaman **Daftar Assignment**. Gunakan 10 program uji dengan hasil
+4. Masuk sebagai tiap mahasiswa melalui UI, buka assignment dari halaman
+   **Daftar Assignment**, lalu kirim satu berkas Python di tab **Kirim kode**
+   (pilih **Unggah berkas .py**). Gunakan 10 program uji dengan hasil
    bervariasi seperti yang ditentukan di [skenario lengkap](./skenario-uat.md).
    Salah satu mahasiswa harus membuka laporannya dan memastikan kasus
    tersembunyi hanya menampilkan status/skor, tanpa input atau expected output.

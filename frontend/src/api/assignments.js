@@ -70,3 +70,31 @@ export async function getAssignments({ courseId } = {}) {
 
   return readAssignmentsResponse(await response.json())
 }
+
+// One assignment, for its problem page. The API answers 404 to a student who is not enrolled in
+// its Course (NFR-10).
+export async function getAssignment(assignmentId) {
+  if (import.meta.env.VITE_USE_MOCK === 'true') {
+    const assignment = readAssignmentsResponse(mockAssignments).find(
+      (item) => item.id === String(assignmentId),
+    )
+    if (!assignment) {
+      throw new Error('Assignment tidak ditemukan.')
+    }
+    return assignment
+  }
+
+  const response = await apiRequest(`/assignments/${encodeURIComponent(assignmentId)}`)
+  if (!response.ok) {
+    await throwApiError(response, `Gagal memuat assignment (${response.status}).`, {
+      404: 'Assignment tidak ditemukan.',
+    })
+  }
+
+  const payload = await response.json()
+  try {
+    return readAssignmentsResponse([payload])[0]
+  } catch {
+    throw new Error('Respons assignment tidak sesuai format yang diharapkan.')
+  }
+}
