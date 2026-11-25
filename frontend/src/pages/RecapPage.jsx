@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import {
   downloadRecapCsv,
   getAssignmentRecap,
@@ -58,8 +58,6 @@ function RegradeAllConfirmation({ isBusy, onConfirm, onDismiss, returnFocusRef }
 
 function RecapPage() {
   const { assignmentId } = useParams()
-  const [searchParams] = useSearchParams()
-  const courseId = searchParams.get('courseId')
   const [recap, setRecap] = useState(null)
   const [page, setPage] = useState(1)
   const [reloadKey, setReloadKey] = useState(0)
@@ -184,32 +182,8 @@ function RecapPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
-      <h1 className="text-2xl font-semibold">Rekap Nilai</h1>
-      <nav aria-label="Alur dosen" className="mt-4 rounded-lg border border-line bg-surface p-4">
-        <ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-          <li>
-            <Link
-              className="font-medium text-link underline"
-              to={`/courses${courseId ? `?courseId=${encodeURIComponent(courseId)}` : ''}`}
-            >
-              1. Course &amp; enrollment
-            </Link>
-          </li>
-          <li>
-            <Link
-              className="font-medium text-link underline"
-              to={`/lecturer/assignments${courseId ? `?courseId=${encodeURIComponent(courseId)}` : ''}`}
-            >
-              2. Assignment &amp; test case
-            </Link>
-          </li>
-          <li aria-current="step" className="font-semibold text-link">
-            3. Rekap nilai &amp; CSV
-          </li>
-        </ol>
-      </nav>
-      {recap && <p className="mt-1 text-ink">{recap.assignmentTitle}</p>}
+    <section aria-labelledby="recap-title">
+      <h2 className="text-xl font-semibold" id="recap-title">Rekap Nilai</h2>
       {isLoading && <p className="mt-4 text-muted">Memuat rekap nilai...</p>}
       {loadError && (
         <p className="mt-4 text-danger" role="alert">
@@ -378,7 +352,7 @@ function RecapPage() {
           </button>
         </nav>
       )}
-    </main>
+    </section>
   )
 }
 

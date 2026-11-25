@@ -16,6 +16,10 @@ import CoursesPage from './pages/CoursesPage.jsx'
 import HistoryPage from './pages/HistoryPage.jsx'
 import LecturerAssignmentsPage from './pages/LecturerAssignmentsPage.jsx'
 import AdminPage from './pages/AdminPage.jsx'
+import LecturerAssignmentLayout from './pages/lecturer/LecturerAssignmentLayout.jsx'
+import NewAssignmentPage from './pages/lecturer/NewAssignmentPage.jsx'
+import SettingsTab from './pages/lecturer/SettingsTab.jsx'
+import TestCasesTab from './pages/lecturer/TestCasesTab.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
 import ProfilePage from './pages/ProfilePage.jsx'
@@ -211,12 +215,20 @@ function App() {
             <Route path="/courses" element={<CoursesRoute />} />
             <Route path="/history" element={<StudentHistoryRoute />} />
             <Route path="/lecturer/assignments" element={<LecturerAssignmentsRoute />} />
+            <Route
+              path="/lecturer/assignments/new"
+              element={<GradingStaffRoute><NewAssignmentPage /></GradingStaffRoute>}
+            />
+            <Route
+              path="/lecturer/assignments/:assignmentId"
+              element={<GradingStaffRoute><LecturerAssignmentLayout /></GradingStaffRoute>}
+            >
+              <Route index element={<SettingsTab />} />
+              <Route path="testcases" element={<TestCasesTab />} />
+              <Route path="recap" element={<RecapPage />} />
+            </Route>
             <Route path="/admin" element={<AdminRoute />} />
             <Route path="/profile" element={<ProfilePage />} />
-            <Route
-              path="/lecturer/assignments/:assignmentId/recap"
-              element={<GradingStaffRoute><RecapPage /></GradingStaffRoute>}
-            />
             <Route
               path="/submissions/:submissionId/report"
               element={<GradingStaffRoute><SubmissionReportPage /></GradingStaffRoute>}
